@@ -1,0 +1,7 @@
+{
+  "name": "mindcare-brochure",
+  "private": true,
+  "description": "系統介紹 PDF 產生器（建置用，與主系統執行期無關）",
+  "scripts": { "build": "node build.js" },
+  "dependencies": { "qrcode": "^1.5.4" }
+}

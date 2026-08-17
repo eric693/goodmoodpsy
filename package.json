@@ -1,0 +1,21 @@
+{
+  "name": "mindcare",
+  "version": "1.0.0",
+  "description": "MindCare 心理諮商所管理系統：個案管理、預約排程、晤談紀錄(SOAP)、處遇計畫、心理量表、危機通報、督導時數、收費方案與個案端專區",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node scripts/seed.js",
+    "smoke": "node scripts/smoke.js",
+    "smoke:ui": "node scripts/smoke-ui.js",
+    "deploy": "bash scripts/deploy.sh"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.10.0",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

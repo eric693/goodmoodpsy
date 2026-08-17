@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>MindCare 心理諮商所管理系統 — 系統介紹</title>
+<style>
+  @page { size: A4; margin: 14mm 13mm 12mm 13mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root{
+    --teal:#0e7c7b; --teal-d:#0a5c5b; --teal-l:#eef7f7; --teal-b:#bfdedd;
+    --sand:#8a6a20; --sand-l:#fbf5e6; --sand-b:#e6d6ac;
+    --ink:#1c2b2b; --muted:#6b7a7a; --line:#dfe7e7;
+  }
+  body{
+    font-family:"Noto Sans CJK TC","Noto Sans TC",sans-serif;
+    color:var(--ink); font-size:9pt; line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  .label{ font-size:7.5pt; letter-spacing:.22em; color:var(--teal); font-weight:700; }
+  h1{ font-size:23pt; line-height:1.25; font-weight:700; letter-spacing:-.01em; margin:6px 0 2px; }
+  h1 .k{ color:var(--teal); }
+  .lede{ color:#3f4d4d; font-size:9.2pt; max-width:152mm; margin-top:8px; }
+
+  .stats{ display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--line);
+          border-radius:7px; overflow:hidden; margin:14px 0 4px; }
+  .stat{ padding:9px 11px; border-right:1px solid var(--line); }
+  .stat:last-child{ border-right:0; }
+  .stat b{ display:block; font-size:14pt; color:var(--teal); line-height:1.2; }
+  .stat span{ font-size:7.6pt; color:var(--muted); }
+
+  .try{ margin:14px 0 6px; border:1.5px solid var(--teal-b); background:var(--teal-l);
+        border-radius:8px; padding:12px 14px; }
+  .try h3{ font-size:10pt; color:var(--teal-d); margin-bottom:9px; }
+  .try-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .try-card{ display:flex; gap:10px; align-items:center; background:#fff;
+             border:1px solid var(--teal-b); border-radius:6px; padding:9px 10px; }
+  .try-card img{ width:62px; height:62px; flex-shrink:0; }
+  .try-card .t{ font-weight:700; font-size:9pt; margin-bottom:2px; }
+  .try-card a{ color:var(--teal); font-size:7.8pt; word-break:break-all; text-decoration:none; border-bottom:1px solid var(--teal-b); }
+  .try-card .acct{ font-size:7.6pt; color:var(--muted); margin-top:3px; }
+
+  .sec{ display:flex; align-items:baseline; gap:10px; margin:15px 0 3px; }
+  .sec h2{ font-size:12pt; font-weight:700; }
+  .sec .note{ font-size:7.8pt; color:var(--muted); margin-left:auto; }
+  .rule{ height:2.5px; background:var(--teal); border-radius:2px; }
+  .rule.g{ background:var(--sand); }
+  .grp{ font-size:8pt; color:var(--muted); font-weight:700; margin:10px 0 5px; letter-spacing:.04em; }
+
+  .cards{ display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+  .card{ border:1px solid var(--line); border-radius:6px; padding:8px 10px; break-inside:avoid; }
+  .card.g{ border-left:2.5px solid var(--sand); }
+  .card h4{ font-size:8.8pt; font-weight:700; margin-bottom:2px; }
+  .card p{ font-size:7.9pt; color:#4a5757; line-height:1.55; }
+  .tag{ display:inline-block; font-size:6.6pt; font-weight:700; padding:0 4px; border-radius:3px;
+        background:var(--sand-l); color:var(--sand); border:1px solid var(--sand-b);
+        vertical-align:1.5px; margin-left:4px; }
+
+  table{ width:100%; border-collapse:collapse; margin-top:7px; }
+  th{ text-align:left; font-size:7.4pt; color:var(--muted); font-weight:700;
+      background:var(--teal-l); padding:5px 8px; border-bottom:1px solid var(--teal-b); }
+  td{ font-size:7.9pt; padding:4.5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  td:first-child{ font-weight:700; width:24%; }
+  td:last-child{ color:var(--muted); width:26%; }
+
+  .sec{ break-after:avoid; }
+  .rule{ break-after:avoid; }
+  .grp{ break-after:avoid; }
+  tr{ break-inside:avoid; }
+  .note-s{ font-size:7.2pt; color:var(--muted); margin-top:6px; }
+  .foot{ margin-top:7px; padding-top:6px; border-top:1px solid var(--line); font-size:7.6pt;
+         line-height:1.45; color:var(--muted); }
+  .foot b{ color:var(--ink); }
+  .foot a{ color:var(--teal); text-decoration:none; }
+</style>
+</head>
+<body>
+
+<div class="label">MINDCARE · 系統介紹</div>
+<h1><span class="k">MindCare</span> 心理諮商所管理系統</h1>
+<p class="lede">為台灣心理諮商所設計的一站式管理系統：來電登記派案、預約排程、SOAP 晤談紀錄、處遇計畫、心理量表、
+危機通報、督導時數、收費與方案、合作單位請款，全部照諮商所的實務流程走。晤談紀錄依主責關係控管存取、簽核後鎖定；
+責任通報自動帶出 24 小時期限並在逾時前警示；個案用手機就能預約、填量表、查費用。</p>
+
+<div class="stats">
+  <div class="stat"><b>19</b><span>功能模組（可逐一授權）</span></div>
+  <div class="stat"><b>5</b><span>報表，皆可出 Excel／PDF／CSV</span></div>
+  <div class="stat"><b>5</b><span>心理量表，自動計分與判讀</span></div>
+  <div class="stat"><b>24hr</b><span>責任通報期限自動追蹤</span></div>
+</div>
+
+<div class="try">
+  <h3>線上試用（可直接掃碼體驗，示範資料）</h3>
+  <div class="try-grid">
+    <div class="try-card">
+      <img src="{{QR_STAFF}}" alt="所內管理端 QR">
+      <div>
+        <div class="t">所內管理端</div>
+        <a href="https://mindcare.crownai.ink/">https://mindcare.crownai.ink/</a>
+        <div class="acct">所長 admin / mindcare123<br>心理師 lin / 123456</div>
+      </div>
+    </div>
+    <div class="try-card">
+      <img src="{{QR_CLIENT}}" alt="個案專區 QR">
+      <div>
+        <div class="t">個案專區（手機開啟）</div>
+        <a href="https://mindcare.crownai.ink/portal.html">https://mindcare.crownai.ink/portal.html</a>
+        <div class="acct">個案 0912345678 / 345678</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec"><h2>所內管理端</h2><div class="note">模組級權限，行政人員看不到晤談內容</div></div>
+<div class="rule"></div>
+
+<div class="grp">每日作業</div>
+<div class="cards">
+  <div class="card"><h4>總覽儀表板</h4><p>今日晤談時間表、服務中個案數、<strong>高風險個案</strong>與未結危機事件、待完成晤談紀錄、本週與本月晤談量、未收款金額、個案未讀訊息、待填量表、待派案來電。另有<strong>執照到期提醒</strong>（預設提前 180 天）、合作單位契約將屆期、近 30 日<strong>量表危險題警示</strong>與逾期未複評的處遇計畫。管理者另可見<strong>上線安全檢查</strong>，逐項提醒預設密碼與示範帳號提示未清除。</p></div>
+  <div class="card"><h4>預約排程</h4><p>日檢視與<strong>週檢視</strong>並列，一對一預約與團體場次同表呈現。建立時自動檢查<strong>心理師與諮商室雙重衝突</strong>，並擋下請假時段。可設定各心理師的每週可預約時段，系統據此算出空檔。狀態分已預約／已報到／完成／取消／未到；標記完成即依方案扣次或產生收費單，未到依設定比例計費。<strong>狀態改回去會自動退回次數並移除未收款的收費單</strong>，不會重複計費。</p></div>
+  <div class="card"><h4>排班與行事曆<span class="tag">可訂閱</span></h4><p>心理師自己在<strong>星期 × 時段的格子上點選或拖曳刷選</strong>本週可預約時段，一次存檔；表格起訖時間、每格分鐘數與快填按鈕都是系統設定，不合格線的時間（如 13:15-14:05）另以「自訂時段」加入，可一次套用多個星期。<strong>月檢視行事曆</strong>把晤談、團體場次與請假排在同一張月曆，點任一天看明細並直接排約。每人另有一組<strong>行事曆訂閱網址（.ics）</strong>，可加進 Google 或 iPhone 日曆；內容<strong>只帶個案編號不帶姓名</strong>，網址可隨時重設。</p></div>
+  <div class="card"><h4>候補遞補<span class="tag">別讓時段空掉</span></h4><p>取消或未到把時段空出來時，系統<strong>當下就配對候補名單</strong>並詢問要不要通知遞補；排序依「指定心理師 → 緊急度 → 希望時段是否吻合 → 等候天數」，指定其他心理師的來電不會被打擾。「候補遞補」頁列出未來所有<strong>確實還空著</strong>的釋出時段與可遞補人數，可編輯訊息後發送或直接排約；未設發送通道時只產生文字供人工聯繫。</p></div>
+  <div class="card"><h4>來電登記與派案</h4><p>台灣諮商所多由行政接電話登記，再由所長或督導評估後派案。系統走「登記→派案→轉個案」漏斗：記錄主訴、希望時段、指定心理師與緊急程度，滿檔時進候補。轉為正式個案時自動建檔、產生個案編號、設定個案端密碼，並可一併建立初談預約。</p></div>
+  <div class="card"><h4>個案自填初談問卷<span class="tag">免登入連結</span></h4><p>櫃檯產生一組<strong>有效期限的專屬連結</strong>（天數可設定），以簡訊或 LINE 傳給來電者，用手機填寫基本資料、緊急聯絡人與法定代理人、主訴、過往就醫諮商史、期待與方便時段，並可選填 <strong>BSRS-5 心情溫度計</strong>。建檔時聯絡資料與主訴<strong>一鍵帶入</strong>，量表結果轉為個案的第一筆施測紀錄作為療效追蹤基線；<strong>命中自殺意念題會自動把來電標為高風險</strong>並拉高緊急度，初談前就看得到。尚未登記來電也能先發問卷，填完一鍵轉為來電登記。</p></div>
+  <div class="card"><h4>線上視訊晤談<span class="tag">遠距</span></h4><p>預約形式選「視訊」即自動帶入該心理師的<strong>固定會議室連結</strong>（於帳號設定一次），也可逐筆指定。連結只接受 http(s) 完整網址，<strong>自動附加在晤談提醒訊息裡</strong>；個案在專區首頁直接看到「進入視訊晤談」按鈕，心理師則在今日看板與本週排程一鍵進入。到所與視訊的服務量比例列入月報，方案與評鑑報表需要時可直接引用。</p></div>
+  <div class="card"><h4>我的工作台<span class="tag">心理師視角</span></h4><p>總覽是所方視角，這頁是心理師自己的：我的在案個案與其中高風險數、<strong>本週排程（含視訊連結）</strong>、本月與今年完成晤談、待補紀錄與待完成衡鑑報告、我的個案未讀訊息與待填量表、追蹤中危機事件與通報期限、本月開立費用。下半頁是專業資格進度條——<strong>年度督導時數、繼續教育總積分、特定三類合計與專業倫理個別下限</strong>，各自顯示已達標或尚差多少，以及執照更新倒數。</p></div>
+  <div class="card"><h4>晤談提醒</h4><p>產生可直接複製的提醒訊息（範本可自訂，代入個案、心理師、日期星期、時間、取消時限）。填入<strong>webhook 網址</strong>後可由系統直接送出簡訊或 LINE，支援單筆與整批發送；<strong>每一則發送都留紀錄</strong>，成功、失敗與失敗原因可查。未設定通道時只產生文字供人工發送，不會把個資送出去。</p></div>
+</div>
+
+<div class="grp">臨床作業</div>
+<div class="cards">
+  <div class="card"><h4>個案管理</h4><p>基本資料含<strong>身分證統一編號</strong>（附檢查碼驗證，供通報與補助核銷）、生辰、職業、轉介來源與轉介單位、主訴、過往就醫諮商史與用藥、醫療診斷。<strong>依出生日期自動判定未成年</strong>（民法成年年齡 18 歲，門檻可調），未滿即自動勾選並要求法定代理人同意書，避免漏勾。緊急聯絡人與法代分欄。單一個案頁彙整晤談歷程、紀錄、處遇計畫、量表趨勢、危機事件、同意書、費用與附件。</p></div>
+  <div class="card"><h4>晤談紀錄<span class="tag">SOAP</span></h4><p>依 <strong>S 主觀陳述／O 客觀觀察／A 評估與概念化／P 後續計畫</strong>四段撰寫，另記使用技術取向、家庭作業與風險標記。<strong>存取依主責關係控管</strong>——非主責心理師、未授權的行政人員讀不到內容，督導與管理者可讀。簽核後<strong>鎖定不可修改</strong>，維持紀錄可信度；未簽核者列入待辦清單，逾期天數可設定。風險標記非「無」時強制填寫風險評估說明。</p></div>
+  <div class="card"><h4>實習心理師督導覆核<span class="tag">兩段簽核</span></h4><p>帳號可標記為<strong>實習心理師並指定督導</strong>。實習生按「送督導覆核」<strong>不會直接定稿</strong>，送出期間不可修改；由指定督導<strong>覆核通過才鎖定</strong>並記下覆核者、時間與意見，需補正者填意見退回、修改後重送。「紀錄覆核」頁列出待覆核與被退回的紀錄，<strong>逾期未覆核紅字標示</strong>；實習生的個案與紀錄，其指定督導一律看得到。</p></div>
+  <div class="card"><h4>安全計畫<span class="tag">印給個案帶走</span></h4><p>高風險個案的標準照護文件，與危機事件分工明確——危機事件記「已經發生的事」，安全計畫是「事前一起約定好狀況變差時怎麼做」。八段結構：<strong>警訊、自我因應、可轉移注意力的人事地、可求助親友、專業協助、危機資源、環境安全、值得活下去的理由</strong>。<strong>可列印一份給個案隨身保存</strong>（帶所別抬頭與雙方簽名欄），危機資源與檢視週期由系統設定帶入。內容更新以<strong>新版本保存、舊版可查</strong>，保密層級同晤談紀錄。「安全計畫列管」頁盯高風險個案是否都有現行計畫、是否逾檢視日。</p></div>
+  <div class="card"><h4>處遇計畫</h4><p>問題陳述、長短期目標、預計次數與複評日期；目標可逐條列出<strong>評估指標與進度百分比</strong>。複評日到期會進入總覽的待辦提醒，避免計畫訂了就放著。計畫狀態分進行中／已達成／已修訂，歷次版本保留。</p></div>
+  <div class="card"><h4>心理衡鑑報告書<span class="tag">定稿鎖定</span></h4><p>WAIS、WISC、MMPI 等施測結果不再只是附件掃描檔，而是結構化文件：轉介問題與評估目的、施測工具、背景資料、<strong>行為觀察與測驗態度</strong>、可逐列填寫的<strong>分數摘要表</strong>（工具／指標／分數／常模位置／判讀）、綜合摘要與臨床印象、建議，以及結果效度註記。存取比照晤談紀錄的保密邊界，每次調閱記入稽核；<strong>簽核定稿後不可修改</strong>，需更正時另立新報告。列印版帶所別抬頭與心理師證照字號，並載明僅供轉介目的使用。已完成的心理衡鑑晤談若尚未產出報告，會列入待辦清單追蹤。</p></div>
+  <div class="card"><h4>心理量表<span class="tag">5 種</span></h4><p>內建 <strong>PHQ-9 憂鬱、GAD-7 焦慮、BSRS-5 心情溫度計、PSS-10 知覺壓力、ISI 失眠嚴重度</strong>，逐題作答後自動計分與判讀切分點。<strong>命中危險題（如 PHQ-9 第 9 題自傷意念）立即跳出警示並自動將個案風險等級調為高</strong>，提醒完成風險評估與通報。多次施測自動繪出<strong>分數趨勢折線圖</strong>（虛線標切分點、紅點標命中危險題），同時出現在個案頁、處遇計畫目標旁與個案專區。可指派給個案於專區自填並設期限。</p></div>
+  <div class="card"><h4>危機事件與通報<span class="tag">24hr</span></h4><p>涵蓋自殺意念、自傷行為、傷人威脅、兒少保護、家庭暴力、性侵害與精神症狀惡化。屬<strong>責任通報</strong>的類型在建檔時自動帶出應完成通報時間（預設知悉起 24 小時，類型與時限皆可設定），清單顯示「剩餘 18 小時」，<strong>逾時未通報以紅字標示</strong>並可單獨篩選。可一鍵產生<strong>責任通報表</strong>（當事人、法代、事件概要、已採處置、通報人與單位）供抄錄或附件，實際通報仍循主管機關管道。通報管道含 113、關懷 e 起來、自殺防治通報系統、警政與衛生局。記錄已採處置、通報案號、處理者與後續追蹤；結案須填追蹤結果。此模組行政人員預設無權限。</p></div>
+  <div class="card"><h4>轉介與結案後追蹤<span class="tag">留得下痕跡</span></h4><p>轉精神科、轉社福、轉他所最容易沒留紀錄。系統記下<strong>轉介對象、原因、窗口，以及對方是否接案與回覆時間</strong>，日後要說明「已盡轉介義務」時就是證據。結案時依設定<strong>自動建立追蹤點</strong>（預設 30、90 天），「結案追蹤」頁列出到期與逾期者，完成追蹤須填結果。保密層級同晤談紀錄。</p></div>
+  <div class="card"><h4>團體諮商</h4><p>團體本身、成員名單與各次聚會分開管理。場次排程會同時檢查一對一預約與其他團體的<strong>諮商室衝突</strong>。點名同時撰寫團體歷程紀錄（比照晤談紀錄，非帶領者讀不到），出席者依團體收費自動開單，<strong>合作單位付費的個案不另開個人收費單</strong>。重複點名或改判缺席都不會重複開單。完成場次數達預定總數自動結束團體。</p></div>
+  <div class="card"><h4>督導紀錄</h4><p>個督、團督與同儕督導分類登記，可指定外聘督導與討論個案，記錄內容與建議。<strong>年度時數彙總</strong>對照設定的目標時數，供繼續教育與實習時數佐證。</p></div>
+  <div class="card"><h4>同意書<span class="tag">5 份範本</span></h4><p>內建<strong>心理諮商知情同意書</strong>（引心理師法第 17 條保密義務與三類法定揭露例外）、<strong>未成年人法定代理人同意書</strong>、<strong>個資蒐集處理利用告知同意書</strong>（依個資法第 8 條六款）、<strong>錄音錄影同意書</strong>與<strong>緊急聯絡與危機處理同意書</strong>。範本可自行改寫並遞增版本；<strong>已簽署者保存簽署當下的全文快照</strong>，不受改版影響。未成年且屬必簽者，系統擋下本人自簽、要求法代簽署。個案亦可於專區線上簽署。</p></div>
+</div>
+
+<div class="grp">營運與人事</div>
+<div class="cards">
+  <div class="card"><h4>收費、方案與發票</h4><p>晤談完成自動產生收費單，收款即開立<strong>收據編號</strong>（年月流水）。<strong>預付堂數方案</strong>於完成晤談時自動扣次，扣完標記用畢。<strong>電子發票欄位</strong>齊備：發票號碼與日期、買受人統一編號（8 碼檢核）、抬頭、手機條碼載具與捐贈碼。<strong>政府補助方案</strong>可記方案序號、補助額與<strong>自付差額自動拆算</strong>。發票與核銷資料常於收款後補登，故<strong>已收款者仍可補填</strong>，金額鎖住；作廢採沖銷不刪紀錄。</p></div>
+  <div class="card"><h4>退費<span class="tag">與原單勾稽</span></h4><p>已收款項需退還時（方案未用完即終止、重複收費、所方因素取消晤談），<strong>不去改動原收費單金額</strong>——收款是已經發生的事實——而是另立<strong>退費單與原單勾稽</strong>：記日期、金額、方式、原因與經手人；可退上限自動計算（原收款減已退），<strong>方案退費依剩餘堂數試算</strong>並可同步停止扣次。全額退還才把原單標為已退費，收費頁與月報以<strong>「收款 − 退費」計算實收</strong>；誤開可撤銷。</p></div>
+  <div class="card"><h4>逾期催繳<span class="tag">帳齡分析</span></h4><p>未收款超過設定天數（預設 14 天）自動列入催繳清單，附<strong>帳齡分析</strong>——30 天內、31-60、61-90、超過 90 天各有幾筆與多少金額，比例一眼看出。可依<strong>付款人別與主責心理師</strong>篩選，逐筆或<strong>整批發送催繳訊息</strong>（範本可自訂）；未設發送通道時只產生文字供人工聯繫。每則都留紀錄，清單顯示已催幾次與最近時間，收款可在同一頁完成。</p></div>
+  <div class="card"><h4>合作單位與請款</h4><p>學校、企業 EAP、政府社政、司法轉介與醫療院所分類建檔，記契約字號、契約期間、<strong>議定單價與額度次數</strong>，額度將用罄與契約將到期會提醒。可依月份自動產生<strong>請款對帳單</strong>，明細<strong>以個案編號列示不記載姓名</strong>，符合保密原則。請款單建立後若晤談有異動，系統會標示實際與單上金額的差異，草稿可一鍵重算，<strong>已送出或入帳者不自動改動</strong>。</p></div>
+  <div class="card"><h4>報酬與扣繳</h4><p>外聘心理師與督導的鐘點多屬<strong>執行業務所得</strong>，所方為扣繳義務人。系統依設定費率自動試算<strong>代扣所得稅</strong>（預設 10%、起扣 20,010 元）與<strong>二代健保補充保費</strong>（2.11%、起扣 20,000 元），金額可人工覆寫。可<strong>依當月已完成晤談批次帶入</strong>鐘點，省去逐筆加總。年度彙總依所得人與所得類別分列，供填報各類所得扣繳暨免扣繳憑單。已付款者不可修改刪除。</p></div>
+  <div class="card"><h4>請假與繼續教育</h4><p>請假時段優先於可預約設定，<strong>期間已有預約會先擋下</strong>要求改期。繼續教育依<strong>執業執照 6 年更新週期</strong>計算積分：總積分、專業品質／倫理／法規三類合計下限，以及<strong>專業倫理的個別下限</strong>分開檢核，未達標紅字提示。執照到期提前提醒天數可設定。</p></div>
+  <div class="card"><h4>個案附件<span class="tag">上傳</span></h4><p>轉介單、診斷證明、同意書掃描檔、心理衡鑑報告與身分證明分類存放。支援 PDF、圖片與 Office 檔，單檔 20 MB。<strong>檔案以隨機檔名落地、目錄不對外開放</strong>，下載一律經權限檢查並記入稽核軌跡。可逐檔勾選<strong>是否開放個案端下載</strong>，個案只看得到開放給自己的檔案。附件與資料庫一併納入每日備份。</p></div>
+  <div class="card"><h4>舊資料匯入<span class="tag">Excel／CSV</span></h4><p>轉換系統時不必逐筆重打：<strong>個案名冊、晤談排程、收費明細、量表施測</strong>四種資料可由 Excel 或 CSV 匯入。流程是下載範本 → 貼上舊資料 → <strong>上傳預覽（完全不寫入）</strong>→ 確認匯入；預覽逐列標出錯誤與已存在的資料，<strong>任一列有誤即整批拒絕</strong>。日期支援國曆與民國年，重複比對以身分證號、個案編號或手機為準。檔案只在記憶體處理不落地，結果記入稽核。</p></div>
+  <div class="card"><h4>統計報表與匯出<span class="tag">Excel＋PDF</span></h4><p>月報含服務中個案數、新案與結案、<strong>心理師服務量</strong>（完成／未到／取消／服務人數）、晤談類型分布、新案來源、收入來源別、危機事件件數與通報比例、量表施測平均分、合作單位服務量與團體場次。五份明細報表——<strong>個案清單、晤談明細、收費明細、心理師服務量、危機事件</strong>——每份都能出 <strong>Excel、PDF 與 CSV</strong>，期間類以選定月份為範圍，匯出動作記入稽核軌跡。另有<strong>經營品質指標</strong>：爽約率、取消率、初談轉銜率、脫落率、平均晤談次數，以及<strong>心理師時段利用率</strong>（完成時數 ÷ 排班開放時數）。</p></div>
+</div>
+
+<div class="sec"><h2>個案專區</h2><div class="note">手機優先，手機號碼登入，首次登入強制改密碼</div></div>
+<div class="rule g"></div>
+<div class="cards" style="margin-top:7px">
+  <div class="card g"><h4>線上預約、改期與取消</h4><p>顯示主責心理師的<strong>實際可預約空檔</strong>（已扣除既有預約與請假），可自行送出預約。在免收費期限內可<strong>自助改期</strong>（同一位心理師、同一套開放時段規則）或直接取消；<strong>逾期限則只能送出「取消申請」</strong>——預約在櫃檯處理前仍然有效，系統同時發訊息通知櫃檯並在總覽列為待辦，<strong>是否依比例計費由櫃檯決定</strong>，個案端不能自行改變收費結果。可約天數範圍、線上預約與改期開關皆可設定。</p></div>
+  <div class="card g"><h4>量表自填</h4><p>心理師指派的量表出現在待填清單並附期限，逐題作答送出後結果直接進入個案的分數趨勢。<strong>命中危險題會同步觸發所內警示</strong>，並在頁面顯示求助資源。多次施測後可看到自己的<strong>分數變化折線圖</strong>，附「第一次幾分、最近一次幾分」的白話說明。</p></div>
+  <div class="card g"><h4>費用查詢</h4><p>歷次收費、已收與未收金額、方案剩餘堂數一頁看完。</p></div>
+  <div class="card g"><h4>同意書線上簽署</h4><p>閱讀全文後線上簽署，系統保存<strong>簽署當下的全文快照、簽署人身分（本人或法定代理人）與簽署時間</strong>。未簽的必簽同意書會主動提示。</p></div>
+  <div class="card g"><h4>訊息與公告</h4><p>與所方的行政訊息往來（<strong>不作為晤談內容討論管道</strong>，頁面明確標示）；公告與危機求助資訊常駐顯示。</p></div>
+  <div class="card g"><h4>諮商所提供的檔案</h4><p>所方勾選開放的附件（如衡鑑報告、轉介文件）可自行下載，不必再跑一趟。未開放者個案看不到也下載不到。</p></div>
+</div>
+
+<div class="sec"><h2>法規與實務對照</h2><div class="note">設計對照心理師法、個資法與責任通報相關規範</div></div>
+<div class="rule"></div>
+<table>
+  <thead><tr><th>法規／實務重點</th><th>系統對應功能</th><th>留存與提醒</th></tr></thead>
+  <tbody>
+    <tr><td>心理師法第 17 條：保密義務</td><td>知情同意書載明保密原則與三類法定揭露例外；晤談紀錄依主責關係控管存取</td><td>非主責與未授權者讀不到內容</td></tr>
+    <tr><td>心理師法：紀錄製作與保存</td><td>SOAP 晤談紀錄簽核後鎖定不可修改；保存年限可設定（預設 7 年）</td><td>屆滿者列入歸檔清單，不自動刪除</td></tr>
+    <tr><td>個人資料保護法第 8 條</td><td>個資告知同意書涵蓋蒐集機構、目的、類別、期間地區對象方式、當事人權利與不提供之影響六款</td><td>簽署保存全文快照</td></tr>
+    <tr><td>民法成年年齡 18 歲</td><td>依出生日期自動判定未成年並要求法定代理人同意書</td><td>擋下本人自簽必簽同意書</td></tr>
+    <tr><td>兒少權法、家暴防治法、性侵害防治法：責任通報</td><td>屬責任通報之事件類型自動帶出 24 小時通報期限</td><td>逾時未通報紅字警示並可篩選</td></tr>
+    <tr><td>自殺防治通報</td><td>量表危險題命中自動提升風險等級並提示登錄危機事件</td><td>通報管道含自殺防治通報系統</td></tr>
+    <tr><td>醫事人員繼續教育</td><td>6 年週期積分彙總，特定三類合計與專業倫理個別下限分開檢核</td><td>未達標與執照將到期紅字提示</td></tr>
+    <tr><td>執業執照更新</td><td>證照類別、證書字號與執照更新日建檔</td><td>提前提醒天數可設定（預設 180 天）</td></tr>
+    <tr><td>各類所得扣繳</td><td>執行業務所得代扣所得稅與二代健保補充保費試算，年度依所得人與類別彙總</td><td>供填報扣繳憑單，已付款不可改</td></tr>
+    <tr><td>統一發票與收據</td><td>發票號碼、買受人統編、載具與捐贈碼；收據載明開業執照字號與負責心理師</td><td>作廢採沖銷，編號不中斷</td></tr>
+    <tr><td>政府補助方案核銷</td><td>方案序號、補助額與個案自付差額分開記帳</td><td>補助額不可大於總額</td></tr>
+    <tr><td>合作單位對帳保密</td><td>請款對帳單以個案編號列示，不記載姓名</td><td>明細與總額不符時明確標示</td></tr>
+    <tr><td>督導與實習時數佐證</td><td>個督／團督／同儕分類登記，年度時數對照目標</td><td>可指定外聘督導與討論個案</td></tr>
+    <tr><td>實習心理師紀錄之督導責任</td><td>實習生紀錄須經<strong>指定督導覆核通過</strong>才定稿，可退回補正</td><td>覆核者、時間與意見一併留存</td></tr>
+    <tr><td>自殺風險個案之安全計畫</td><td>八段式安全計畫，可列印給個案；內容更新以新版本保存</td><td>高風險未建立或逾檢視日即警示</td></tr>
+    <tr><td>轉介義務與服務銜接</td><td>轉介對象、原因與<strong>對方是否接案</strong>逐筆留存；結案後自動排定關懷追蹤</td><td>逾期未追蹤列於清單最前</td></tr>
+    <tr><td>個案資料存取可追溯</td><td>登入與關鍵操作全程留痕，含附件上傳與下載</td><td>保留天數可設定（預設 5 年）</td></tr>
+    <tr><td>紀錄不可任意刪除</td><td>晤談紀錄簽核鎖定、收費單作廢不刪、個案停用而非刪除</td><td>停用時一併取消未來預約</td></tr>
+  </tbody>
+</table>
+<p class="note-s">法規數值（繼續教育積分下限、紀錄保存年限、通報時限、扣繳率與起扣點）全部做成系統設定可調整，因主管機關公告時有異動；正式上線前請依現行條文與所在地主管機關要求核對。心理量表為篩檢工具，分數僅供臨床判讀參考，不等同診斷。</p>
+
+<div class="sec"><h2>安裝到手機與電腦</h2><div class="note">免 App 商店、免審核，登入後依提示三步完成</div></div>
+<div class="rule g"></div>
+<div class="cards" style="margin-top:7px">
+  <div class="card g"><h4>個案 iPhone</h4><p>① 用 <strong>Safari</strong> 開啟個案專區並登入　② 點下方「分享」<strong>⎋</strong> →「<strong>加入主畫面</strong>」　③ 之後從主畫面圖示開啟。<br>（從 LINE 點開的頁面請先改用 Safari 開啟）</p></div>
+  <div class="card g"><h4>個案 Android</h4><p>① 用 <strong>Chrome</strong> 開啟個案專區並登入　② 畫面跳出「安裝」提示點一下即完成；若沒跳出，點右上「⋮」→「<strong>加到主畫面</strong>」。</p></div>
+  <div class="card g"><h4>櫃檯 電腦／平板</h4><p>① 用 <strong>Chrome 或 Edge</strong> 開啟系統並登入　② 點<strong>網址列右側的安裝圖示</strong>（或「⋮」→「安裝應用程式」）　③ 之後從桌面圖示開啟，全螢幕操作如同獨立軟體。</p></div>
+</div>
+
+<div class="sec"><h2>安全與資料保全</h2><div class="note">存的是心理紀錄與個案個資，預設就要守得住</div></div>
+<div class="rule"></div>
+<div class="cards" style="margin-top:7px">
+  <div class="card"><h4>存取控制與登入防護</h4><p>員工與個案登入分離，19 個模組逐一授權。<strong>晤談紀錄與團體歷程紀錄採主責關係控管</strong>——行政人員即使有個案管理權限也讀不到內容；危機事件模組預設不開放行政人員。個案僅能存取自己的預約、量表、費用與被開放的附件。同帳號連續失敗 5 次鎖定 15 分鐘並針對 IP 限流；個案預設密碼為手機末 6 碼且首次登入強制更換。系統至少保留一位啟用中的管理者，不可自我降權鎖死。</p></div>
+  <div class="card"><h4>資料保全與稽核</h4><p>全站 HTTPS 並啟用 HSTS 等安全標頭；<strong>資料庫每日自動備份保留 14 份並另存異地鏡像，附件一併同步</strong>。附件以隨機檔名落地、目錄不對外開放，下載須逐次驗權。關鍵操作全程留痕（含附件上傳下載、報表匯出、危機事件異動），保留期限可設定。<strong>心理紀錄不硬刪</strong>——簽核後鎖定、個案改為停用、收費單作廢採沖銷；停用個案會一併取消未來預約並標記退出團體，不會留下幽靈排程。選項清單與前台文字皆可於系統設定自行維護，不必改程式。</p></div>
+</div>
+
+<div class="sec"><h2>導入與常見疑問</h2><div class="note">現有紀錄照舊留著，系統從新案開始跑就好</div></div>
+<div class="rule"></div>
+<div class="cards" style="margin-top:7px">
+  <div class="card"><h4>要花多久才能上線？</h4><p>系統本身<strong>不需安裝於個別電腦</strong>，用瀏覽器開網址即可。上線前要決定的只有：所別資訊與執照字號、晤談時長與收費、諮商室與各心理師可預約時段、每位同仁的模組權限。都在「系統設定」與「帳號權限」兩頁完成，通常<strong>半天內可設定完畢</strong>。</p></div>
+  <div class="card"><h4>舊的個案紀錄怎麼辦？</h4><p>依規定紙本或原系統的心理紀錄本來就要保存，<strong>不建議也不必全部搬進來</strong>。實務上從新案與在案個案的基本資料開始建檔，歷史紀錄留在原處，需要時把掃描檔上傳為附件。收費與報表從導入月份起算。若原本就有 Excel 名冊，可用<strong>資料匯入</strong>分批搬進來，上傳前先逐列預覽驗證。</p></div>
+  <div class="card"><h4>行政人員會看到晤談內容嗎？</h4><p>不會。晤談紀錄與團體歷程紀錄採<strong>主責關係控管</strong>，只有主責心理師、督導與管理者讀得到；行政人員即使有「個案管理」權限，個案頁也不會出現紀錄分頁。危機事件模組預設也不開放行政人員。</p></div>
+  <div class="card"><h4>一定要用線上預約與簡訊嗎？</h4><p>都不是必要。個案專區的線上預約可整個關閉，維持電話預約。晤談提醒未設發送通道時只<strong>產生可複製的文字</strong>供人工通知，不會把個資送到外部服務；要自動發送再填入自家簡訊商或 LINE 網址即可。</p></div>
+  <div class="card"><h4>單人工作室也適用嗎？</h4><p>適用。單人執業時多數欄位有合理預設值，可只用預約、晤談紀錄與收費三個模組，其餘模組在權限設定中關閉即可，畫面不會出現用不到的功能。合作單位請款、團體諮商等模組留待有需要時再開啟。</p></div>
+  <div class="card"><h4>資料放在哪裡？會不會不見？</h4><p>資料庫為單一檔案（SQLite），每日自動備份保留 14 份並另存一份異地鏡像，<strong>個案附件一併同步</strong>。要轉移或自行保管時複製該檔案與 uploads 目錄即可，不依賴雲端服務或外部 API。</p></div>
+</div>
+
+<div class="foot">
+  <b>技術架構</b>：Node.js + Express + SQLite（免另建資料庫）；原生 JS 前端無框架無編譯，個案端為 PWA。
+  <b>通知</b>：可接自家簡訊／LINE webhook，未設定則產生訊息供人工發送。<b>部署</b>：nginx 反向代理。<br>
+  <b>線上試用</b>：所內端 <a href="https://mindcare.crownai.ink/">mindcare.crownai.ink</a>　·
+  個案端 <a href="https://mindcare.crownai.ink/portal.html">mindcare.crownai.ink/portal.html</a>　·
+  本文件 <a href="https://mindcare.crownai.ink/mindcare-intro.pdf">mindcare.crownai.ink/mindcare-intro.pdf</a>
+</div>
+
+</body>
+</html>

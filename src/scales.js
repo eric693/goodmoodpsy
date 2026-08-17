@@ -1,0 +1,126 @@
+// 常用篩檢量表題目與計分。
+// 這些量表為篩檢工具，分數僅供臨床判讀參考，不等同診斷；判讀說明採各量表公開之切分點。
+const FOUR = [['0', '完全沒有'], ['1', '幾天'], ['2', '一半以上的天數'], ['3', '幾乎每天']];
+const FIVE = [['0', '完全沒有'], ['1', '輕微'], ['2', '中等程度'], ['3', '厲害'], ['4', '非常厲害']];
+
+const SCALES = {
+  PHQ9: {
+    name: 'PHQ-9 憂鬱症篩檢量表',
+    intro: '過去兩週內，以下問題困擾您的頻率？',
+    options: FOUR,
+    alertIndex: 8,                 // 第 9 題（自傷／自殺意念）非 0 即示警
+    alertNote: '第 9 題（自傷或輕生念頭）非零，請立即進行風險評估',
+    items: [
+      '做事時提不起勁或沒有樂趣',
+      '感到心情低落、沮喪或絕望',
+      '入睡困難、睡不安穩或睡太多',
+      '感覺疲倦或沒有活力',
+      '胃口不好或吃太多',
+      '覺得自己很糟，或覺得自己是失敗者，讓自己或家人失望',
+      '對事物專注有困難，例如閱讀報紙或看電視時',
+      '動作或說話速度緩慢到別人已經察覺；或正好相反，煩躁或坐立不安、動來動去的情況更勝於平常',
+      '有不如死掉或用某種方式傷害自己的念頭'
+    ],
+    cuts: [[0, 4, '無或極輕微'], [5, 9, '輕度'], [10, 14, '中度'], [15, 19, '中重度'], [20, 27, '重度']]
+  },
+  GAD7: {
+    name: 'GAD-7 廣泛性焦慮量表',
+    intro: '過去兩週內，以下問題困擾您的頻率？',
+    options: FOUR,
+    items: [
+      '感覺緊張、不安或煩躁',
+      '無法停止或控制擔憂',
+      '對各種各樣的事情擔憂過多',
+      '很難放鬆下來',
+      '由於不安而無法靜坐',
+      '變得容易煩惱或易怒',
+      '感到害怕，好像有可怕的事情會發生'
+    ],
+    cuts: [[0, 4, '無或極輕微'], [5, 9, '輕度'], [10, 14, '中度'], [15, 21, '重度']]
+  },
+  BSRS5: {
+    name: 'BSRS-5 簡式健康量表（心情溫度計）',
+    intro: '最近一星期（含今天），以下問題造成您困擾的程度？',
+    options: FIVE,
+    alertIndex: 5,
+    alertNote: '附加題（自殺意念）達 2 分以上，請立即進行風險評估與轉介',
+    items: [
+      '睡眠困難，譬如難以入睡、易醒或早醒',
+      '感覺緊張不安',
+      '覺得容易苦惱或動怒',
+      '感覺憂鬱、心情低落',
+      '覺得比不上別人',
+      '附加題：有自殺的想法'
+    ],
+    scoreItems: 5,                 // 附加題不計入總分
+    cuts: [[0, 5, '身心適應狀況良好'], [6, 9, '輕度情緒困擾'], [10, 14, '中度情緒困擾，建議尋求心理諮商'], [15, 20, '重度情緒困擾，建議尋求精神科治療']]
+  },
+  PSS10: {
+    name: 'PSS-10 知覺壓力量表',
+    intro: '過去一個月內，您有多常出現以下感受？',
+    options: [['0', '從未'], ['1', '幾乎沒有'], ['2', '偶爾'], ['3', '經常'], ['4', '總是']],
+    reverse: [3, 4, 6, 7],         // 反向計分題（0-indexed）
+    items: [
+      '因為某些無法預期的事情發生而感到心煩意亂',
+      '感覺無法控制生活中重要的事情',
+      '感到緊張不安和壓力',
+      '有信心能處理自己遇到的問題',
+      '感覺事情順心如意',
+      '發現自己無法處理所有必須做的事',
+      '有辦法控制生活中令人惱怒的事',
+      '感覺自己能掌握所有的事情',
+      '因為發生了無法控制的事而感到憤怒',
+      '感覺困難的事情愈積愈多，無法克服'
+    ],
+    cuts: [[0, 13, '低度壓力'], [14, 26, '中度壓力'], [27, 40, '高度壓力']]
+  },
+  ISI: {
+    name: 'ISI 失眠嚴重度量表',
+    intro: '請評估您最近兩週的睡眠狀況。',
+    options: [['0', '沒有／非常滿意／完全沒有'], ['1', '輕度'], ['2', '中度'], ['3', '重度'], ['4', '非常嚴重／非常不滿意']],
+    items: [
+      '入睡困難的嚴重程度',
+      '睡眠維持困難（易醒）的嚴重程度',
+      '過早醒來的嚴重程度',
+      '對目前睡眠型態的滿意程度',
+      '睡眠問題影響白天生活功能（疲倦、工作、情緒）的程度',
+      '睡眠問題被他人察覺而影響生活品質的程度',
+      '對目前睡眠問題感到憂慮或困擾的程度'
+    ],
+    cuts: [[0, 7, '無臨床意義的失眠'], [8, 14, '亞臨床失眠'], [15, 21, '中度臨床失眠'], [22, 28, '重度臨床失眠']]
+  }
+};
+
+const SCALE_KEYS = Object.keys(SCALES);
+
+// 計分：回傳 { total, severity, alert }
+function score(key, answers) {
+  const s = SCALES[key];
+  if (!s) throw new Error('未知的量表');
+  const arr = (Array.isArray(answers) ? answers : []).map(v => Number(v) || 0);
+  if (arr.length !== s.items.length) throw new Error('請完成所有題目');
+  const max = s.options.length - 1;
+  if (arr.some(v => v < 0 || v > max)) throw new Error('作答值超出範圍');
+  const count = s.scoreItems || s.items.length;
+  let total = 0;
+  for (let i = 0; i < count; i++) total += s.reverse && s.reverse.includes(i) ? max - arr[i] : arr[i];
+  const cut = s.cuts.find(c => total >= c[0] && total <= c[1]);
+  const alert = s.alertIndex !== undefined
+    ? (key === 'BSRS5' ? arr[s.alertIndex] >= 2 : arr[s.alertIndex] > 0)
+    : false;
+  return { total, severity: cut ? cut[2] : '', alert: alert ? 1 : 0 };
+}
+
+// 提供前端的量表定義（含計分說明，不含計分邏輯）
+function publicScales() {
+  const out = {};
+  for (const [k, s] of Object.entries(SCALES)) {
+    out[k] = {
+      key: k, name: s.name, intro: s.intro, options: s.options, items: s.items,
+      cuts: s.cuts, alertNote: s.alertNote || ''
+    };
+  }
+  return out;
+}
+
+module.exports = { SCALES, SCALE_KEYS, score, publicScales };

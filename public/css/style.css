@@ -1,0 +1,333 @@
+:root {
+  --primary: #0e7c7b;
+  --primary-dark: #0a5c5b;
+  --primary-light: #e6f4f4;
+  --accent: #e8871e;
+  --bg: #f4f6f8;
+  --card: #ffffff;
+  --text: #1f2d3d;
+  --muted: #6b7a8c;
+  --border: #dfe6ec;
+  --danger: #c0392b;
+  --danger-bg: #fdecea;
+  --ok: #1e8e3e;
+  --ok-bg: #e6f4ea;
+  --warn: #b7791f;
+  --warn-bg: #fdf3e0;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(16, 36, 54, 0.08);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.55;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--primary); text-decoration: none; }
+
+/* ---- 版面 ---- */
+.layout { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 220px; background: #123a3a; color: #cfe3e3; flex-shrink: 0;
+  display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+}
+.sidebar .brand {
+  padding: 18px 16px 14px; color: #fff; font-size: 17px; font-weight: 700;
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+}
+.sidebar .brand small { display: block; font-size: 11px; font-weight: 400; color: #9dc3c2; margin-top: 2px; }
+.nav { flex: 1; padding: 8px 0; }
+.nav a {
+  display: block; padding: 10px 18px; color: #cfe3e3; font-size: 14px;
+  border-left: 3px solid transparent;
+}
+.nav a:hover { background: rgba(255,255,255,0.06); }
+.nav a.active { background: rgba(255,255,255,0.1); color: #fff; border-left-color: var(--accent); }
+.nav .nav-group { padding: 12px 18px 4px; font-size: 11px; color: #7fa8a7; letter-spacing: 1px; }
+.sidebar .user-box { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.12); font-size: 13px; }
+.sidebar .user-box .name { color: #fff; font-weight: 600; }
+.sidebar .user-box button {
+  margin-top: 8px; width: 100%; padding: 6px; background: transparent; color: #cfe3e3;
+  border: 1px solid rgba(255,255,255,0.3); border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.sidebar .user-box button:hover { background: rgba(255,255,255,0.08); }
+
+.main { flex: 1; min-width: 0; padding: 20px 24px 60px; }
+.page-title { font-size: 21px; font-weight: 700; margin-bottom: 4px; }
+.page-sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+
+/* 手機版頂欄 */
+.topbar { display: none; }
+@media (max-width: 900px) {
+  .layout { flex-direction: column; }
+  .sidebar { position: fixed; left: -240px; z-index: 60; transition: left 0.2s; height: 100vh; }
+  .sidebar.open { left: 0; box-shadow: 4px 0 20px rgba(0,0,0,0.3); }
+  .topbar {
+    display: flex; align-items: center; gap: 12px; background: #123a3a; color: #fff;
+    padding: 12px 16px; position: sticky; top: 0; z-index: 50;
+  }
+  .topbar .menu-btn { background: none; border: 1px solid rgba(255,255,255,0.4); color: #fff; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .main { padding: 16px 14px 60px; }
+  .backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 55; }
+  .backdrop.show { display: block; }
+}
+
+/* ---- 卡片、統計 ---- */
+.card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; margin-bottom: 16px; }
+.card h3 { font-size: 15px; margin-bottom: 12px; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat {
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; cursor: default;
+}
+.stat .num { font-size: 26px; font-weight: 700; color: var(--primary-dark); }
+.stat .num.warn { color: var(--warn); }
+.stat .num.danger { color: var(--danger); }
+.stat .label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.stat.clickable { cursor: pointer; }
+.stat.clickable:hover { outline: 2px solid var(--primary-light); }
+
+/* ---- 表格 ---- */
+.table-wrap { overflow-x: auto; }
+table.list { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--card); border-radius: var(--radius); }
+table.list th, table.list td { padding: 9px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+table.list td.wrap { white-space: normal; min-width: 160px; }
+table.list th { background: #f0f4f6; color: var(--muted); font-weight: 600; font-size: 12.5px; position: sticky; top: 0; }
+table.list tr:hover td { background: #f8fbfb; }
+
+/* ---- 按鈕、標籤 ---- */
+.btn {
+  display: inline-block; padding: 7px 14px; border-radius: 7px; border: 1px solid transparent;
+  background: var(--primary); color: #fff; cursor: pointer; font-size: 14px; line-height: 1.4;
+}
+.btn:hover { background: var(--primary-dark); }
+.btn.secondary { background: #fff; color: var(--text); border-color: var(--border); }
+.btn.secondary:hover { background: #f0f4f6; }
+.btn.danger { background: var(--danger); }
+.btn.warn { background: var(--accent); }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+.btn.tiny { padding: 2px 8px; font-size: 12px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.tag { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 12px; background: #eef2f5; color: var(--muted); }
+.tag.ok { background: var(--ok-bg); color: var(--ok); }
+.tag.warn { background: var(--warn-bg); color: var(--warn); }
+.tag.danger { background: var(--danger-bg); color: var(--danger); }
+.tag.primary { background: var(--primary-light); color: var(--primary-dark); }
+
+/* ---- 工具列 ---- */
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.toolbar .spacer { flex: 1; }
+.toolbar input, .toolbar select {
+  padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px; background: #fff; font-size: 14px;
+}
+
+/* ---- 表單 ---- */
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.form-row { display: flex; flex-direction: column; gap: 4px; }
+.form-row.full { grid-column: 1 / -1; }
+.form-row label { font-size: 12.5px; color: var(--muted); }
+.form-row input, .form-row select, .form-row textarea {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px; background: #fff; width: 100%;
+}
+.form-row textarea { min-height: 72px; resize: vertical; }
+.form-row input:focus, .form-row select:focus, .form-row textarea:focus { outline: 2px solid var(--primary-light); border-color: var(--primary); }
+
+/* ---- Modal ---- */
+.modal-mask {
+  position: fixed; inset: 0; background: rgba(16,36,54,0.5); z-index: 100;
+  display: flex; align-items: flex-start; justify-content: center; padding: 5vh 14px; overflow-y: auto;
+}
+.modal { background: #fff; border-radius: 12px; width: 640px; max-width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,0.25); }
+.modal.wide { width: 860px; }
+.modal-head { display: flex; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { font-size: 16px; flex: 1; }
+.modal-head .close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted); }
+.modal-body { padding: 18px; max-height: 72vh; overflow-y: auto; }
+.modal-foot { padding: 12px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---- Toast ---- */
+#toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 200;
+  background: #1f2d3d; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 14px;
+  opacity: 0; transition: opacity 0.25s; pointer-events: none; max-width: 90vw;
+}
+#toast.show { opacity: 1; }
+#toast.error { background: var(--danger); }
+
+/* ---- 登入頁 ---- */
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(150deg, #0e7c7b, #123a3a); padding: 16px; }
+.login-card { background: #fff; border-radius: 14px; padding: 34px 30px; width: 380px; max-width: 100%; box-shadow: 0 16px 50px rgba(0,0,0,0.3); }
+.login-card h1 { font-size: 22px; margin-bottom: 2px; color: var(--primary-dark); }
+.login-card .sub { color: var(--muted); font-size: 13px; margin-bottom: 22px; }
+.login-card .form-row { margin-bottom: 14px; }
+.login-card .btn { width: 100%; padding: 10px; font-size: 15px; margin-top: 6px; }
+.login-err { color: var(--danger); font-size: 13px; min-height: 18px; margin-top: 8px; }
+
+/* ---- 出勤/聯絡簿卡片 ---- */
+.kid-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.kid-card {
+  background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 13px 14px;
+  border-left: 4px solid var(--border);
+}
+.kid-card.in { border-left-color: var(--ok); }
+.kid-card.out { border-left-color: #90a4ae; }
+.kid-card.leave { border-left-color: var(--warn); }
+.kid-card .kid-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.kid-avatar {
+  width: 42px; height: 42px; border-radius: 50%; background: var(--primary-light); color: var(--primary-dark);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px;
+  background-size: cover; background-position: center; flex-shrink: 0;
+}
+.kid-card .kid-name { font-weight: 700; }
+.kid-card .kid-meta { font-size: 12px; color: var(--muted); }
+.kid-card .kid-status { font-size: 12.5px; color: var(--muted); margin-bottom: 8px; min-height: 34px; }
+.kid-card .kid-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ---- 時間軸 ---- */
+.timeline { list-style: none; }
+.timeline li { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--border); }
+.timeline .tl-time { color: var(--muted); font-size: 13px; width: 46px; flex-shrink: 0; padding-top: 1px; }
+.timeline .tl-type { font-weight: 600; font-size: 13.5px; color: var(--primary-dark); width: 58px; flex-shrink: 0; }
+.timeline .tl-body { flex: 1; font-size: 14px; }
+.timeline .tl-body img { max-width: 180px; border-radius: 8px; display: block; margin-top: 4px; }
+.timeline .tl-del { color: var(--danger); font-size: 12px; cursor: pointer; }
+
+/* ---- 快速紀錄按鈕列 ---- */
+.quick-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.quick-btns .btn { background: #fff; color: var(--primary-dark); border: 1.5px solid var(--primary); }
+.quick-btns .btn:hover { background: var(--primary-light); }
+
+/* ---- 檢核表 ---- */
+.check-item { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px dashed var(--border); }
+.check-item .ci-text { flex: 1; }
+.check-item .ci-cat { font-size: 11.5px; color: var(--muted); display: block; }
+.check-item .seg { display: flex; gap: 0; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; flex-shrink: 0; }
+.check-item .seg button { border: none; background: #fff; padding: 5px 12px; cursor: pointer; font-size: 13px; }
+.check-item .seg button.on-pass { background: var(--ok); color: #fff; }
+.check-item .seg button.on-fail { background: var(--danger); color: #fff; }
+
+/* ---- 排班表 ---- */
+.shift-table td select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+
+.empty { text-align: center; color: var(--muted); padding: 36px 0; font-size: 14px; }
+.section-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 2px solid var(--border); }
+.section-tabs button {
+  background: none; border: none; padding: 9px 16px; cursor: pointer; font-size: 14.5px; color: var(--muted);
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
+}
+.section-tabs button.active { color: var(--primary-dark); border-bottom-color: var(--primary); font-weight: 600; }
+
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 18px; font-size: 14px; }
+.detail-grid .dg-label { color: var(--muted); font-size: 12px; }
+
+/* 表單／頁面內的提示框：責任通報期限、扣繳試算等需要被看見的說明 */
+.notice { padding: 10px 12px; border-radius: 8px; font-size: 13.5px; line-height: 1.7;
+  border: 1px solid var(--border); background: #f7f9fa; }
+.notice.warn { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+.notice.danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+.notice.ok { background: #e8f6ee; border-color: #2f8f5b; color: #2f8f5b; }
+
+@media print {
+  .sidebar, .topbar, .toolbar, .btn { display: none !important; }
+  .main { padding: 0; }
+}
+
+/* ---- 親師訊息（家長端頁面與員工端對話視窗共用） ---- */
+.chat-list { display: flex; flex-direction: column; gap: 10px; min-height: 120px; }
+.chat-msg { max-width: 80%; padding: 9px 12px; border-radius: 14px; font-size: 14.5px; line-height: 1.55;
+  white-space: pre-wrap; word-break: break-word; }
+.chat-msg.me { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 4px; }
+.chat-msg.them { align-self: flex-start; background: #f1f5f5; border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.chat-msg img { max-width: 100%; border-radius: 8px; display: block; margin-top: 4px; }
+.chat-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.chat-meta.me { align-self: flex-end; }
+.chat-meta.them { align-self: flex-start; }
+.chat-bar { display: flex; gap: 8px; margin-top: 12px; align-items: flex-end; }
+.chat-bar textarea { flex: 1; min-height: 42px; max-height: 110px; resize: none; }
+
+/* ---- 活動相簿 ---- */
+.album-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.album-card { background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; cursor: pointer; }
+.album-card .cover { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; background: #dde6e6; }
+.album-card .meta { padding: 8px 10px; font-size: 13.5px; line-height: 1.5; }
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+.photo-grid .ph { position: relative; }
+.photo-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; cursor: pointer; display: block; }
+.photo-grid .ph .tagnum {
+  position: absolute; left: 4px; bottom: 4px; background: rgba(0,0,0,0.55); color: #fff;
+  font-size: 11px; border-radius: 6px; padding: 1px 6px; pointer-events: none;
+}
+.photo-grid .ph .del {
+  position: absolute; right: 4px; top: 4px; background: rgba(0,0,0,0.55); color: #fff; border: none;
+  border-radius: 6px; font-size: 11px; padding: 1px 6px; cursor: pointer;
+}
+
+/* ---- 園務行事曆 ---- */
+.cal-legend { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.cal-chip {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; cursor: pointer;
+  background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 3px 10px; color: var(--text);
+}
+.cal-chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.cal-chip.off { opacity: .4; text-decoration: line-through; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-head { margin-bottom: 4px; }
+.cal-head div { text-align: center; font-size: 12px; color: var(--muted); padding: 4px 0; font-weight: 700; }
+.cal-cell {
+  min-height: 92px; border: 1px solid var(--border); border-radius: 7px; padding: 4px 5px;
+  background: #fff; overflow: hidden;
+}
+.cal-cell.cal-out { background: #fafbfb; border-style: dashed; min-height: 0; }
+.cal-cell.cal-today { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.cal-day { font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 3px; }
+.cal-today .cal-day { color: var(--primary-dark); }
+.cal-ev {
+  font-size: 11.5px; line-height: 1.35; padding: 2px 4px; margin-bottom: 2px; cursor: pointer;
+  background: #f5f8f8; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cal-ev:hover { background: #eaf1f1; }
+.cal-more { font-size: 11px; color: var(--primary-dark); cursor: pointer; padding-left: 4px; }
+@media (max-width: 780px) {
+  .cal-cell { min-height: 66px; }
+  .cal-ev { font-size: 10px; }
+}
+
+/* ---- 週檢視預約卡片 ---- */
+.week-table td { padding: 6px; }
+.appt-chip {
+  border-left: 3px solid var(--primary); background: var(--primary-light);
+  border-radius: 6px; padding: 5px 7px; margin-bottom: 5px; font-size: 12.5px;
+  line-height: 1.45; cursor: pointer;
+}
+.appt-chip:hover { filter: brightness(0.97); }
+.appt-chip.done { border-left-color: var(--ok); background: var(--ok-bg); }
+.appt-chip.no_show { border-left-color: var(--danger); background: var(--danger-bg); }
+.appt-chip.cancelled { border-left-color: #90a4ae; background: #eef2f5; color: var(--muted); text-decoration: line-through; }
+.appt-chip.arrived { border-left-color: var(--accent); background: var(--warn-bg); }
+.appt-chip.off { border-left-color: #90a4ae; background: #eceff1; color: var(--muted); cursor: default; }
+.appt-chip.group { border-left-color: var(--accent); background: #fdf3e0; }
+
+/* ---- 排班表（我的排班）---- */
+.shift-table th, .shift-table td { text-align: center; }
+.shift-table .shift-time { font-size: 11.5px; color: var(--muted); font-weight: 600; white-space: nowrap; width: 58px; }
+.shift-cell {
+  height: 20px; padding: 0 !important; border: 1px solid var(--border);
+  background: #fff; cursor: pointer; user-select: none;
+}
+.shift-cell:hover { background: var(--primary-light); }
+.shift-cell.on { background: var(--primary); border-color: var(--primary); }
+.shift-cell.on:hover { filter: brightness(1.08); }
+
+/* ---- 行事曆月檢視 ---- */
+.cal-table td { vertical-align: top; }
+.cal-ev.ev-off { background: #eceff1; color: var(--muted); }
+.cal-ev.ev-group { background: #fdf3e0; }
+.cal-ev.ev-done { background: var(--ok-bg); }
+.cal-ev.ev-no_show { background: var(--danger-bg); }
+.cal-ev.ev-arrived { background: var(--warn-bg); }
+
+/* ---- 兩欄卡片（總覽圖表）---- */
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0 16px; }
+.grid-2 > .card { margin-bottom: 16px; }
