@@ -30,6 +30,11 @@ ensureColumns('clients', {
   id_no: "TEXT NOT NULL DEFAULT ''"                  // 身分證統一編號／居留證號（通報與補助核銷用）
 });
 ensureColumns('users', {
+  // 只接受線上通訊諮商的心理師：預約表單會標示，且不排到所內時段
+  online_only: 'INTEGER NOT NULL DEFAULT 0',
+  intro: "TEXT NOT NULL DEFAULT ''",                  // 預約表單上的簡介（專長取向）
+  // 是否出現在公開預約表單的心理師清單（示範帳號、行政兼職者可關掉）
+  portal_bookable: 'INTEGER NOT NULL DEFAULT 1',
   // 心理師的固定視訊會議室連結：排視訊晤談時自動帶入，不必每次貼
   meeting_room_url: "TEXT NOT NULL DEFAULT ''",
   // 行事曆訂閱（.ics）用的隨機字串：手機日曆以網址訂閱，故不走 Cookie 驗證。
@@ -678,6 +683,13 @@ CREATE TABLE IF NOT EXISTS line_bindings (
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );`);
 
+ensureColumns('service_plans', {
+  // 通訊（視訊）諮商這類方案預設就是線上，排約時直接帶入，不必每次改
+  default_mode: "TEXT NOT NULL DEFAULT 'onsite'"
+});
+ensureColumns('booking_requests', {
+  topic_other: "TEXT NOT NULL DEFAULT ''"            // 主題選「其他」時的自填內容
+});
 ensureColumns('appointments', {
   plan_id: 'INTEGER REFERENCES service_plans(id)',   // 方案別（收費與抽成依此計算）
   topic_id: 'INTEGER REFERENCES plan_topics(id)',    // 方案下的主題
@@ -738,57 +750,9 @@ ensureColumns('invoices', {
   for (const [k, v] of Object.entries(EXT_SETTING_DEFAULTS)) if (!has.get(k)) ins.run(k, v);
 }
 
-// 首次啟動建立範例方案：衛福部年輕族群心理健康支持方案（15-45 歲、每年 3 次）
-// 與自費個別／伴侶諮商。所方可於「方案設定」頁自行增修，這裡只是給一組可用的起點。
-if (!db.prepare('SELECT 1 FROM service_plans LIMIT 1').get()) {
-  const insPlan = db.prepare(`INSERT INTO service_plans
-    (name, kind, appt_type, fee_mode, fee, fee_options, subsidy_amount, subsidy_program,
-     age_min, age_max, quota_per_year, counselor_week_limit, counselor_month_limit,
-     share_mode, share_percent, share_fixed, intro, sort)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  const insTopic = db.prepare('INSERT INTO plan_topics (plan_id, name, sort) VALUES (?,?,?)');
-
-  const topicsOf = (planId, list) => list.forEach((t, i) => insTopic.run(planId, t, i + 1));
-
-  // 衛福部年輕族群心理健康支持方案：15-45 歲每人每年 3 次，
-  // 並限制每位心理師每週可排的人次（所方可於方案設定調整）
-  topicsOf(insPlan.run('年輕族群心理健康支持方案', 'subsidy', 'individual', 'fixed',
-    1600, '', 1600, '年輕族群心理健康支持方案', 15, 45, 3, 6, 0,
-    'percent', 0.7, 0,
-    '衛福部補助 15-45 歲民眾每人每年 3 次心理諮商，需符合資格並於本所核對身分。', 1).lastInsertRowid,
-  ['情緒困擾', '壓力調適', '人際關係', '家庭議題', '職涯適應', '睡眠困擾']);
-
-  topicsOf(insPlan.run('個別諮商 50 分鐘', 'self', 'individual', 'fixed',
-    2000, '', 0, '', 0, 0, 0, 0, 0, 'percent', 0.6, 0,
-    '一對一心理諮商，每次 50 分鐘。', 2).lastInsertRowid,
-  ['情緒與壓力', '人際關係', '自我探索', '創傷議題', '生涯適應']);
-
-  topicsOf(insPlan.run('個別諮商 80 分鐘', 'self', 'individual', 'fixed',
-    3000, '', 0, '', 0, 0, 0, 0, 0, 'percent', 0.6, 0,
-    '需要更長談話時間者適用，每次 80 分鐘。', 3).lastInsertRowid,
-  ['情緒與壓力', '創傷議題', '自我探索', '關係議題']);
-
-  // 伴侶／家庭諮商：實務上依人數與時長議價，故金額於預約時挑選
-  topicsOf(insPlan.run('伴侶／家庭諮商 80 分鐘', 'self', 'couple', 'choice',
-    3000, '3000,3600,4500', 0, '', 0, 0, 0, 0, 0, 'percent', 0.6, 0,
-    '兩人以上一同前來，每次 80 分鐘；可依需求選擇方案金額。', 4).lastInsertRowid,
-  ['溝通與衝突', '信任修復', '婚前準備', '親密關係', '分手／離婚調適', '家庭關係']);
-
-  topicsOf(insPlan.run('親子／家長諮詢 80 分鐘', 'self', 'family', 'choice',
-    3000, '3000,3600', 0, '', 0, 0, 0, 0, 0, 'percent', 0.6, 0,
-    '由家長單獨或與孩子一同前來，討論教養與親子關係，每次 80 分鐘。', 5).lastInsertRowid,
-  ['親職教養', '學習與拒學', '手足關係', '青少年情緒', '網路與 3C 使用']);
-
-  topicsOf(insPlan.run('大學生方案 40 分鐘', 'self', 'individual', 'fixed',
-    1200, '', 0, '', 0, 25, 3, 0, 0, 'percent', 0.6, 0,
-    '25 歲以下適用，每人限 3 次，每次 40 分鐘。', 6).lastInsertRowid,
-  ['課業與壓力', '人際關係', '感情議題', '生涯探索', '家庭議題']);
-
-  topicsOf(insPlan.run('LGBTQ+ 族群方案 40 分鐘', 'self', 'individual', 'fixed',
-    1200, '', 0, '', 0, 0, 3, 0, 0, 'percent', 0.6, 0,
-    '性別與性傾向相關議題支持方案，每人限 3 次，每次 40 分鐘。', 7).lastInsertRowid,
-  ['自我認同', '出櫃與家庭', '伴侶關係', '職場處境', '情緒支持']);
-}
+// 方案別的實際內容（好心情現行的 12 個方案、11 個諮商主題與心理師名單）
+// 由 scripts/seed-goodmood.js 建立與更新，可重複執行；這裡不再灌任何示範方案，
+// 免得正式站上出現兩套方案名稱。
 
 module.exports = {
   db, SECRET, DATA_DIR, UPLOAD_DIR, getSetting, setSetting, listSetting, audit,

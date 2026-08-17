@@ -859,6 +859,8 @@ App.page('users', {
   })}
         ${UI.input('phone', '電話', { value: u ? u.phone : '' })}
         ${UI.input('email', 'Email', { value: u ? u.email : '' })}
+        ${UI.checkbox('portal_bookable', '出現在線上預約表單的心理師清單', u ? u.portal_bookable !== 0 : true)}
+        ${UI.checkbox('online_only', '僅接受線上通訊諮商', u ? !!u.online_only : false)}
         ${App.meta.intern_review ? UI.checkbox('is_intern', '實習心理師（晤談紀錄須經指定督導覆核後才定稿）', u ? u.is_intern : false) : ''}
         ${App.meta.intern_review ? UI.select('supervisor_id', '指定督導', [['', '未指定']].concat(users
     .filter(x => x.active && ['supervisor', 'admin', 'counselor'].includes(x.role) && (!u || x.id !== u.id))

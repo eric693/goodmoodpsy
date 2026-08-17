@@ -1,6 +1,9 @@
 // 線上預約表單（公開頁，免登入）。
-// 個案只看得到：方案 → 主題 → 心理師 → 可預約時段 → 基本資料。
-// 諮商室配置全程不出現；時段本身已排除被占用與請假的時間，並依方案人次上限過濾。
+// 欄位順序比照所內原本的 Google 表單：諮商方案 → 諮商主題 → 預約之心理師 → 時段 → 基本資料，
+// 三個選項欄位都做成下拉式選單。
+//
+// 個案全程看不到諮商室配置；時段已排除被占用、請假與帶團體的時間，
+// 並依方案的每位心理師人次上限過濾（額滿的整週不出時段，改提示下週）。
 
 const BK = {
   cfg: null,
@@ -13,7 +16,7 @@ const BK = {
       document.getElementById('app').innerHTML = '<div class="bk-card">目前無法載入預約表單，請稍後再試或直接來電預約。</div>';
       return;
     }
-    // 從 LINE 進來時網址會帶 userId，用於預約結果直接推播回 LINE
+    // 從 LINE 進來時網址會帶 userId，用於把預約結果直接推播回 LINE
     BK.lineUserId = new URLSearchParams(location.search).get('line_user_id') || '';
     if (!BK.cfg.enabled) {
       document.getElementById('app').innerHTML = `<div class="bk-card">
@@ -22,6 +25,14 @@ const BK = {
       return;
     }
     BK.render();
+  },
+
+  planLabel(p) {
+    const fee = p.fee_mode === 'choice'
+      ? p.fee_options.map(f => f + '元').join('／')
+      : p.fee + '元';
+    const bits = [p.session_minutes ? `${p.session_minutes}分鐘` : '', fee].filter(Boolean).join('，');
+    return `${p.name}（${bits}）`;
   },
 
   render() {
@@ -34,36 +45,43 @@ const BK = {
       </div>
 
       <div class="bk-card">
-        <h2><span class="step">1</span>選擇方案</h2>
-        <div class="opt-list" id="plans">${c.plans.map(p => `
-          <div class="opt" data-plan="${p.id}">
-            <div class="t">${UI.esc(p.name)}　${p.fee_mode === 'choice'
-    ? UI.esc(p.fee_options.map(f => 'NT$' + f).join(' / '))
-    : 'NT$' + p.fee}</div>
-            <div class="d">${UI.esc(p.intro || '')}
-              ${p.session_minutes ? `｜${p.session_minutes} 分鐘` : ''}
-              ${p.age_min || p.age_max ? `｜限 ${p.age_min || 0}-${p.age_max || '不限'} 歲` : ''}
-              ${p.quota_per_year ? `｜每人每年 ${p.quota_per_year} 次` : ''}
-              ${p.subsidy_amount ? `｜方案給付 NT$${p.subsidy_amount}，自付 NT$${p.self_pay}` : ''}</div>
-          </div>`).join('')}</div>
+        <h2><span class="step">1</span>諮商方案</h2>
+        <div class="bk-field">
+          <select id="plan">
+            <option value="">請選擇方案</option>
+            ${c.plans.map(p => `<option value="${p.id}">${UI.esc(BK.planLabel(p))}</option>`).join('')}
+          </select>
+          <div class="hint" id="plan-hint"></div>
+        </div>
+        <div class="bk-field" id="fee-choice" style="display:none">
+          <label>方案金額</label>
+          <select id="fee"></select>
+          <div class="hint">依談話時間與參與人數選擇，實際以晤談時與心理師討論為準。</div>
+        </div>
       </div>
 
       <div class="bk-card" id="topic-card" style="display:none">
-        <h2><span class="step">2</span>想談的主題</h2>
-        <div class="chip-row" id="topics"></div>
-        <div class="bk-field" id="fee-choice" style="display:none;margin-top:12px">
-          <label>方案金額</label><div class="chip-row" id="fees"></div>
+        <h2><span class="step">2</span>諮商主題</h2>
+        <div class="bk-field">
+          <select id="topic"><option value="">請選擇主題</option></select>
+        </div>
+        <div class="bk-field" id="topic-other-row" style="display:none">
+          <label>請簡述您想談的主題</label>
+          <input id="topic_other" placeholder="例：睡眠困擾">
         </div>
       </div>
 
       <div class="bk-card" id="counselor-card" style="display:none">
-        <h2><span class="step">3</span>選擇心理師</h2>
-        <div class="opt-list" id="counselors"></div>
+        <h2><span class="step">3</span>預約之心理師</h2>
+        <div class="bk-field">
+          <select id="counselor"><option value="">請選擇心理師</option></select>
+          <div class="hint" id="counselor-hint">若沒有特別指定，可選「由諮商所安排合適之心理師」。</div>
+        </div>
       </div>
 
       <div class="bk-card" id="slot-card" style="display:none">
         <h2><span class="step">4</span>選擇時段</h2>
-        <div id="slots">載入中…</div>
+        <div id="slots">請先選擇心理師</div>
         <div class="bk-field" style="margin-top:10px">
           <label>其他可配合的時段（選填）</label>
           <input id="alt_note" placeholder="例：平日晚上、週六上午皆可">
@@ -102,109 +120,128 @@ const BK = {
         <div class="bk-note">${UI.esc(c.crisis_note || '')}</div>
       </div>`;
 
-    document.querySelectorAll('[data-plan]').forEach(elm => {
-      elm.onclick = () => BK.pickPlan(Number(elm.dataset.plan));
-    });
+    document.getElementById('plan').onchange = e => BK.pickPlan(Number(e.target.value));
+    document.getElementById('submit').onclick = BK.submit;
   },
 
   pickPlan(id) {
     const p = BK.cfg.plans.find(x => x.id === id);
-    BK.sel = { plan: p, topic: null, counselor: null, date: '', time: '', fee: p.fee };
-    document.querySelectorAll('[data-plan]').forEach(e => e.classList.toggle('on', Number(e.dataset.plan) === id));
+    BK.sel = { plan: p || null, topic: null, counselor: null, date: '', time: '', fee: p ? p.fee : 0 };
+    const show = (elId, on) => { document.getElementById(elId).style.display = on ? '' : 'none'; };
+    if (!p) {
+      ['topic-card', 'counselor-card', 'slot-card', 'info-card'].forEach(x => show(x, false));
+      document.getElementById('plan-hint').textContent = '';
+      return;
+    }
 
-    document.getElementById('topic-card').style.display = '';
-    document.getElementById('topics').innerHTML = p.topics.length
-      ? p.topics.map(t => `<button class="chip" data-topic="${t.id}">${UI.esc(t.name)}</button>`).join('')
-      : '<span class="bk-note">此方案不需選擇主題</span>';
-    document.querySelectorAll('[data-topic]').forEach(b => {
-      b.onclick = () => {
-        BK.sel.topic = Number(b.dataset.topic);
-        document.querySelectorAll('[data-topic]').forEach(x => x.classList.toggle('on', x === b));
-      };
-    });
+    document.getElementById('plan-hint').innerHTML = [
+      p.intro ? UI.esc(p.intro) : '',
+      p.subsidy_amount ? `方案給付 NT$${p.subsidy_amount}，您自付 NT$${p.self_pay}。` : '',
+      p.quota_per_year ? `每人每年以 ${p.quota_per_year} 次為限。` : '',
+      p.age_min || p.age_max ? `適用年齡：${p.age_min || 0}-${p.age_max || '不限'} 歲。` : '',
+      p.default_mode === 'online' ? '此方案為線上通訊諮商。' : ''
+    ].filter(Boolean).join('<br>');
 
-    // 伴侶／家庭諮商這類方案由個案自己挑金額
+    // 可選金額的方案（婚姻伴侶／家庭諮商）
     const feeBox = document.getElementById('fee-choice');
     if (p.fee_mode === 'choice' && p.fee_options.length) {
       feeBox.style.display = '';
-      document.getElementById('fees').innerHTML = p.fee_options
-        .map(f => `<button class="chip${f === p.fee ? ' on' : ''}" data-fee="${f}">NT$ ${f}</button>`).join('');
-      document.querySelectorAll('[data-fee]').forEach(b => {
-        b.onclick = () => {
-          BK.sel.fee = Number(b.dataset.fee);
-          document.querySelectorAll('[data-fee]').forEach(x => x.classList.toggle('on', x === b));
-        };
-      });
+      document.getElementById('fee').innerHTML = p.fee_options
+        .map(f => `<option value="${f}"${f === p.fee ? ' selected' : ''}>NT$ ${f}</option>`).join('');
+      document.getElementById('fee').onchange = e => { BK.sel.fee = Number(e.target.value); };
     } else {
       feeBox.style.display = 'none';
     }
 
-    document.getElementById('partner-row').style.display =
-      ['couple', 'family'].includes(p.appt_type) ? '' : 'none';
+    // 主題
+    show('topic-card', true);
+    const topicSel = document.getElementById('topic');
+    topicSel.innerHTML = '<option value="">請選擇主題</option>'
+      + p.topics.map(t => `<option value="${t.id}" data-name="${UI.esc(t.name)}">${UI.esc(t.name)}</option>`).join('');
+    topicSel.onchange = e => {
+      BK.sel.topic = Number(e.target.value) || null;
+      const name = e.target.selectedOptions[0] ? e.target.selectedOptions[0].dataset.name : '';
+      document.getElementById('topic-other-row').style.display = name === '其他' ? '' : 'none';
+    };
+    document.getElementById('topic-other-row').style.display = 'none';
 
-    document.getElementById('counselor-card').style.display = '';
-    document.getElementById('counselors').innerHTML = p.counselors.length
-      ? p.counselors.map(u => `<div class="opt" data-cid="${u.id}">
-          <div class="t">${UI.esc(u.name)} ${UI.esc(u.title || '')}</div>
-          ${u.specialty ? `<div class="d">${UI.esc(u.specialty)}</div>` : ''}</div>`).join('')
-      : '<span class="bk-note">此方案目前無可預約的心理師，請來電洽詢。</span>';
-    document.querySelectorAll('[data-cid]').forEach(b => {
-      b.onclick = () => {
-        BK.sel.counselor = Number(b.dataset.cid);
-        document.querySelectorAll('[data-cid]').forEach(x => x.classList.toggle('on', x === b));
-        BK.loadSlots();
-      };
-    });
-    document.getElementById('slot-card').style.display = 'none';
-    document.getElementById('info-card').style.display = 'none';
-    document.getElementById('counselor-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // 心理師（含「由諮商所安排」）
+    show('counselor-card', true);
+    const cs = document.getElementById('counselor');
+    cs.innerHTML = '<option value="">請選擇心理師</option>'
+      + p.counselors.map(u => `<option value="${u.id}">${UI.esc(u.name)}${u.title ? ' ' + UI.esc(u.title) : ''}／${UI.esc(u.license_type || '諮商心理師')}${u.online_only ? '（僅接受線上通訊諮商）' : ''}</option>`).join('')
+      + '<option value="any">由諮商所安排合適之心理師</option>';
+    cs.onchange = () => BK.pickCounselor(cs.value);
+
+    show('slot-card', false);
+    show('info-card', false);
+    document.getElementById('topic-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+
+  pickCounselor(value) {
+    const box = document.getElementById('slots');
+    document.getElementById('slot-card').style.display = '';
+    document.getElementById('info-card').style.display = '';
+    document.getElementById('partner-row').style.display =
+      ['couple', 'family'].includes(BK.sel.plan.appt_type) ? '' : 'none';
+
+    if (!value) { BK.sel.counselor = null; box.textContent = '請先選擇心理師'; return; }
+    if (value === 'any') {
+      // 不指定心理師：不列時段，改請個案填可配合的時段，由櫃檯排定後回覆
+      BK.sel.counselor = null;
+      BK.sel.date = '';
+      BK.sel.time = '';
+      box.innerHTML = '<span class="bk-note">由諮商所安排心理師時無法先選時段，請於下方填寫您可配合的時段，我們會盡快與您聯繫。</span>';
+      document.getElementById('info-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    BK.sel.counselor = Number(value);
+    BK.loadSlots();
   },
 
   async loadSlots() {
-    const card = document.getElementById('slot-card');
     const box = document.getElementById('slots');
-    card.style.display = '';
     box.innerHTML = '載入中…';
     const q = new URLSearchParams({ counselor_id: BK.sel.counselor, plan_id: BK.sel.plan.id, days: 21 });
     const data = await fetch('/api/public/booking-slots?' + q).then(r => r.json()).catch(() => null);
     if (!data || !data.days) { box.innerHTML = '<span class="bk-note">目前無法取得時段，請來電預約。</span>'; return; }
     const days = data.days.filter(d => d.slots.length || d.full);
     if (!days.length) {
-      box.innerHTML = '<span class="bk-note">近期沒有開放的時段，請來電或填寫下方「其他可配合時段」，我們會再與您聯繫。</span>';
-    } else {
-      box.innerHTML = days.map(d => `<div class="day-block">
-        <div class="d-label">${d.date}（${['日', '一', '二', '三', '四', '五', '六'][new Date(d.date + 'T00:00:00').getDay()]}）</div>
-        ${d.slots.length
+      box.innerHTML = '<span class="bk-note">近期沒有開放的時段，請填寫下方「其他可配合時段」，我們會再與您聯繫。</span>';
+      return;
+    }
+    box.innerHTML = days.map(d => `<div class="day-block">
+      <div class="d-label">${d.date}（${['日', '一', '二', '三', '四', '五', '六'][new Date(d.date + 'T00:00:00').getDay()]}）</div>
+      ${d.slots.length
     ? `<div class="chip-row">${d.slots.map(s => `<button class="chip" data-d="${d.date}" data-t="${s.start_time}">${s.start_time}</button>`).join('')}</div>`
     : `<div class="full">${UI.esc(d.full ? d.full.reason : '無開放時段')}${d.full && d.full.next_week
       ? `，下週（${d.full.next_week.week_start} 起）尚可預約` : ''}</div>`}
-      </div>`).join('');
-      box.querySelectorAll('[data-t]').forEach(b => {
-        b.onclick = () => {
-          BK.sel.date = b.dataset.d;
-          BK.sel.time = b.dataset.t;
-          box.querySelectorAll('[data-t]').forEach(x => x.classList.toggle('on', x === b));
-          document.getElementById('info-card').style.display = '';
-          document.getElementById('info-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
-        };
-      });
-    }
-    // 沒有可選時段時仍讓人送出申請（填可配合時段），由櫃檯協調
-    document.getElementById('info-card').style.display = '';
-    document.getElementById('submit').onclick = BK.submit;
+    </div>`).join('');
+    box.querySelectorAll('[data-t]').forEach(b => {
+      b.onclick = () => {
+        BK.sel.date = b.dataset.d;
+        BK.sel.time = b.dataset.t;
+        box.querySelectorAll('[data-t]').forEach(x => x.classList.toggle('on', x === b));
+        document.getElementById('info-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+    });
   },
 
   async submit() {
     const err = document.getElementById('err');
     const btn = document.getElementById('submit');
-    const val = id => (document.getElementById(id).value || '').trim();
+    const val = id => {
+      const e = document.getElementById(id);
+      return e ? (e.value || '').trim() : '';
+    };
     err.textContent = '';
+    if (!BK.sel.plan) { err.textContent = '請選擇諮商方案'; return; }
     btn.disabled = true;
     try {
       const body = {
         name: val('name'), phone: val('phone'), email: val('email'),
         gender: val('gender'), birth_date: val('birth_date'),
-        plan_id: BK.sel.plan && BK.sel.plan.id, topic_id: BK.sel.topic,
+        plan_id: BK.sel.plan.id, topic_id: BK.sel.topic, topic_other: val('topic_other'),
         counselor_id: BK.sel.counselor, date: BK.sel.date, start_time: BK.sel.time,
         alt_note: val('alt_note'), fee_choice: BK.sel.fee,
         partner_name: val('partner_name'), main_issue: val('main_issue'),
@@ -234,7 +271,7 @@ const BK = {
       <div class="bk-note" style="text-align:left;margin-top:10px">
         ${UI.esc(r.message)}
         ${BK.sel.date ? `\n\n希望時段：${BK.sel.date} ${BK.sel.time}` : ''}
-        ${BK.sel.plan ? `\n方案：${BK.sel.plan.name}（NT$ ${r.fee}${r.self_pay !== r.fee ? `，自付 NT$ ${r.self_pay}` : ''}）` : ''}
+        ${BK.sel.plan ? `\n方案：${BK.sel.plan.name}（NT$ ${r.fee}${r.self_pay !== r.fee ? `，您自付 NT$ ${r.self_pay}` : ''}）` : ''}
         ${r.center_phone ? `\n\n如需修改或有疑問，請來電 ${r.center_phone}。` : ''}
       </div>
       ${r.line_add_friend_url ? `<a class="btn" style="margin-top:14px;display:inline-block"

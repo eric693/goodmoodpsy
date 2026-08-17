@@ -27,8 +27,9 @@ function planPublic(p) {
   // 有設定專屬費率且開放預約的心理師優先；完全沒設定費率的方案則開放給所有在職心理師
   const rates = db.prepare(`SELECT pc.counselor_id, pc.bookable FROM plan_counselors pc
     WHERE pc.plan_id = ? AND pc.active = 1 AND (pc.topic_id IS NULL OR pc.topic_id = 0)`).all(p.id);
-  const all = db.prepare(`SELECT id, name, title, specialty FROM users
-    WHERE active = 1 AND role IN ('counselor','supervisor','admin') ORDER BY name`).all();
+  const all = db.prepare(`SELECT id, name, title, license_type, specialty, online_only, intro FROM users
+    WHERE active = 1 AND portal_bookable = 1 AND role IN ('counselor','supervisor','admin')
+    ORDER BY id`).all();
   const counselors = rates.length
     ? all.filter(u => rates.some(r => r.counselor_id === u.id && r.bookable))
     : all;
@@ -37,6 +38,7 @@ function planPublic(p) {
     fee_mode: p.fee_mode, fee: p.fee, fee_options: plans.parseOptions(p.fee_options),
     session_minutes: p.session_minutes || Number(getSetting('session_minutes', '50')),
     age_min: p.age_min, age_max: p.age_max, quota_per_year: p.quota_per_year,
+    default_mode: p.default_mode || 'onsite',
     subsidy_amount: p.subsidy_amount, self_pay: Math.max(0, p.fee - p.subsidy_amount),
     intro: p.intro, topics, counselors
   };
@@ -114,7 +116,13 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
   const plan = plans.getPlan(b.plan_id);
   if (!plan || !plan.active || !plan.portal_visible) return res.status(400).json({ error: '請選擇方案' });
   const topic = b.topic_id ? plans.getTopic(b.topic_id) : null;
+  // 「由諮商所安排合適之心理師」＝不指定心理師，此時只收可配合時段，由櫃檯排
   const counselorId = Number(b.counselor_id) || 0;
+  const counselor = counselorId
+    ? db.prepare("SELECT * FROM users WHERE id = ? AND active = 1").get(counselorId) : null;
+  if (counselorId && !counselor) return res.status(400).json({ error: '請重新選擇心理師' });
+  // 只接受線上通訊諮商的心理師，一律以視訊成立
+  const mode = counselor && counselor.online_only ? 'online' : (b.mode === 'online' ? 'online' : (plan.default_mode || 'onsite'));
   const date = String(b.date || '').trim();
   const startTime = String(b.start_time || '').trim();
 
@@ -160,14 +168,15 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`).run(
     name, phone, String(b.email || '').trim(), String(b.gender || ''), birth,
     client ? 0 : 1, client ? client.id : null, plan.id, topic ? topic.id : null, counselorId || null,
-    date, startTime, String(b.alt_note || ''), b.mode === 'online' ? 'online' : 'onsite',
+    date, startTime, String(b.alt_note || ''), mode,
     quote.fee, String(b.partner_name || ''), String(b.main_issue || ''), String(b.expectation || ''),
     b.source === 'line' ? 'line' : 'web', String(b.line_user_id || ''));
+  db.prepare('UPDATE booking_requests SET topic_other = ? WHERE id = ?')
+    .run(String(b.topic_other || '').slice(0, 100), info.lastInsertRowid);
 
   const id = info.lastInsertRowid;
   audit('client', client ? client.id : null, name, '線上預約申請', String(id), { plan: plan.name, date, startTime });
 
-  const counselor = counselorId ? db.prepare('SELECT name, line_user_id FROM users WHERE id = ?').get(counselorId) : null;
   const payload = {
     name, plan_name: plan.name, topic_name: topic ? topic.name : '',
     counselor_name: counselor ? counselor.name : '', date, start_time: startTime,
@@ -233,7 +242,8 @@ router.get('/bookings/:id', requireStaff('schedule'), (req, res) => {
     })
     : { errors: [], warnings: [] };
   const slots = b.counselor_id && b.date ? schedule.freeSlots(b.counselor_id, b.date) : [];
-  res.json({ ...b, check, slots, age: ageYears(b.birth_date, b.date || today()) });
+  res.json({ ...b, check, slots, age: ageYears(b.birth_date, b.date || today()),
+    topic_display: b.topic_name || b.topic_other || '' });
 });
 
 // 未建檔者一鍵建檔：把表單資料帶進個案基本資料，省去重打一次
@@ -298,7 +308,8 @@ router.post('/bookings/:id/confirm', requireStaff('schedule'), async (req, res) 
      plan_id, topic_id, counselor_share, source, note, booking_request_id, created_by)
     VALUES (?,?,?,?,?,?,?,?,'booked',?,?,?,?,'portal',?,?,?)`).run(
     client.id, counselorId, roomId, date, startTime, endT,
-    (quote.plan && quote.plan.appt_type) || 'individual', b.mode || 'onsite', quote.fee,
+    (quote.plan && quote.plan.appt_type) || 'individual',
+    b.mode || (quote.plan && quote.plan.default_mode) || 'onsite', quote.fee,
     b.plan_id || null, b.topic_id || null, quote.counselor_share,
     b.main_issue ? `線上預約：${b.main_issue}`.slice(0, 300) : '線上預約', b.id, req.user.id);
 

@@ -18,8 +18,9 @@ async function bookingDialog(id, onDone) {
         <div><div class="dg-label">生日／年齡</div>${UI.esc(b.birth_date || '-')}${b.age !== null ? `（${b.age} 歲）` : ''}</div>
         <div><div class="dg-label">身分</div>${b.client_id ? `舊個案 ${UI.esc(b.client_code || '')}` : '初次預約'}</div>
         <div><div class="dg-label">方案</div>${UI.esc(b.plan_name || '-')}</div>
-        <div><div class="dg-label">主題</div>${UI.esc(b.topic_name || '-')}</div>
-        <div><div class="dg-label">指定心理師</div>${UI.esc(b.counselor_name || '未指定')}</div>
+        <div><div class="dg-label">主題</div>${UI.esc(b.topic_display || b.topic_name || '-')}
+          ${b.topic_other ? `<span style="font-size:12px;color:var(--muted)">（自填：${UI.esc(b.topic_other)}）</span>` : ''}</div>
+        <div><div class="dg-label">指定心理師</div>${UI.esc(b.counselor_name || '由諮商所安排')}</div>
         <div><div class="dg-label">形式</div>${b.mode === 'online' ? '線上視訊' : '到所'}</div>
         <div><div class="dg-label">費用</div>${UI.fmtMoney(b.fee_choice)}</div>
         <div><div class="dg-label">送出時間</div>${UI.esc(b.created_at)}</div>
@@ -117,7 +118,7 @@ App.page('bookings', {
           ${r.age !== null ? `<br><span style="font-size:12px;color:var(--muted)">${r.age} 歲</span>` : ''}</td>
         <td>${UI.esc(r.plan_name || '-')}${r.topic_name ? '<br><span style="font-size:12px;color:var(--muted)">' + UI.esc(r.topic_name) + '</span>' : ''}</td>
         <td>${r.date ? `${r.date}<br>${r.start_time}` : UI.esc(r.alt_note || '未指定')}</td>
-        <td>${UI.esc(r.counselor_name || '未指定')}</td>
+        <td>${UI.esc(r.counselor_name || '由諮商所安排')}</td>
         <td>${r.usage ? `${r.usage.used}/${r.usage.quota}${r.usage.over ? ' ' + UI.tag('已用完', 'danger') : ''}` : '-'}</td>
         <td><button class="btn tiny" data-b="${r.id}">處理</button></td></tr>`), '目前沒有待處理的申請')}</div>
 

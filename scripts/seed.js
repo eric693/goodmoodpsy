@@ -297,3 +297,6 @@ if (!has('SELECT 1 FROM assessment_reports')) {
 
   console.log('第三階段展示資料已建立：視訊會議室與視訊預約、心理衡鑑報告、初談問卷、逾期收費單');
 }
+
+// 方案別、諮商主題與心理師名單（好心情現行設定）
+require('./seed-goodmood.js');

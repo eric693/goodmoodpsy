@@ -695,9 +695,9 @@ function startServer() {
   });
   await test('補助方案取價含方案給付與自付拆分', async () => {
     const q = await admin.ok('GET', `/api/plan-quote?plan_id=${youthPlanId}&topic_id=${youthTopicId}`);
-    equal(q.fee, 1600, '金額');
+    equal(q.fee, 1800, '金額');
     equal(q.subsidy_amount, 1600, '方案給付');
-    equal(q.self_pay, 0, '自付');
+    equal(q.self_pay, 200, '個案自付場地費');
   });
   await test('個案年度額度用滿後擋下第四次，並提示已用次數', async () => {
     const clients = await admin.ok('GET', '/api/clients');
@@ -822,7 +822,7 @@ function startServer() {
     assert(r.room_id, '應自動指派諮商室');
     const appt = (await admin.ok('GET', `/api/appointments?client_id=${c.client_id}`))[0];
     equal(appt.plan_id, youthPlanId, '方案別');
-    equal(appt.fee, 1600, '依方案帶入金額');
+    equal(appt.fee, 1800, '依方案帶入金額');
   });
   await test('個案端看不到諮商室', async () => {
     const rows = await admin.ok('GET', '/api/bookings');

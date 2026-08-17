@@ -299,13 +299,16 @@ router.get('/meta', requireStaff(), (req, res) => {
 router.get('/users', requireStaff('users'), (req, res) => {
   res.json(db.prepare(`SELECT id, username, name, role, title, license_type, license_no, license_expiry,
       specialty, phone, email, meeting_room_url, is_intern, supervisor_id, permissions, active,
+      portal_bookable, online_only, intro,
       (SELECT name FROM users s WHERE s.id = users.supervisor_id) AS supervisor_name
     FROM users ORDER BY active DESC, id`)
     .all().map(u => ({ ...u, permissions: parsePermissions(u.permissions) })));
 });
 
 const USER_FIELDS = ['name', 'role', 'title', 'license_type', 'license_no', 'license_expiry', 'specialty',
-  'phone', 'email', 'meeting_room_url', 'is_intern', 'supervisor_id'];
+  'phone', 'email', 'meeting_room_url', 'is_intern', 'supervisor_id',
+  // 線上預約表單相關：是否列入表單的心理師清單、是否只接線上通訊諮商、表單上的簡介
+  'portal_bookable', 'online_only', 'intro'];
 
 router.post('/users', requireStaff('users'), (req, res) => {
   const b = req.body || {};
@@ -319,7 +322,9 @@ router.post('/users', requireStaff('users'), (req, res) => {
     ? b.permissions.filter(k => MODULE_KEYS.includes(k))
     : (ROLE_DEFAULT_MODULES[role] || []);
   // 實習生旗標與指定督導：布林與外鍵在此正規化，避免前端傳來空字串寫壞欄位
-  if (b.is_intern !== undefined) b.is_intern = b.is_intern ? 1 : 0;
+  for (const f of ['is_intern', 'portal_bookable', 'online_only']) {
+    if (b[f] !== undefined) b[f] = b[f] ? 1 : 0;
+  }
   if (b.supervisor_id !== undefined) b.supervisor_id = Number(b.supervisor_id) || null;
   const cols = USER_FIELDS.filter(f => b[f] !== undefined);
   const info = db.prepare(`INSERT INTO users (username, password_hash, role, permissions${cols.length ? ',' + cols.join(',') : ''})
@@ -333,7 +338,9 @@ router.put('/users/:id', requireStaff('users'), (req, res) => {
   const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!u) return res.status(404).json({ error: '找不到此帳號' });
   const b = req.body || {};
-  if (b.is_intern !== undefined) b.is_intern = b.is_intern ? 1 : 0;
+  for (const f of ['is_intern', 'portal_bookable', 'online_only']) {
+    if (b[f] !== undefined) b[f] = b[f] ? 1 : 0;
+  }
   if (b.supervisor_id !== undefined) b.supervisor_id = Number(b.supervisor_id) || null;
   const data = {};
   for (const f of USER_FIELDS) if (b[f] !== undefined) data[f] = b[f];
