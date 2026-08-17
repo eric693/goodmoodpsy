@@ -23,7 +23,7 @@ async function apptDialog(appt, onDone, defaults) {
       ${UI.select('type', '晤談類型', App.enumOptions('appt_type'), { value: a.type })}
       ${UI.select('mode', '形式', App.enumOptions('appt_mode'), { value: a.mode })}
       ${UI.select('room_id', '諮商室', [['', '自動指派']].concat((App.meta.rooms || []).map(r => [r.id, r.name])), { value: a.room_id || '' })}
-      ${UI.input('fee', '費用', { type: 'number', value: a.fee !== undefined ? a.fee : (App.meta.default_fee || 2000) })}
+      ${UI.input('fee', '個案應付金額', { type: 'number', value: a.fee !== undefined ? a.fee : (App.meta.default_fee || 2000) })}
       <div class="form-row full" id="quota-hint" style="display:none"></div>
       ${UI.select('package_id', '扣抵方案', [['', '不扣抵（單次收費）']].concat(packages.map(p => [p.id, `${p.name}（剩 ${p.remaining} 次）`])), { value: a.package_id || '' })}
       <div class="form-row full" id="mu-row" style="${a.mode === 'online' ? '' : 'display:none'}">
@@ -76,7 +76,10 @@ async function apptDialog(appt, onDone, defaults) {
           const r = await GET('/plan-quote?' + q.toString());
           el.querySelector('[name=fee]').value = r.fee;
           const parts = [];
-          if (r.subsidy_amount) parts.push(`方案給付 ${UI.fmtMoney(r.subsidy_amount)}、自付 ${UI.fmtMoney(r.self_pay)}`);
+          if (r.subsidy_amount) {
+            parts.push(`個案只付 <strong>${UI.fmtMoney(r.client_pay)}</strong>`
+              + `（方案總額 ${UI.fmtMoney(r.total)}，其中方案給付 ${UI.fmtMoney(r.subsidy_amount)}）`);
+          }
           if (r.usage) parts.push(`此個案 ${r.usage.year} 年已用 <strong>${r.usage.used}/${r.usage.quota}</strong> 次`);
           if (r.load && r.load.week_limit) parts.push(`該心理師本週此方案 <strong>${r.load.week_used}/${r.load.week_limit}</strong> 人次`);
           const errs = (r.errors || []).map(e => `<div style="color:var(--danger)">✕ ${UI.esc(e)}</div>`).join('');

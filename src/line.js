@@ -92,7 +92,7 @@ function bookingReceivedFlex(b) {
       ...(b.topic_name ? [kv('主題', b.topic_name)] : []),
       ...(b.counselor_name ? [kv('心理師', b.counselor_name)] : []),
       kv('希望時段', b.date ? `${b.date}（${weekdayOf(b.date)}）${b.start_time || ''}` : (b.alt_note || '由所方安排')),
-      ...(b.fee ? [kv('費用', `NT$ ${Number(b.fee).toLocaleString('zh-TW')}`)] : []),
+      ...(b.fee ? [kv('您需支付', `NT$ ${Number(b.fee).toLocaleString('zh-TW')}`)] : []),
       noteBox('此為預約申請，尚未成立。若急需協助請直接來電；如遇立即危機請撥 1925 或 119。')
     ],
     footer: c.phone ? [actionButton('打電話給諮商所', { type: 'uri', label: '打電話給諮商所', uri: `tel:${c.phone}` })] : []
@@ -119,7 +119,8 @@ function bookingConfirmedFlex(a) {
       ...(a.topic_name ? [kv('主題', a.topic_name)] : []),
       kv('形式', a.mode === 'online' ? '線上視訊' : '到所晤談'),
       ...(a.mode === 'online' ? [] : [kv('地點', c.address || c.name)]),
-      ...(a.fee ? [kv('費用', `NT$ ${Number(a.fee).toLocaleString('zh-TW')}${a.self_pay !== undefined && a.self_pay !== a.fee ? `（自付 ${a.self_pay}）` : ''}`)] : []),
+      ...(a.fee ? [kv('您需支付', `NT$ ${Number(a.self_pay !== undefined ? a.self_pay : a.fee).toLocaleString('zh-TW')}`
+        + `${a.subsidy_amount ? `（方案另給付 ${a.subsidy_amount}）` : ''}`)] : []),
       noteBox(a.notice || `請提前 10 分鐘到所。如需改期或取消，請提前 ${getSetting('cancel_hours', '24')} 小時來電告知。`)
     ],
     footer

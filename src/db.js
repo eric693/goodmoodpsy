@@ -685,7 +685,10 @@ CREATE TABLE IF NOT EXISTS line_bindings (
 
 ensureColumns('service_plans', {
   // 通訊（視訊）諮商這類方案預設就是線上，排約時直接帶入，不必每次改
-  default_mode: "TEXT NOT NULL DEFAULT 'onsite'"
+  default_mode: "TEXT NOT NULL DEFAULT 'onsite'",
+  // 場地費：補助方案裡由個案自付、且全額歸所方的部分（不列入心理師抽成基數）。
+  // 例：總額 1800 = 方案給付 1600（心理師依此抽成）+ 場地費 200（所方收入）。
+  venue_fee: 'INTEGER NOT NULL DEFAULT 0'
 });
 ensureColumns('booking_requests', {
   topic_other: "TEXT NOT NULL DEFAULT ''",           // 主題選「其他」時的自填內容
@@ -710,6 +713,9 @@ db.exec(`CREATE TABLE IF NOT EXISTS booking_links (
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );`);
 ensureColumns('appointments', {
+  // fee 一律是「個案要付的錢」（補助方案就是場地費 200），
+  // 由方案支付的部分記在 subsidy_amount，兩者相加才是這次晤談的總額。
+  subsidy_amount: 'INTEGER NOT NULL DEFAULT 0',
   plan_id: 'INTEGER REFERENCES service_plans(id)',   // 方案別（收費與抽成依此計算）
   topic_id: 'INTEGER REFERENCES plan_topics(id)',    // 方案下的主題
   counselor_share: 'INTEGER NOT NULL DEFAULT 0',     // 此次晤談的心理師報酬（結算當下鎖定）

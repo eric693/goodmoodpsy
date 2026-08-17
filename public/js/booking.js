@@ -30,11 +30,13 @@ const BK = {
     BK.render();
   },
 
+  // 選單上直接寫「您要付多少」：補助方案顯示自付的場地費，不顯示方案總額，
+  // 免得民眾以為要自己掏 1800
   planLabel(p) {
     const fee = p.fee_mode === 'choice'
       ? p.fee_options.map(f => f + '元').join('／')
-      : p.fee + '元';
-    const bits = [p.session_minutes ? `${p.session_minutes}分鐘` : '', fee].filter(Boolean).join('，');
+      : `${p.client_pay}元`;
+    const bits = [p.session_minutes ? `${p.session_minutes}分鐘` : '', `自付${fee}`].filter(Boolean).join('，');
     return `${p.name}（${bits}）`;
   },
 
@@ -147,7 +149,8 @@ const BK = {
 
     document.getElementById('plan-hint').innerHTML = [
       p.intro ? UI.esc(p.intro) : '',
-      p.subsidy_amount ? `方案給付 NT$${p.subsidy_amount}，您自付 NT$${p.self_pay}。` : '',
+      p.subsidy_amount ? `此方案由補助支付 NT$${p.subsidy_amount}，<strong>您只需支付 NT$${p.client_pay}`
+        + `${p.venue_fee ? '（場地費）' : ''}</strong>。` : '',
       p.quota_per_year ? `每人每年以 ${p.quota_per_year} 次為限。` : '',
       p.age_min || p.age_max ? `適用年齡：${p.age_min || 0}-${p.age_max || '不限'} 歲。` : '',
       p.default_mode === 'online' ? '此方案為線上通訊諮商。' : ''
@@ -298,7 +301,7 @@ const BK = {
       <div class="bk-note" style="text-align:left;margin-top:10px">
         ${UI.esc(r.message)}
         ${BK.sel.date ? `\n\n希望時段：${BK.sel.date} ${BK.sel.time}` : ''}
-        ${BK.sel.plan ? `\n方案：${BK.sel.plan.name}（NT$ ${r.fee}${r.self_pay !== r.fee ? `，您自付 NT$ ${r.self_pay}` : ''}）` : ''}
+        ${BK.sel.plan ? `\n方案：${BK.sel.plan.name}\n您需支付：NT$ ${r.self_pay}` : ''}
         ${r.center_phone ? `\n\n如需修改或有疑問，請來電 ${r.center_phone}。` : ''}
       </div>
       ${r.line_add_friend_url ? `<a class="btn" style="margin-top:14px;display:inline-block"

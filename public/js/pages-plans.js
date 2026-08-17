@@ -20,6 +20,7 @@ function planDialog(p, onDone) {
       ${UI.input('fee_options', '可選金額（逗號分隔）', { value: d.fee_options || '', placeholder: '3000,3600,4500', full: true })}
       ${UI.input('session_minutes', '晤談時長（分鐘，0 沿用系統設定）', { type: 'number', value: d.session_minutes || 0 })}
       ${UI.input('subsidy_amount', '方案給付金額（其餘為個案自付）', { type: 'number', value: d.subsidy_amount || 0 })}
+      ${UI.input('venue_fee', '場地費（所方全收，不列入抽成基數）', { type: 'number', value: d.venue_fee || 0 })}
       ${UI.inputList('subsidy_program', '核銷用方案名稱', App.meta.subsidy_programs || [], { value: d.subsidy_program || '', full: true })}
       ${UI.input('age_min', '年齡下限（0 不限）', { type: 'number', value: d.age_min || 0 })}
       ${UI.input('age_max', '年齡上限（0 不限）', { type: 'number', value: d.age_max || 0 })}
@@ -114,7 +115,8 @@ App.page('plans', {
           ${p.portal_visible ? UI.tag('線上可約', 'ok') : ''}</h3>
         <div style="font-size:13.5px;color:var(--muted);line-height:1.9;margin-bottom:8px">
           金額：${p.fee_mode === 'choice' ? `可選 ${p.fee_option_list.join(' / ')}（預設 ${p.fee}）` : UI.fmtMoney(p.fee)}
-          ${p.subsidy_amount ? `　方案給付 ${UI.fmtMoney(p.subsidy_amount)}／自付 ${UI.fmtMoney(Math.max(0, p.fee - p.subsidy_amount))}` : ''}
+          ${p.subsidy_amount ? `　方案給付 ${UI.fmtMoney(p.subsidy_amount)}／個案付 ${UI.fmtMoney(Math.max(0, p.fee - p.subsidy_amount))}` : ''}
+          ${p.venue_fee ? `　場地費 ${UI.fmtMoney(p.venue_fee)}（所方收入）` : ''}
           　時長：${p.session_minutes || App.meta.session_minutes} 分鐘　心理師報酬：${shareText(p)}<br>
           資格：${p.age_min || p.age_max ? `${p.age_min || 0}-${p.age_max || '不限'} 歲` : '不限年齡'}
           ${p.quota_per_year ? `　每人每年 ${p.quota_per_year} 次` : ''}
@@ -242,8 +244,9 @@ App.page('income', {
       <div class="card"><h3>${month} 全所合計</h3>
         <div class="stat-row" style="display:flex;gap:18px;flex-wrap:wrap;font-size:14px">
           <div><div class="dg-label">完成場次</div><strong>${t.sessions}</strong>（未到 ${t.no_shows}）</div>
-          <div><div class="dg-label">應收總額</div><strong>${UI.fmtMoney(t.gross)}</strong></div>
-          <div><div class="dg-label">方案給付／自付</div>${UI.fmtMoney(t.subsidy)} / ${UI.fmtMoney(t.self_pay)}</div>
+          <div><div class="dg-label">服務總額</div><strong>${UI.fmtMoney(t.gross)}</strong></div>
+          <div><div class="dg-label">方案給付／個案自付</div>${UI.fmtMoney(t.subsidy)} / ${UI.fmtMoney(t.self_pay)}</div>
+          <div><div class="dg-label">其中場地費</div>${UI.fmtMoney(t.venue)}</div>
           <div><div class="dg-label">心理師報酬</div><strong>${UI.fmtMoney(t.share)}</strong></div>
           <div><div class="dg-label">所方淨收</div><strong>${UI.fmtMoney(t.center)}</strong></div>
           <div><div class="dg-label">實收／未收</div>${UI.fmtMoney(t.collected)} / <span style="color:var(--danger)">${UI.fmtMoney(t.uncollected)}</span></div>
@@ -255,10 +258,14 @@ App.page('income', {
           <span style="font-size:13px;font-weight:400;color:var(--muted)">
             ${r.sessions} 場｜應收 ${UI.fmtMoney(r.gross)}｜報酬 ${UI.fmtMoney(r.share)}｜所方 ${UI.fmtMoney(r.center)}</span>
           ${r.payout_status === 'paid' ? UI.tag('報酬已付', 'ok') : r.payout_status === 'pending' ? UI.tag('報酬待付', 'warn') : ''}</h3>
-        ${UI.table(['方案', '場次', '應收', '方案給付', '自付', '心理師報酬', '所方淨收'], r.plans.map(p => `<tr>
+        ${UI.table(['方案', '場次', '服務總額', '方案給付', '個案自付', '場地費', '心理師報酬', '所方淨收'],
+      r.plans.map(p => `<tr>
           <td>${UI.esc(p.plan_name)}</td><td>${p.sessions}</td><td>${UI.fmtMoney(p.gross)}</td>
           <td>${UI.fmtMoney(p.subsidy)}</td><td>${UI.fmtMoney(p.self_pay)}</td>
+          <td>${UI.fmtMoney(p.venue)}</td>
           <td>${UI.fmtMoney(p.share)}</td><td>${UI.fmtMoney(p.center)}</td></tr>`))}
+        <div style="font-size:12.5px;color:var(--muted);margin-top:6px">
+          心理師報酬以「服務總額 − 場地費」為基數計算（場地費全額為所方收入）。</div>
         <div class="toolbar" style="margin-top:8px"><div class="spacer"></div>
           <button class="btn tiny secondary" data-detail="${r.counselor_id}">明細／列印</button></div>
       </div>`).join('') || '<div class="empty">本月尚無已完成的晤談</div>'}`;
@@ -273,15 +280,16 @@ App.page('income', {
             <div style="text-align:center;font-size:17px;font-weight:700;margin-bottom:8px">
               ${UI.esc(dd.center_name)}　心理師服務明細</div>
             <div style="font-size:14px;margin-bottom:8px">心理師：${UI.esc(dd.counselor.name)}　結算月份：${month}</div>
-            ${UI.table(['日期', '時間', '個案', '方案／主題', '狀態', '費用', '報酬', '收款'], dd.rows.map(r => `<tr>
+            ${UI.table(['日期', '時間', '個案', '方案／主題', '狀態', '個案自付', '方案給付', '報酬', '收款'], dd.rows.map(r => `<tr>
               <td>${r.date}</td><td>${r.start_time}</td>
               <td>${UI.esc(r.client_code || '')} ${UI.esc(r.client_name || '')}</td>
               <td>${UI.esc(r.plan_name || '-')}${r.topic_name ? '／' + UI.esc(r.topic_name) : ''}</td>
               <td>${TW.appt_status[r.status]}</td>
-              <td>${UI.fmtMoney(r.fee)}</td><td>${UI.fmtMoney(r.counselor_share)}</td>
+              <td>${UI.fmtMoney(r.fee)}</td><td>${UI.fmtMoney(r.subsidy_amount || 0)}</td>
+              <td>${UI.fmtMoney(r.counselor_share)}</td>
               <td>${r.invoice_status ? TW.inv_status[r.invoice_status] : '-'}</td></tr>`))}
             <div style="margin-top:10px;font-size:15px;text-align:right">
-              應收合計 ${UI.fmtMoney(dd.total_gross)}　心理師報酬合計 <strong>${UI.fmtMoney(dd.total_share)}</strong></div>
+              服務總額合計 ${UI.fmtMoney(dd.total_gross)}　心理師報酬合計 <strong>${UI.fmtMoney(dd.total_share)}</strong></div>
           </div>
           <button class="btn small secondary" style="margin-top:14px" onclick="window.print()">列印</button>`
         });

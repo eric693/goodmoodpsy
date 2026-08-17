@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="好心情心理諮商所管理系統功能介紹：LINE 預約流程、線上預約表單、方案額度與收支、收據、保密分層。">
+<title>好心情諮商所管理系統</title>
+<style>
+  :root{
+    --ground:#F3F4F1; --panel:#FFFFFF; --ink:#1C2530; --ink-soft:#4C5763;
+    --line:#DCE0DA; --line-soft:#E9ECE6;
+    --accent:#2C6B63; --accent-soft:#E2EDE9; --clay:#9C5A44;
+    --code:#F0F2ED;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#151A19; --panel:#1C2322; --ink:#E7EAE5; --ink-soft:#A3ADA8;
+      --line:#2E3735; --line-soft:#252D2C;
+      --accent:#7FBFB2; --accent-soft:#22302D; --clay:#D08E75;
+      --code:#222A29;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#151A19; --panel:#1C2322; --ink:#E7EAE5; --ink-soft:#A3ADA8;
+    --line:#2E3735; --line-soft:#252D2C;
+    --accent:#7FBFB2; --accent-soft:#22302D; --clay:#D08E75;
+    --code:#222A29;
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--ground); color:var(--ink);
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    font-size:16px; line-height:1.8; margin:0;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px 96px}
+  header.top{
+    border-bottom:1px solid var(--line); padding:64px 0 40px; margin-bottom:48px;
+  }
+  .eyebrow{
+    font-size:12px; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--accent); margin:0 0 18px;
+  }
+  h1{
+    font-family:"Noto Serif TC","Songti TC","PMingLiU",Georgia,serif;
+    font-size:clamp(30px,5vw,46px); line-height:1.35; font-weight:700;
+    margin:0 0 20px; text-wrap:balance; letter-spacing:.01em;
+  }
+  .lede{font-size:17px; color:var(--ink-soft); max-width:62ch; margin:0}
+  .meta{
+    display:flex; flex-wrap:wrap; gap:8px 10px; margin-top:26px;
+    font-size:13px;
+  }
+  .meta a,.meta span{
+    display:inline-block; padding:5px 12px; border:1px solid var(--line);
+    border-radius:999px; color:var(--ink-soft); text-decoration:none; background:var(--panel);
+  }
+  .meta a:hover{border-color:var(--accent); color:var(--accent)}
+  .meta a:focus-visible,a:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  .cols{display:grid; grid-template-columns:1fr; gap:56px}
+  @media(min-width:940px){
+    .cols{grid-template-columns:200px 1fr; gap:64px; align-items:start}
+    nav.toc{position:sticky; top:32px}
+  }
+  nav.toc ol{list-style:none; margin:0; padding:0; font-size:13.5px}
+  nav.toc li{margin-bottom:9px}
+  nav.toc a{color:var(--ink-soft); text-decoration:none; display:block; border-left:2px solid var(--line); padding-left:12px}
+  nav.toc a:hover{color:var(--accent); border-left-color:var(--accent)}
+  nav.toc .tocnum{font-variant-numeric:tabular-nums; color:var(--accent); margin-right:6px; font-size:12px}
+
+  section{margin-bottom:64px; scroll-margin-top:24px}
+  h2{
+    font-family:"Noto Serif TC","Songti TC","PMingLiU",Georgia,serif;
+    font-size:24px; margin:0 0 8px; font-weight:700; text-wrap:balance;
+  }
+  h2 .num{font-size:13px; color:var(--accent); font-variant-numeric:tabular-nums; margin-right:10px; letter-spacing:.06em}
+  h3{font-size:16px; margin:32px 0 10px; font-weight:700}
+  .sub{color:var(--ink-soft); margin:0 0 22px; font-size:15px}
+  p{margin:0 0 16px}
+  ul{margin:0 0 16px; padding-left:20px}
+  li{margin-bottom:7px}
+  strong{font-weight:700}
+  code{
+    font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:13.5px;
+    background:var(--code); padding:1px 6px; border-radius:4px; word-break:break-all;
+  }
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:24px 26px; margin:0 0 22px;
+  }
+  .panel h3:first-child{margin-top:0}
+  .callout{
+    background:var(--accent-soft); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:8px; padding:18px 22px; margin:0 0 22px; font-size:15px;
+  }
+  .callout p:last-child{margin-bottom:0}
+  .grid{display:grid; gap:14px; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); margin-bottom:22px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px 20px}
+  .card h4{margin:0 0 6px; font-size:15px; font-weight:700}
+  .card p{margin:0; font-size:14px; color:var(--ink-soft); line-height:1.7}
+  .tablewrap{overflow-x:auto; margin:0 0 22px; border:1px solid var(--line); border-radius:10px; background:var(--panel)}
+  table{border-collapse:collapse; width:100%; font-size:14.5px; min-width:460px}
+  th,td{text-align:left; padding:11px 16px; border-bottom:1px solid var(--line-soft); vertical-align:top}
+  thead th{
+    font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-soft);
+    background:var(--code); border-bottom:1px solid var(--line); font-weight:700;
+  }
+  tbody tr:last-child td{border-bottom:none}
+  .steps{list-style:none; padding:0; margin:0 0 22px; counter-reset:s}
+  .steps li{
+    counter-increment:s; position:relative; padding-left:44px; margin-bottom:18px;
+  }
+  .steps li::before{
+    content:counter(s); position:absolute; left:0; top:2px;
+    width:26px; height:26px; border-radius:50%; background:var(--accent-soft);
+    color:var(--accent); border:1px solid var(--accent);
+    font-size:13px; font-variant-numeric:tabular-nums;
+    display:flex; align-items:center; justify-content:center; font-weight:700;
+  }
+  .off{color:var(--clay); font-weight:700}
+  footer{border-top:1px solid var(--line); padding-top:24px; color:var(--ink-soft); font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <p class="eyebrow">功能介紹</p>
+  <h1>好心情心理諮商所管理系統</h1>
+  <p class="lede">從來電、預約、晤談紀錄到收費與收據的整所作業系統。員工端網頁後台、個案端手機專區、公開線上預約表單，加上 LINE 官方帳號自動通知，同一份資料一次到底，不必再謄第二次。</p>
+  <div class="meta">
+    <a href="https://goodmoodpsy.crownai.ink">員工端 goodmoodpsy.crownai.ink</a>
+    <a href="https://goodmoodpsy.crownai.ink/portal.html">個案專區 /portal.html</a>
+    <a href="https://goodmoodpsy.crownai.ink/booking.html">線上預約 /booking.html</a>
+    <span>LINE 官方帳號 @032cjyby</span>
+  </div>
+</header>
+
+<div class="cols">
+<nav class="toc" aria-label="章節">
+  <ol>
+    <li><a href="#line"><span class="tocnum">01</span>LINE 怎麼開始預約</a></li>
+    <li><a href="#notify"><span class="tocnum">02</span>系統會主動送出的通知</a></li>
+    <li><a href="#form"><span class="tocnum">03</span>線上預約表單</a></li>
+    <li><a href="#gform"><span class="tocnum">04</span>Google 表單同步</a></li>
+    <li><a href="#plan"><span class="tocnum">05</span>方案、額度與收支</a></li>
+    <li><a href="#receipt"><span class="tocnum">06</span>收據</a></li>
+    <li><a href="#privacy"><span class="tocnum">07</span>保密分層</a></li>
+    <li><a href="#modules"><span class="tocnum">08</span>其餘功能模組</a></li>
+    <li><a href="#ops"><span class="tocnum">09</span>系統、資料與維運</a></li>
+    <li><a href="#status"><span class="tocnum">10</span>目前關閉與待辦</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="line">
+  <h2><span class="num">01</span>LINE 怎麼開始預約</h2>
+  <p class="sub">個案端最短的一條路：加好友、按按鈕、填表單。</p>
+
+  <ol class="steps">
+    <li>個案加入官方帳號 <code>@032cjyby</code> 的當下，系統就自動回一張 Flex 卡片，上面有<strong>「開始預約」</strong>和<strong>「打電話給諮商所」</strong>兩個按鈕。</li>
+    <li>之後他隨時傳任何訊息（打「預約」也好、傳貼圖也好）都會再收到同一張卡片。按下「開始預約」就進到我們的表單。</li>
+    <li>已建檔的舊個案則是櫃檯發 <strong>6 碼綁定碼</strong>，他在聊天室輸入即完成綁定，不必手抄 userId。</li>
+  </ol>
+
+  <div class="panel">
+    <h3>關鍵設計：網址裡不放 userId</h3>
+    <p>按鈕帶的是一次性連結 <code>/booking.html?bk=&lt;隨機token&gt;</code>（效期 3 天），網址裡不放 LINE userId——表單送出時才由後端拿 token 換回身分。這樣預約成立、晤談提醒、收據都推得回同一個人，而 userId 不會留在網址列或瀏覽紀錄裡。</p>
+  </div>
+
+  <div class="callout">
+    <p><strong>要真的動起來，需要先完成串接。</strong>請到<strong>「系統 → LINE 官方帳號 → 串接設定」</strong>貼上 Channel access token 與 secret，並按「寫回 LINE 並測試」。在那之前，所有推播只會記成「待人工發送」，系統完全不對外連線，不會把個資送到未設定的服務。</p>
+  </div>
+
+  <h3>串接設定頁做三件事</h3>
+  <ul>
+    <li><strong>頻道憑證</strong>：貼上 LINE Developers Console 的 Channel access token（long-lived）與 Channel secret；已存的權杖只顯示末四碼，不改就留原樣。按「驗證連線」會向 LINE 取回官方帳號名稱與 ID，確認打得通。</li>
+    <li><strong>Webhook</strong>：按「寫回 LINE 並測試」，系統直接把 <code>https://goodmoodpsy.crownai.ink/api/line/webhook</code> 設定到 LINE 頻道並請 LINE 實際回打一次。同時記得到 LINE 後台關閉「自動回覆訊息」與「歡迎訊息」，改由本系統回覆。簽章以 channel secret 驗證，驗不過即忽略。</li>
+    <li><strong>通知時間與樣式</strong>：晤談提醒提前時數、心理師行程每日推播時間、Flex 卡片主色、放在卡片按鈕上的預約表單網址。</li>
+  </ul>
+  <p>同頁另有<strong>綁定管理</strong>（員工與個案的綁定狀態，逐一發綁定碼或解除）與<strong>推播與紀錄</strong>（手動推播、每筆推播結果與失敗原因）。</p>
+</section>
+
+<section id="notify">
+  <h2><span class="num">02</span>系統會主動送出的通知</h2>
+  <p class="sub">全部是 Flex 卡片；未完成串接時只留下待發訊息，不外送。</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>卡片</th><th>對象</th><th>時機</th></tr></thead>
+    <tbody>
+      <tr><td>已收到預約申請</td><td>個案</td><td>從 LINE 進表單送出申請後</td></tr>
+      <tr><td>預約已成立</td><td>個案</td><td>櫃檯確認申請、或櫃檯直接排約</td></tr>
+      <tr><td>晤談提醒</td><td>個案</td><td>晤談前（預設 24 小時），可單筆或整批推</td></tr>
+      <tr><td>預約申請未能成立</td><td>個案</td><td>櫃檯回覆無法安排時</td></tr>
+      <tr><td>新的預約申請／新排入的晤談</td><td>心理師</td><td>有人指名預約、或被排入新個案</td></tr>
+      <tr><td>明日晤談行程</td><td>心理師</td><td>每日設定時間自動推播（預設 20:00）</td></tr>
+      <tr><td>收據已開立</td><td>個案</td><td>櫃檯按下「LINE 傳給個案」</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="form">
+  <h2><span class="num">03</span>線上預約表單</h2>
+  <p class="sub"><code>/booking.html</code>：公開免登入的手機版表單，欄位順序比照所內原本的 Google 表單。</p>
+  <p>諮商方案 → 諮商主題 → 預約之心理師 → 時段 → 基本資料，三個選項欄位都是下拉式選單。</p>
+  <div class="grid">
+    <div class="card"><h4>個案全程看不到諮商室</h4><p>表單與個案專區都不出現空間資訊，諮商室由系統在成立預約時自動挑一間當下沒被占用的。</p></div>
+    <div class="card"><h4>時段先過濾再顯示</h4><p>已排除被占用、請假與帶團體的時間，並依方案人次上限過濾；某週額滿時直接顯示「本週已排滿，下週起尚可預約」。</p></div>
+    <div class="card"><h4>資格先擋</h4><p>補助方案的年齡與年度次數在表單端就先擋，個案不會白填一輪才被退。</p></div>
+    <div class="card"><h4>櫃檯確認才進排程</h4><p>送出的是「預約申請」，櫃檯在「線上預約申請」頁確認後才寫進排程；未建檔者可一鍵由表單資料建檔。方案可個別設定免審。</p></div>
+    <div class="card"><h4>彈性選項</h4><p>主題選「其他」可自填；心理師選「由諮商所安排」時不列時段，改請個案填可配合時段，由櫃檯排定後回覆。</p></div>
+    <div class="card"><h4>文字都能改</h4><p>表單欄位、注意事項與個資告知文字皆在系統設定可改，不必動程式。</p></div>
+  </div>
+</section>
+
+<section id="gform">
+  <h2><span class="num">04</span>Google 表單同步</h2>
+  <p class="sub">所內原本的「好心情心理諮商所＿諮商預約表」不必停用。</p>
+  <p>在「系統 → Google 表單同步」頁產生密鑰、把頁面上的 Apps Script 程式碼貼到表單的指令碼編輯器並設定「表單提交時」觸發器，之後每一筆回應都會即時寫入後台的「線上預約申請」，櫃檯不必再謄一次。</p>
+  <ul>
+    <li>方案／主題／心理師以<strong>選項文字自動對應</strong>（會自動忽略「（50分鐘2000元）」這類價目說明）；對不到時仍收單，並在申請上標示「需人工指定」，資料不會掉。</li>
+    <li>姓名、信箱、電話、生理性別、出生年月日、地址、身分證字號、緊急聯絡人三欄一併帶入，按「由申請資料建檔」時直接寫進個案基本資料。</li>
+    <li>電話會正規化（去掉空白與破折號、<code>+886</code> 轉 <code>0</code>），舊個案以電話自動比對。</li>
+    <li>同一筆回應重送不會產生第二筆（以 Google 的 response id 去重），可用 <code>backfill()</code> 把先前的歷史回應一次補進來。</li>
+    <li>端點 <code>POST /api/integrations/google-form</code>，以共用密鑰驗證，密鑰可隨時重新產生。</li>
+  </ul>
+  <p>兩邊可並行；差別是自建表單能即時擋掉資格不符與額滿的時段、能直接選時段，且會回推 LINE 通知。</p>
+</section>
+
+<section id="plan">
+  <h2><span class="num">05</span>方案、額度與收支</h2>
+  <p class="sub">收費不是一個數字，而是一組規則，因此獨立成「方案」。</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>方案設定的東西</th><th>用途</th></tr></thead>
+    <tbody>
+      <tr><td>金額／可選金額</td><td>固定價，或像伴侶諮商那樣由預約時挑金額（3000／3600／4500）</td></tr>
+      <tr><td>方案給付、核銷名稱</td><td>補助方案由公部門支付的部分，與個案自付差額分開記帳</td></tr>
+      <tr><td>晤談時長</td><td>40／50／80 分鐘各方案不同，排約時自動算結束時間</td></tr>
+      <tr><td>年齡上下限、每人每年次數</td><td>補助方案的資格控管（如 15-45 歲、一年 3 次）</td></tr>
+      <tr><td>每位心理師每週／每月人次</td><td>名額分配（如一位心理師一週 6 人次）</td></tr>
+      <tr><td>心理師報酬</td><td>抽成比例或固定鐘點費</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>方案底下再分<strong>主題</strong>（如伴侶溝通、親職教養），主題可覆寫金額；再往下是<strong>心理師費率</strong>，可針對某位心理師（甚至某位心理師的某個主題）另訂金額、報酬方式與人次上限。取價順序：心理師費率 → 主題 → 方案預設。全部在「系統 → 方案設定」頁自行增修，不必改程式。</p>
+
+  <h3>目前建立的方案</h3>
+  <ul>
+    <li><strong>自費</strong>：個別 50 分鐘 2000、個別 80 分鐘 3000、婚姻伴侶／家庭 80 分鐘 3000（可選 3000／3600／4500）、通訊（視訊）諮商 50 分鐘 2000、親子／家長諮詢 80 分鐘 3000、LGBTQ+ 族群個別諮商 40 分鐘 1200（限 3 次）。</li>
+    <li><strong>補助</strong>（個案自付 200 元場地費，其餘由方案給付）：115 年度 15-45 歲青壯世代心理健康支持方案（一年 3 次、每位心理師每週 6 人次）、臺南市教師支持方案（6 次）、國軍心理健康方案（6 次）、臺南市政府員工協助方案（4 次）、1219 台北捷運心理健康支持方案、馬太鞍溪心理健康支持方案。</li>
+    <li><strong>諮商主題</strong>（11 項共用）：自我探索、情緒困擾、壓力調適、親密關係、原生家庭／親子關係、人際關係、生涯議題、心理疾患、創傷與失落、職場議題、其他。</li>
+  </ul>
+
+  <h3>額度控管</h3>
+  <ul>
+    <li><strong>個案年度次數</strong>：已用次數 = 系統內該年度有效預約 + 人工調整（他所已使用過的次數）。個案頁與預約表單都看得到用了幾次，用滿即擋下，只剩 1 次時提前警示。</li>
+    <li><strong>心理師人次上限</strong>：以週一起算的自然週計。額滿時錯誤訊息直接附上「下週（起日）尚餘 N 人次」，櫃檯與個案都能當場改約下週。</li>
+    <li>兩種上限預設<strong>擋下</strong>（可改為僅警示）；櫃檯確認仍要排時可強制排入，該決定會寫進稽核軌跡。</li>
+    <li>「方案人次」頁一次看完每位心理師在各限量方案的本週／本月用量。</li>
+  </ul>
+
+  <h3>每位心理師每月收支</h3>
+  <p>「心理師收支」頁依方案別結算：完成場次、應收總額、方案給付與自付拆分、心理師報酬、所方淨收，以及實收／未收。心理師報酬在晤談完成當下鎖定，事後調整方案費率不會回頭改動已結算的月份。單一心理師的當月明細可列印對帳。</p>
+</section>
+
+<section id="receipt">
+  <h2><span class="num">06</span>收據</h2>
+  <p class="sub">收費單是帳，收據是給個案的憑證，兩件事分開。</p>
+  <p>個案談完當下要就開一張，不要的話事後也能補開——「收據」頁的「待開立」清單直接列出已收款但沒開收據的收費單。</p>
+  <ul>
+    <li>流水編號：前綴 + 年月 + 四碼序號（如 <code>GM20260800001</code>），作廢的號碼不回收。</li>
+    <li>補印會累計次數與時間，事後查得到這張印過幾次。</li>
+    <li>開錯不塗改：作廢並「重開」新號，新舊互相勾稽。</li>
+    <li>個案端在「費用」頁看得到自己的收據編號，需要紙本時報編號給櫃檯補印。</li>
+    <li>已綁定 LINE 的個案可直接把收據以 Flex 卡片傳過去。</li>
+  </ul>
+</section>
+
+<section id="privacy">
+  <h2><span class="num">07</span>保密分層</h2>
+  <p class="sub">心理諮商的核心限制是保密。系統把「行政資料」與「晤談內容」分成兩層。</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>資料層</th><th>誰看得到</th></tr></thead>
+    <tbody>
+      <tr><td>個案基本資料、預約、收費、同意書</td><td>行政櫃檯、心理師、督導、管理者</td></tr>
+      <tr><td>晤談紀錄（SOAP）、處遇計畫</td><td><strong>僅主責心理師本人、督導、管理者</strong></td></tr>
+      <tr><td>危機事件與通報</td><td>心理師、督導、管理者（行政預設無權限）</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <ul>
+    <li>保密邊界由後端統一把關，所有讀取晤談內容的 API 都必須經過它，不是靠前端隱藏按鈕。</li>
+    <li>每次調閱晤談紀錄都寫入稽核軌跡（誰、何時、看了哪位個案），管理者可於「稽核軌跡」頁查詢。</li>
+    <li>個案端<strong>完全不提供</strong>任何晤談紀錄內容，只做預約、改期、取消、量表、費用、同意書與行政訊息；逾免收費期限的取消只會送出「取消申請」並通知櫃檯，是否計費由櫃檯決定。</li>
+  </ul>
+</section>
+
+<section id="modules">
+  <h2><span class="num">08</span>其餘功能模組</h2>
+  <p class="sub">從來電進案到結案追蹤，一條龍在同一套資料上跑。</p>
+
+  <h3>每日作業</h3>
+  <ul>
+    <li><strong>總覽</strong>：今日晤談、待補紀錄、高風險個案、量表警示、處遇計畫到期、待處理來電、明日待提醒、執照與契約到期；儀表板含近 6 個月完成晤談／實收金額／新收個案長條圖。</li>
+    <li><strong>我的工作台</strong>（心理師視角）：我的個案與高風險數、本週排程（含視訊連結）、服務量、待補紀錄與衡鑑報告、督導時數、繼續教育積分與執照更新倒數。</li>
+    <li><strong>預約排程與行事曆</strong>：週檢視與月檢視，同一心理師或同一諮商室時段衝突即時擋下；行事曆可依心理師篩選、點任一天直接排約。</li>
+    <li><strong>我的排班</strong>：心理師在星期 × 時段格子上刷出每週可預約時段，同頁登錄請假；不在格線上的時間（如 13:15-14:05）用「自訂時段」加入。</li>
+    <li><strong>行事曆訂閱（.ics）</strong>：每位心理師一組 token 網址，可加入 Google／iPhone 日曆訂閱未來半年班表；<strong>只帶個案編號不帶姓名</strong>，網址可隨時重設。</li>
+    <li><strong>候補遞補</strong>：取消或未到釋出時段時，依「指定心理師 → 緊急度 → 希望時段吻合 → 等候天數」配對候補名單並一鍵發送遞補通知。</li>
+    <li><strong>線上視訊晤談</strong>：形式選「視訊」即帶入該心理師的固定會議室連結，自動附在提醒訊息中，雙方一鍵進入。</li>
+    <li><strong>今日看板</strong>：報到／完成／未到／取消一鍵處理；完成時自動扣方案次數或產生收費單，未到依比例計費。</li>
+  </ul>
+
+  <h3>個案服務</h3>
+  <ul>
+    <li><strong>來電登記與派案</strong>：來電 →（候補）→ 派案 → 初談建檔的完整漏斗，高風險來電標紅、等候超過 14 天示警。</li>
+    <li><strong>個案端自填初談問卷</strong>：免登入連結傳給來電者，填基本資料、主訴、就醫史與 BSRS-5；建檔時一併帶入、量表轉為療效追蹤基線，命中自殺意念題自動標高風險。</li>
+    <li><strong>個案管理</strong>：編號自動產生、身分證檢查碼驗證、主責心理師、風險等級、依生日自動判定未成年與法代欄位、結案摘要可列印。</li>
+    <li><strong>個案附件</strong>：轉介單、診斷證明、同意書掃描、衡鑑報告上傳（單檔 20MB）；隨機檔名落地、目錄不對外開放、下載逐次驗權並記入稽核。</li>
+    <li><strong>晤談紀錄</strong>：SOAP 格式 + 使用技術、家庭作業、風險標記；簽核定稿後比照病歷不可修改。</li>
+    <li><strong>心理量表</strong>：PHQ-9、GAD-7、BSRS-5、PSS-10、ISI，內建計分與切分點判讀；多次施測畫成折線圖；危險題命中自動拉高風險等級。</li>
+    <li><strong>處遇計畫、心理衡鑑報告書、轉介與結案後追蹤、同意書（5 份範本，手寫簽名與全文快照）</strong>。</li>
+  </ul>
+
+  <h3>營運與帳務</h3>
+  <ul>
+    <li><strong>收費與方案</strong>：預付堂數方案、單次收費、收據號、付款人別（自費／EAP／學校／社會局）。</li>
+    <li><strong>退費</strong>：另立退費單與原收費單勾稽，方案退費依剩餘堂數試算並同步停止扣次；報表以「收款 − 退費」計算實收。</li>
+    <li><strong>電子發票與補助核銷</strong>：發票號碼與日期、統編檢核、抬頭、載具、捐贈碼；補助方案可記方案序號、補助額與自付差額。</li>
+    <li><strong>報酬與扣繳</strong>：心理師鐘點給付單，試算代扣所得稅與二代健保補充保費，年度彙總供填報扣繳憑單。</li>
+    <li><strong>經營品質指標</strong>：爽約率、取消率、初談轉銜率、脫落率、平均晤談次數、心理師時段利用率。</li>
+    <li><strong>報表匯出</strong>：個案清單、晤談明細、收費明細、服務量、危機事件，皆可出 Excel／PDF／CSV，匯出記入稽核。</li>
+  </ul>
+</section>
+
+<section id="ops">
+  <h2><span class="num">09</span>系統、資料與維運</h2>
+  <div class="grid">
+    <div class="card"><h4>帳號權限</h4><p>19 個模組逐一勾選；角色預設值（行政不含晤談紀錄與危機事件）；不可停用最後一位管理者。</p></div>
+    <div class="card"><h4>系統設定</h4><p>所別資訊、收費預設、責任通報時限、扣繳費率、提醒發送通道、選項清單、前台文字、諮商室、同意書範本等皆可自改。</p></div>
+    <div class="card"><h4>舊資料匯入</h4><p>個案名冊、晤談排程、收費明細、量表施測四種 Excel／CSV：下載範本 → 上傳預覽 → 確認匯入，任一列錯誤即整批拒絕，檔案不落地。</p></div>
+    <div class="card"><h4>備份</h4><p>每日自動備份保留 14 份 + 異地鏡像，個案附件一併同步；備份後回收空間並清理孤兒附件。</p></div>
+    <div class="card"><h4>技術架構</h4><p>Node.js + Express 5 + SQLite（WAL），JWT HttpOnly Cookie；前端原生 SPA 無框架。</p></div>
+    <div class="card"><h4>上線前檢查</h4><p>改完程式先跑冒煙測試（拋棄式資料庫，不碰正式資料），涵蓋權限、排班、預約衝突、收費退費、附件與備份。</p></div>
+  </div>
+</section>
+
+<section id="status">
+  <h2><span class="num">10</span>目前關閉與待辦</h2>
+  <p class="sub">功能與資料都還在，只是暫時不顯示；需要時改一個設定即回復。</p>
+  <ul>
+    <li><span class="off">已關閉</span>——實習心理師督導覆核：所內暫無實習生，「紀錄覆核」頁與帳號設定裡的實習生欄位都不出現。</li>
+    <li><span class="off">已關閉</span>——團體諮商、請假與繼續教育、督導紀錄、合作單位請款、逾期催繳、危機事件與通報、安全計畫列管：不出現在導覽列、總覽看板與個案分頁。</li>
+    <li><strong>待辦</strong>——視訊平台 API 串接（目前為貼上會議室連結，未自動開房）。</li>
+    <li><strong>待辦</strong>——電子發票<strong>開立</strong> API 串接（目前為欄位登錄與收據列印，發票號碼需由開立系統取得後回填）。</li>
+  </ul>
+</section>
+
+<footer>
+  <p>好心情心理諮商所　臺南市安平區建平七街453巷75號2樓之2　0909334443　<a href="https://www.goodmoodpsy.com.tw" style="color:var(--accent)">goodmoodpsy.com.tw</a></p>
+</footer>
+
+</main>
+</div>
+</div>
+</body>
+</html>

@@ -35,14 +35,22 @@ function parseOptions(str) {
   return String(str || '').split(',').map(s => Number(String(s).trim())).filter(n => n > 0);
 }
 
-// 取價：回傳這次晤談應收多少、其中多少由方案支付、心理師分得多少。
-// fee_override 讓櫃檯在個案有特殊約定時仍能手動指定金額（會被完整記錄）。
+// 取價：回傳這次晤談的總額、個案要付多少、方案給付多少、心理師分得多少。
+//
+// 金額有三個角色，分開記才不會互相污染：
+//   total        方案總額（帳面上這次服務值多少）
+//   subsidy      由補助方案／委辦單位支付的部分
+//   client_pay   個案實際要付的錢 = total - subsidy（補助方案就是那 200 元場地費）
+// 心理師抽成基數是 total 扣掉場地費（venue_fee）——場地費是所方的收入，不參與拆帳。
+// fee_override 讓櫃檯在個案有特殊約定時直接指定「個案要付多少」。
 function resolveFee({ plan_id, topic_id, counselor_id, fee_choice, fee_override }) {
   const plan = getPlan(plan_id);
   if (!plan) {
-    const fee = Number(fee_override) || 0;
-    return { plan: null, topic: null, fee, subsidy_amount: 0, self_pay: fee,
-      counselor_share: 0, session_minutes: Number(getSetting('session_minutes', '50')), subsidy_program: '' };
+    const pay = Number(fee_override) || 0;
+    return { plan: null, topic: null, rate: null, fee_options: [],
+      total: pay, fee: pay, client_pay: pay, subsidy_amount: 0, self_pay: pay, venue_fee: 0,
+      share_base: pay, counselor_share: 0, share_mode: 'percent',
+      session_minutes: Number(getSetting('session_minutes', '50')), subsidy_program: '' };
   }
   const topic = getTopic(topic_id);
   const rate = getRate(plan.id, counselor_id, topic_id);
@@ -50,28 +58,38 @@ function resolveFee({ plan_id, topic_id, counselor_id, fee_choice, fee_override 
   // 可選金額方案（伴侶／家族）：以預約時挑選的金額為準，但只接受設定裡列出的選項，
   // 避免前端被改參數後送進任意金額。
   const options = parseOptions((topic && topic.fee_options) || plan.fee_options);
-  let fee;
-  if (fee_override !== undefined && fee_override !== '' && fee_override !== null) {
-    fee = Number(fee_override) || 0;
-  } else if (plan.fee_mode === 'choice' && options.length) {
+  let total = (rate && rate.fee) || (topic && topic.fee) || plan.fee;
+  if (plan.fee_mode === 'choice' && options.length) {
     const picked = Number(fee_choice) || 0;
-    fee = options.includes(picked) ? picked : ((rate && rate.fee) || (topic && topic.fee) || plan.fee);
-  } else {
-    fee = (rate && rate.fee) || (topic && topic.fee) || plan.fee;
+    if (options.includes(picked)) total = picked;
   }
-  fee = Math.max(0, Math.round(fee));
+  const subsidy = Math.min(plan.subsidy_amount || 0, total);
+  let clientPay = Math.max(0, total - subsidy);
+  // 櫃檯手動指定金額時，改的是「個案要付多少」，方案給付不動
+  if (fee_override !== undefined && fee_override !== '' && fee_override !== null) {
+    clientPay = Math.max(0, Math.round(Number(fee_override) || 0));
+    total = subsidy + clientPay;
+  }
+  total = Math.max(0, Math.round(total));
 
-  const subsidy = Math.min(plan.subsidy_amount || 0, fee);
+  // 場地費全額歸所方，不進心理師的抽成基數
+  const venue = Math.min(plan.venue_fee || 0, total);
+  const shareBase = Math.max(0, total - venue);
   const shareMode = (rate && rate.share_mode) || plan.share_mode || 'percent';
   const share = shareMode === 'fixed'
     ? Math.round((rate && rate.share_fixed) || plan.share_fixed || 0)
-    : Math.round(fee * ((rate && rate.share_mode ? rate.share_percent : plan.share_percent) || 0));
+    : Math.round(shareBase * ((rate && rate.share_mode ? rate.share_percent : plan.share_percent) || 0));
 
   return {
-    plan, topic, rate, fee,
+    plan, topic, rate,
     fee_options: options,
+    total,
+    fee: clientPay,            // 對外一律以「個案要付的錢」為準
+    client_pay: clientPay,
+    self_pay: clientPay,
     subsidy_amount: subsidy,
-    self_pay: fee - subsidy,
+    venue_fee: venue,
+    share_base: shareBase,
     counselor_share: share,
     share_mode: shareMode,
     session_minutes: plan.session_minutes || Number(getSetting('session_minutes', '50')),

@@ -27,8 +27,9 @@ const TOPICS = ['自我探索', '情緒困擾', '壓力調適', '親密關係', 
   '人際關係', '生涯議題', '心理疾患', '創傷與失落', '職場議題', '其他'];
 
 // ---- 諮商方案（表單「諮商方案」）----
-// subsidy 類方案：total 為方案總額，個案自付 200 元場地費，其餘由方案給付。
-const SELF_PAY_FEE = 200;
+// subsidy 類方案：fee 為方案總額，個案只付 200 元場地費（VENUE_FEE），其餘由方案給付。
+// 場地費全額歸所方，不列入心理師抽成基數（抽成以方案給付的 1600 為基數）。
+const VENUE_FEE = 200;
 const PLANS = [
   { name: '個別心理諮商（50 分鐘）', kind: 'self', appt_type: 'individual',
     fee: 2000, session_minutes: 50 },
@@ -88,7 +89,7 @@ for (const c of COUNSELORS) {
 const PLAN_COLS = ['name', 'kind', 'appt_type', 'fee_mode', 'fee', 'fee_options', 'subsidy_amount',
   'subsidy_program', 'session_minutes', 'age_min', 'age_max', 'quota_per_year',
   'counselor_week_limit', 'counselor_month_limit', 'share_mode', 'share_percent', 'share_fixed',
-  'portal_visible', 'require_review', 'note', 'intro', 'sort', 'active', 'default_mode'];
+  'portal_visible', 'require_review', 'note', 'intro', 'sort', 'active', 'default_mode', 'venue_fee'];
 
 const findPlan = db.prepare('SELECT * FROM service_plans WHERE name = ?');
 const insTopic = db.prepare('INSERT INTO plan_topics (plan_id, name, sort) VALUES (?,?,?)');
@@ -103,7 +104,8 @@ PLANS.forEach((p, idx) => {
     fee: p.fee,
     fee_options: p.fee_options || '',
     // 補助方案：個案只付場地費，其餘由方案給付
-    subsidy_amount: p.kind === 'subsidy' ? Math.max(0, p.fee - SELF_PAY_FEE) : 0,
+    subsidy_amount: p.kind === 'subsidy' ? Math.max(0, p.fee - VENUE_FEE) : 0,
+    venue_fee: p.kind === 'subsidy' ? VENUE_FEE : 0,
     subsidy_program: p.subsidy_program || '',
     session_minutes: p.session_minutes || 0,
     age_min: p.age_min || 0,

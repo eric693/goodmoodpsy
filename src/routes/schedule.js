@@ -124,6 +124,7 @@ router.post('/appointments', requireStaff('schedule'), (req, res) => {
     fee_choice: b.fee_choice,
     fee_override: b.fee !== undefined && b.fee !== '' ? b.fee : undefined
   });
+  // fee 存「個案要付的錢」；方案給付的部分另存 subsidy_amount，兩者相加才是總額
   const fee = b.plan_id || (b.fee !== undefined && b.fee !== '')
     ? quote.fee
     : Number(getSetting(b.type === 'intake' ? 'intake_fee' : 'default_fee', '2000'));
@@ -144,12 +145,12 @@ router.post('/appointments', requireStaff('schedule'), (req, res) => {
   const roomId = Number(b.room_id) || plans.pickRoom({ date: b.date, start_time: b.start_time, end_time });
 
   const info = db.prepare(`INSERT INTO appointments
-    (client_id, counselor_id, room_id, date, start_time, end_time, type, mode, status, fee, package_id,
+    (client_id, counselor_id, room_id, date, start_time, end_time, type, mode, status, fee, subsidy_amount, package_id,
      plan_id, topic_id, counselor_share, source, note, meeting_url, created_by)
-    VALUES (?,?,?,?,?,?,?,?,'booked',?,?,?,?,?,?,?,?,?)`).run(
+    VALUES (?,?,?,?,?,?,?,?,'booked',?,?,?,?,?,?,?,?,?,?)`).run(
     client.id, Number(b.counselor_id), roomId, b.date, b.start_time, end_time,
     b.type || (quote.plan ? quote.plan.appt_type : 'individual'), b.mode || 'onsite',
-    fee, Number(b.package_id) || null,
+    fee, quote.subsidy_amount, Number(b.package_id) || null,
     Number(b.plan_id) || null, Number(b.topic_id) || null, quote.counselor_share,
     b.source || 'staff', b.note || '', meeting_url, req.user.id);
   audit('staff', req.user.id, req.user.name, '新增預約', client.code,
@@ -193,9 +194,10 @@ router.put('/appointments/:id', requireStaff('schedule'), (req, res) => {
   const roomId = Number(b.room_id)
     || plans.pickRoom({ date: b.date, start_time: b.start_time, end_time: b.end_time, exclude_appointment_id: a.id });
   db.prepare(`UPDATE appointments SET counselor_id = ?, room_id = ?, date = ?, start_time = ?, end_time = ?,
-    type = ?, mode = ?, fee = ?, plan_id = ?, topic_id = ?, counselor_share = ?, note = ?, meeting_url = ? WHERE id = ?`).run(
+    type = ?, mode = ?, fee = ?, subsidy_amount = ?, plan_id = ?, topic_id = ?, counselor_share = ?,
+    note = ?, meeting_url = ? WHERE id = ?`).run(
     Number(b.counselor_id), roomId, b.date, b.start_time, b.end_time,
-    b.type, b.mode, quote.fee, Number(b.plan_id) || null, Number(b.topic_id) || null,
+    b.type, b.mode, quote.fee, quote.subsidy_amount, Number(b.plan_id) || null, Number(b.topic_id) || null,
     quote.counselor_share, b.note || '', meeting_url, a.id);
   audit('staff', req.user.id, req.user.name, '修改預約', String(a.id));
   res.json({ ok: true });
@@ -241,20 +243,20 @@ router.post('/appointments/:id/status', requireStaff('schedule'), (req, res) => 
         // 由方案扣次；扣完自動標記用畢
         db.prepare('UPDATE packages SET sessions_used = sessions_used + 1 WHERE id = ?').run(a.package_id);
         db.prepare(`UPDATE packages SET status = 'used_up' WHERE id = ? AND sessions_used >= sessions_total`).run(a.package_id);
-      } else if (a.fee > 0) {
-        // 方案別決定付款人與補助拆帳：補助款由方案支付，只有自付差額要向個案收
+      } else if (a.fee > 0 || a.subsidy_amount > 0) {
+        // 收費單只跟個案收「他要付的錢」（補助方案就是場地費），
+        // 由方案給付的部分另記在 subsidy_amount 供核銷，不會讓個案看到一張 1800 的帳單
         const q = plans.resolveFee({ plan_id: a.plan_id, topic_id: a.topic_id,
           counselor_id: a.counselor_id, fee_override: a.fee });
-        const subsidy = Math.min(q.subsidy_amount, a.fee);
         db.prepare(`INSERT INTO invoices (client_id, appointment_id, date, item, amount, status, payer,
             plan_id, topic_id, subsidy_program, subsidy_amount, self_pay)
                     VALUES (?,?,?,?,?, 'unpaid', ?,?,?,?,?,?)`).run(
           a.client_id, a.id, a.date,
-          `${a.date} ${q.plan ? q.plan.name : '晤談費用'}`, a.fee,
+          `${a.date} ${q.plan ? q.plan.name : '晤談費用'}${a.subsidy_amount ? '（自付場地費）' : ''}`, a.fee,
           q.plan && q.plan.kind === 'subsidy'
             ? getSetting('payer_type_default', '自費').replace(/^自費$/, '心理健康支持方案')
             : getSetting('payer_type_default', '自費'),
-          a.plan_id || null, a.topic_id || null, q.subsidy_program, subsidy, a.fee - subsidy);
+          a.plan_id || null, a.topic_id || null, q.subsidy_program, a.subsidy_amount || 0, a.fee);
         // 心理師報酬在結案當下鎖定，日後改方案費率不會回頭改動已結算的月份
         if (!a.counselor_share) {
           db.prepare('UPDATE appointments SET counselor_share = ? WHERE id = ?').run(q.counselor_share, a.id);

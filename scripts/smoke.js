@@ -695,9 +695,11 @@ function startServer() {
   });
   await test('補助方案取價含方案給付與自付拆分', async () => {
     const q = await admin.ok('GET', `/api/plan-quote?plan_id=${youthPlanId}&topic_id=${youthTopicId}`);
-    equal(q.fee, 1800, '金額');
+    equal(q.total, 1800, '方案總額');
+    equal(q.fee, 200, '個案要付的錢（畫面上的費用欄位）');
     equal(q.subsidy_amount, 1600, '方案給付');
-    equal(q.self_pay, 200, '個案自付場地費');
+    equal(q.venue_fee, 200, '場地費');
+    equal(q.share_base, 1600, '抽成基數應扣掉場地費');
   });
   await test('個案年度額度用滿後擋下第四次，並提示已用次數', async () => {
     const clients = await admin.ok('GET', '/api/clients');
@@ -822,7 +824,8 @@ function startServer() {
     assert(r.room_id, '應自動指派諮商室');
     const appt = (await admin.ok('GET', `/api/appointments?client_id=${c.client_id}`))[0];
     equal(appt.plan_id, youthPlanId, '方案別');
-    equal(appt.fee, 1800, '依方案帶入金額');
+    equal(appt.fee, 200, '個案只需付場地費');
+    equal(appt.subsidy_amount, 1600, '方案給付另記');
   });
   await test('個案端看不到諮商室', async () => {
     const rows = await admin.ok('GET', '/api/bookings');
@@ -877,6 +880,32 @@ function startServer() {
       const detail = await admin.ok('GET', `/api/plan-income/${r.counselor_id}/detail?month=${ymd(new Date()).slice(0, 7)}`);
       assert(detail.counselor, '應可取得明細');
     }
+  });
+  await test('補助方案：抽成以扣掉場地費後的金額計，場地費歸所方', async () => {
+    const lins = (await admin.ok('GET', '/api/users')).find(u => u.username === 'lin');
+    const clients = await admin.ok('GET', '/api/clients');
+    const date = nextWeekday(2, 170);
+    const made = await admin.ok('POST', '/api/appointments', {
+      client_id: clients[0].id, counselor_id: lins.id, date, start_time: '07:00',
+      plan_id: youthPlanId, override: true
+    });
+    await admin.ok('POST', `/api/appointments/${made.id}/status`, { status: 'done' });
+    const appt = (await admin.ok('GET', `/api/appointments?client_id=${clients[0].id}`)).find(a => a.id === made.id);
+    equal(appt.fee, 200, '個案自付');
+    equal(appt.subsidy_amount, 1600, '方案給付');
+    equal(appt.counselor_share, 960, '心理師報酬＝1600 × 60%');
+    // 收費單只跟個案收 200，不會出現 1800 的帳單
+    const inv = (await admin.ok('GET', '/api/invoices')).rows.find(i => i.appointment_id === made.id);
+    equal(inv.amount, 200, '收費單金額');
+    equal(inv.subsidy_amount, 1600, '收費單記錄方案給付');
+    const income = await admin.ok('GET', `/api/plan-income?month=${date.slice(0, 7)}&counselor_id=${lins.id}`);
+    const plan = income.rows[0].plans.find(p => p.plan_id === youthPlanId);
+    equal(plan.gross, 200 + 1600, '服務總額');
+    equal(plan.venue, 200, '場地費');
+    equal(plan.share, 960, '心理師報酬');
+    equal(plan.center, 1800 - 960, '所方淨收（含場地費 200）');
+    await admin.ok('POST', `/api/appointments/${made.id}/status`, { status: 'cancelled' });
+    await admin.del(`/api/appointments/${made.id}`);
   });
   await test('方案人次看板列出各心理師用量', async () => {
     const d = await admin.ok('GET', '/api/plan-board');

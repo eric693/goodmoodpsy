@@ -12,7 +12,7 @@ const router = express.Router();
 const PLAN_FIELDS = ['name', 'kind', 'appt_type', 'fee_mode', 'fee', 'fee_options', 'subsidy_amount',
   'subsidy_program', 'session_minutes', 'age_min', 'age_max', 'quota_per_year',
   'counselor_week_limit', 'counselor_month_limit', 'share_mode', 'share_percent', 'share_fixed',
-  'portal_visible', 'require_review', 'note', 'intro', 'sort', 'active'];
+  'portal_visible', 'require_review', 'note', 'intro', 'sort', 'active', 'default_mode', 'venue_fee'];
 
 function normalizePlan(b, base = {}) {
   const d = { ...base };
@@ -26,13 +26,14 @@ function normalizePlan(b, base = {}) {
   if (pct > 1) pct = pct / 100;
   d.share_percent = Math.min(Math.max(pct, 0), 1);
   d.fee_options = parseOptions(d.fee_options).join(',');
-  for (const n of ['fee', 'subsidy_amount', 'session_minutes', 'age_min', 'age_max', 'quota_per_year',
+  for (const n of ['fee', 'subsidy_amount', 'venue_fee', 'session_minutes', 'age_min', 'age_max', 'quota_per_year',
     'counselor_week_limit', 'counselor_month_limit', 'share_fixed', 'sort']) {
     d[n] = Math.max(0, Math.round(Number(d[n]) || 0));
   }
   for (const n of ['portal_visible', 'require_review', 'active']) d[n] = d[n] ? 1 : 0;
   for (const s of ['subsidy_program', 'note', 'intro']) d[s] = String(d[s] || '');
   d.appt_type = String(d.appt_type || 'individual');
+  d.default_mode = d.default_mode === 'online' ? 'online' : 'onsite';
   return d;
 }
 
@@ -194,7 +195,12 @@ router.get('/plan-quote', requireStaff(), (req, res) => {
       date: q.date || today(), appointment_id: q.appointment_id })
     : { errors: [], warnings: [] };
   res.json({
-    fee: quote.fee, fee_options: quote.fee_options, subsidy_amount: quote.subsidy_amount,
+    fee: quote.fee,                       // 個案要付的錢（畫面上的「費用」欄位）
+    total: quote.total,                   // 方案總額
+    client_pay: quote.client_pay,
+    venue_fee: quote.venue_fee,           // 場地費（所方收入，不列入抽成）
+    share_base: quote.share_base,
+    fee_options: quote.fee_options, subsidy_amount: quote.subsidy_amount,
     self_pay: quote.self_pay, counselor_share: quote.counselor_share,
     session_minutes: quote.session_minutes, subsidy_program: quote.subsidy_program,
     plan_name: quote.plan ? quote.plan.name : '', topic_name: quote.topic ? quote.topic.name : '',
@@ -295,7 +301,7 @@ router.get('/plan-income', requireStaff('reports'), (req, res) => {
     if (!byCounselor.has(id)) {
       byCounselor.set(id, {
         counselor_id: id, counselor_name: name, sessions: 0, no_shows: 0,
-        gross: 0, subsidy: 0, self_pay: 0, share: 0, center: 0,
+        gross: 0, subsidy: 0, self_pay: 0, venue: 0, share: 0, center: 0,
         collected: 0, uncollected: 0, plans: new Map()
       });
     }
@@ -305,29 +311,28 @@ router.get('/plan-income', requireStaff('reports'), (req, res) => {
   for (const a of appts) {
     const row = ensure(a.counselor_id, a.counselor_name);
     const q = resolveFee({ plan_id: a.plan_id, topic_id: a.topic_id, counselor_id: a.counselor_id, fee_override: a.fee });
-    const gross = a.status === 'no_show'
-      ? Math.round((a.fee || 0) * Number(getSetting('no_show_fee_rate', '0.5')))
-      : (a.fee || 0);
-    // 未到只收部分費用，心理師報酬依同比例計（所方可另行議定，這裡採一致比例）
-    const share = a.status === 'no_show'
-      ? Math.round((a.counselor_share || q.counselor_share) * Number(getSetting('no_show_fee_rate', '0.5')))
-      : (a.counselor_share || q.counselor_share);
-    const subsidy = a.status === 'no_show' ? 0 : Math.min(q.subsidy_amount, gross);
+    const rate = a.status === 'no_show' ? Number(getSetting('no_show_fee_rate', '0.5')) : 1;
+    // 未到只收部分費用：個案自付與方案給付都按同一比例計，心理師報酬亦然
+    const clientPay = Math.round((a.fee || 0) * rate);
+    const subsidy = Math.round((a.subsidy_amount || 0) * rate);
+    const gross = clientPay + subsidy;
+    const venue = Math.round((q.venue_fee || 0) * rate);
+    const share = Math.round((a.counselor_share || q.counselor_share) * rate);
 
     if (a.status === 'no_show') row.no_shows++; else row.sessions++;
-    row.gross += gross; row.subsidy += subsidy; row.self_pay += gross - subsidy;
-    row.share += share; row.center += gross - share;
+    row.gross += gross; row.subsidy += subsidy; row.self_pay += clientPay;
+    row.venue += venue; row.share += share; row.center += gross - share;
 
     const key = a.plan_id || 0;
     if (!row.plans.has(key)) {
       row.plans.set(key, {
         plan_id: a.plan_id, plan_name: a.plan_name || '未指定方案', plan_kind: a.plan_kind || '',
-        sessions: 0, gross: 0, subsidy: 0, self_pay: 0, share: 0, center: 0
+        sessions: 0, gross: 0, subsidy: 0, self_pay: 0, venue: 0, share: 0, center: 0
       });
     }
     const pr = row.plans.get(key);
-    pr.sessions++; pr.gross += gross; pr.subsidy += subsidy;
-    pr.self_pay += gross - subsidy; pr.share += share; pr.center += gross - share;
+    pr.sessions++; pr.gross += gross; pr.subsidy += subsidy; pr.self_pay += clientPay;
+    pr.venue += venue; pr.share += share; pr.center += gross - share;
   }
 
   for (const inv of invoices) {
@@ -353,9 +358,10 @@ router.get('/plan-income', requireStaff('reports'), (req, res) => {
   const total = rows.reduce((acc, r) => ({
     sessions: acc.sessions + r.sessions, no_shows: acc.no_shows + r.no_shows,
     gross: acc.gross + r.gross, subsidy: acc.subsidy + r.subsidy, self_pay: acc.self_pay + r.self_pay,
-    share: acc.share + r.share, center: acc.center + r.center,
+    venue: acc.venue + r.venue, share: acc.share + r.share, center: acc.center + r.center,
     collected: acc.collected + r.collected, uncollected: acc.uncollected + r.uncollected
-  }), { sessions: 0, no_shows: 0, gross: 0, subsidy: 0, self_pay: 0, share: 0, center: 0, collected: 0, uncollected: 0 });
+  }), { sessions: 0, no_shows: 0, gross: 0, subsidy: 0, self_pay: 0, venue: 0, share: 0, center: 0,
+    collected: 0, uncollected: 0 });
 
   res.json({ month, rows, total });
 });
@@ -366,7 +372,7 @@ router.get('/plan-income/:counselorId/detail', requireStaff('reports'), (req, re
   const cid = Number(req.params.counselorId);
   const u = db.prepare('SELECT id, name, title FROM users WHERE id = ?').get(cid);
   if (!u) return res.status(404).json({ error: '找不到此心理師' });
-  const rows = db.prepare(`SELECT a.date, a.start_time, a.end_time, a.status, a.fee, a.counselor_share,
+  const rows = db.prepare(`SELECT a.date, a.start_time, a.end_time, a.status, a.fee, a.subsidy_amount, a.counselor_share,
       c.code AS client_code, c.name AS client_name, p.name AS plan_name, t.name AS topic_name,
       (SELECT i.status FROM invoices i WHERE i.appointment_id = a.id AND i.status != 'void' LIMIT 1) AS invoice_status
     FROM appointments a
@@ -382,7 +388,7 @@ router.get('/plan-income/:counselorId/detail', requireStaff('reports'), (req, re
   });
   res.json({
     month, counselor: u, rows: detail,
-    total_gross: detail.reduce((a, b) => a + (b.fee || 0), 0),
+    total_gross: detail.reduce((a, b) => a + (b.fee || 0) + (b.subsidy_amount || 0), 0),
     total_share: detail.reduce((a, b) => a + (b.counselor_share || 0), 0),
     center_name: getSetting('center_name')
   });

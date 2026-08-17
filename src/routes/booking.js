@@ -39,7 +39,11 @@ function planPublic(p) {
     session_minutes: p.session_minutes || Number(getSetting('session_minutes', '50')),
     age_min: p.age_min, age_max: p.age_max, quota_per_year: p.quota_per_year,
     default_mode: p.default_mode || 'onsite',
-    subsidy_amount: p.subsidy_amount, self_pay: Math.max(0, p.fee - p.subsidy_amount),
+    subsidy_amount: p.subsidy_amount,
+    // client_pay 才是民眾要付的錢；補助方案就是那筆場地費
+    client_pay: Math.max(0, p.fee - p.subsidy_amount),
+    self_pay: Math.max(0, p.fee - p.subsidy_amount),
+    venue_fee: p.venue_fee || 0,
     intro: p.intro, topics, counselors
   };
 }
@@ -324,12 +328,12 @@ router.post('/bookings/:id/confirm', requireStaff('schedule'), async (req, res) 
   const roomId = Number(body.room_id) || plans.pickRoom({ date, start_time: startTime, end_time: endT });
 
   const info = db.prepare(`INSERT INTO appointments
-    (client_id, counselor_id, room_id, date, start_time, end_time, type, mode, status, fee,
+    (client_id, counselor_id, room_id, date, start_time, end_time, type, mode, status, fee, subsidy_amount,
      plan_id, topic_id, counselor_share, source, note, booking_request_id, created_by)
-    VALUES (?,?,?,?,?,?,?,?,'booked',?,?,?,?,'portal',?,?,?)`).run(
+    VALUES (?,?,?,?,?,?,?,?,'booked',?,?,?,?,?,'portal',?,?,?)`).run(
     client.id, counselorId, roomId, date, startTime, endT,
     (quote.plan && quote.plan.appt_type) || 'individual',
-    b.mode || (quote.plan && quote.plan.default_mode) || 'onsite', quote.fee,
+    b.mode || (quote.plan && quote.plan.default_mode) || 'onsite', quote.fee, quote.subsidy_amount,
     b.plan_id || null, b.topic_id || null, quote.counselor_share,
     b.main_issue ? `線上預約：${b.main_issue}`.slice(0, 300) : '線上預約', b.id, req.user.id);
 
@@ -344,7 +348,7 @@ router.post('/bookings/:id/confirm', requireStaff('schedule'), async (req, res) 
   const payload = {
     date, start_time: startTime, end_time: endT, counselor_name: counselor ? counselor.name : '',
     plan_name: quote.plan ? quote.plan.name : '', topic_name: quote.topic ? quote.topic.name : '',
-    mode: b.mode, fee: quote.fee, self_pay: quote.self_pay,
+    mode: b.mode, fee: quote.fee, self_pay: quote.self_pay, subsidy_amount: quote.subsidy_amount,
     meeting_url: b.mode === 'online' && counselor ? counselor.meeting_room_url : ''
   };
   const notify = await line.pushFlex({
