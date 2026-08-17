@@ -286,6 +286,7 @@ router.get('/meta', requireStaff(), (req, res) => {
     })),
     line_enabled: !!getSetting('line_channel_token').trim(),
     intern_review: getSetting('intern_review_enabled', '0') === '1',
+    hidden_modules: listSetting('hidden_modules'),
     room_hide_from_client: getSetting('room_hide_from_client', '1') === '1'
   };
   for (const k of ['counseling_types', 'approach_options', 'source_options', 'close_reasons', 'risk_types',

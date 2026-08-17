@@ -688,8 +688,27 @@ ensureColumns('service_plans', {
   default_mode: "TEXT NOT NULL DEFAULT 'onsite'"
 });
 ensureColumns('booking_requests', {
-  topic_other: "TEXT NOT NULL DEFAULT ''"            // 主題選「其他」時的自填內容
+  topic_other: "TEXT NOT NULL DEFAULT ''",           // 主題選「其他」時的自填內容
+  // 以下比照所內原本的 Google 預約表單欄位，建檔時可直接帶進個案基本資料
+  address: "TEXT NOT NULL DEFAULT ''",
+  id_no: "TEXT NOT NULL DEFAULT ''",                 // 身分證字號（補助方案核銷與通報需要）
+  emergency_name: "TEXT NOT NULL DEFAULT ''",
+  emergency_phone: "TEXT NOT NULL DEFAULT ''",
+  emergency_relationship: "TEXT NOT NULL DEFAULT ''",
+  external_id: "TEXT NOT NULL DEFAULT ''"            // 來自 Google 表單時的回應識別碼（避免重複匯入）
 });
+
+// LINE 一次性預約連結：個案在官方帳號輸入「預約」即取得專屬網址，
+// 網址帶的是隨機 token 而非 userId（userId 不該出現在網址列與瀏覽紀錄裡），
+// 表單開啟時再以 token 換回 userId，送出後預約結果才推得回同一個人。
+db.exec(`CREATE TABLE IF NOT EXISTS booking_links (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token TEXT NOT NULL UNIQUE,
+  line_user_id TEXT NOT NULL DEFAULT '',
+  used_at TEXT NOT NULL DEFAULT '',
+  expires_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);`);
 ensureColumns('appointments', {
   plan_id: 'INTEGER REFERENCES service_plans(id)',   // 方案別（收費與抽成依此計算）
   topic_id: 'INTEGER REFERENCES plan_topics(id)',    // 方案下的主題
@@ -715,6 +734,7 @@ ensureColumns('invoices', {
     line_channel_token: '',
     line_channel_secret: '',
     line_official_name: '',
+    line_official_id: '',              // 官方帳號 ID（@ 開頭），用於加好友連結與對外說明
     line_add_friend_url: '',            // 加好友連結（印在預約完成頁）
     line_reminder_hours: '24',          // 晤談前幾小時推提醒
     line_counselor_daily_time: '20:00', // 每日推播心理師隔日行程的時間
@@ -722,6 +742,10 @@ ensureColumns('invoices', {
     line_flex_color: '#0e7c7b',         // Flex 卡片主色
     // ---- 線上預約表單 ----
     booking_form_enabled: '1',
+    // Google 表單同步：Apps Script 以此密鑰呼叫 /api/integrations/google-form，
+    // 表單填完即寫入後台的「線上預約申請」。留空表示不開放同步。
+    google_form_secret: '',
+    google_form_url: '',
     booking_lead_days: '1',             // 最快可約幾天後
     booking_max_days: '45',             // 最遠可約幾天後
     booking_slot_step: '30',            // 表單上時段間隔（分鐘）
@@ -742,6 +766,9 @@ ensureColumns('invoices', {
     // 實習心理師督導覆核：所內目前沒有實習生，預設關閉整套覆核流程；
     // 日後收實習生時把這裡改成 1，紀錄覆核頁與相關欄位就會回來。
     intern_review_enabled: '0',
+    // 所內暫不使用的模組（逗號分隔的頁面代碼）：導覽列不顯示、總覽也不出現相關區塊。
+    // 需要時把代碼從這裡移除即可回復，資料與 API 都還在。
+    hidden_modules: 'groups,hr,supervision,partners,overdue,risk,safety',
     receipt_footer: '本收據為心理諮商服務費用憑證，請妥善保存。',
     receipt_title_default: '心理諮商服務費收據'
   };

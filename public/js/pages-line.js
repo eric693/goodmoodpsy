@@ -168,7 +168,8 @@ const LINEPAGE = {
           ${UI.input('line_channel_token', 'Channel access token', { value: s.line_channel_token, full: true })}
           ${UI.input('line_channel_secret', 'Channel secret', { value: s.line_channel_secret, full: true })}
           ${UI.input('line_official_name', '官方帳號名稱', { value: s.line_official_name })}
-          ${UI.input('line_add_friend_url', '加好友連結', { value: s.line_add_friend_url })}
+          ${UI.input('line_official_id', '官方帳號 ID（@ 開頭）', { value: s.line_official_id || '' })}
+          ${UI.input('line_add_friend_url', '加好友連結', { value: s.line_add_friend_url, full: true })}
         </div>
         <div class="toolbar" style="margin-top:10px">
           <button class="btn" id="save-cred">儲存憑證</button>
@@ -342,3 +343,86 @@ const LINEPAGE = {
     };
   }
 };
+
+// ---- Google 表單同步 ----
+// 所內原本的 Google 預約表單填完後，由表單的 Apps Script 把回應推到後台，
+// 直接變成「線上預約申請」，櫃檯不必再手動謄一次。
+App.page('gform', {
+  title: 'Google 表單同步',
+  sub: '原本的 Google 預約表單填完後，自動寫入後台的線上預約申請',
+  module: 'settings',
+  async render(el) {
+    const d = await GET('/integrations/google-form');
+    el.innerHTML = `
+      <div class="card"><h3>狀態
+        ${d.enabled ? UI.tag('已啟用', 'ok') : UI.tag('尚未設定密鑰', 'warn')}
+        <span style="font-size:13px;font-weight:400;color:var(--muted)">已同步 ${d.total} 筆</span></h3>
+        <div class="form-grid">
+          ${UI.input('endpoint', '接收網址（貼在 Apps Script 內，不必手動改）', { value: d.endpoint, full: true })}
+          ${UI.input('secret', '共用密鑰', { value: d.secret, full: true })}
+          ${UI.input('form_url', 'Google 表單網址（備查）', { value: d.form_url, full: true })}
+        </div>
+        <div class="toolbar" style="margin-top:10px">
+          <button class="btn secondary" id="regen">重新產生密鑰</button>
+          <div class="spacer"></div>
+          <button class="btn" id="save">儲存</button>
+        </div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+          密鑰等同一把鑰匙：換了之後要把下方程式碼重新貼回 Apps Script，同步才會繼續。
+        </div>
+      </div>
+
+      <div class="card"><h3>設定步驟</h3>
+        <ol style="font-size:13.5px;line-height:2;padding-left:20px;margin:0 0 10px">
+          <li>打開 Google 表單 → 右上「⋮」→ <strong>指令碼編輯器</strong></li>
+          <li>把下方程式碼整段貼上並儲存</li>
+          <li>左側「觸發條件 → 新增觸發條件」：函式選 <code>onFormSubmit</code>、
+              事件來源「來自表單」、類型「表單提交時」，儲存並授權</li>
+          <li>要把先前已收到的回應一起帶進來，就在編輯器選 <code>backfill</code> 執行一次
+              （重複執行不會產生重複資料）</li>
+        </ol>
+        <textarea id="script" readonly rows="18"
+          style="width:100%;font-family:ui-monospace,monospace;font-size:12px;min-height:340px">${UI.esc(d.script)}</textarea>
+        <div class="toolbar" style="margin-top:8px"><div class="spacer"></div>
+          <button class="btn secondary" id="copy">複製程式碼</button></div>
+      </div>
+
+      <div class="card"><h3>最近同步進來的預約</h3>
+        ${UI.table(['時間', '姓名', '方案', '心理師', '狀態', '備註'], d.recent.map(r => `<tr>
+          <td>${UI.esc(r.created_at.slice(5, 16))}</td>
+          <td>${UI.esc(r.name)}</td>
+          <td>${UI.esc(r.plan_name || UI.tag('需人工指定', 'warn'))}</td>
+          <td>${UI.esc(r.counselor_name || '由諮商所安排')}</td>
+          <td>${UI.tag(BOOKING_STATUS[r.status] || r.status, r.status === 'confirmed' ? 'ok' : '')}</td>
+          <td style="font-size:12.5px;color:var(--muted)">${UI.esc(r.reply_note || '')}</td>
+        </tr>`), '尚未收到 Google 表單的回應')}
+        <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+          同步進來的申請一律進「線上預約申請」頁，方案／主題／心理師以名稱自動對應，
+          對不到的會標示「需人工指定」，資料不會遺失。
+        </div>
+      </div>`;
+
+    el.querySelector('#save').onclick = async () => {
+      await PUT('/integrations/google-form', {
+        secret: el.querySelector('[name=secret]').value.trim(),
+        form_url: el.querySelector('[name=form_url]').value.trim()
+      });
+      UI.toast('已儲存');
+      App.go('gform');
+    };
+    el.querySelector('#regen').onclick = async () => {
+      if (!await UI.confirm('重新產生密鑰後，舊的 Apps Script 會同步失敗，需重貼一次程式碼。確定嗎？')) return;
+      await PUT('/integrations/google-form', { regenerate: true });
+      UI.toast('已產生新密鑰');
+      App.go('gform');
+    };
+    el.querySelector('#copy').onclick = async () => {
+      const ta = el.querySelector('#script');
+      ta.select();
+      try {
+        await navigator.clipboard.writeText(ta.value);
+        UI.toast('已複製，貼到 Apps Script 即可');
+      } catch { UI.toast('請按 Ctrl/Cmd + C 複製', true); }
+    };
+  }
+});

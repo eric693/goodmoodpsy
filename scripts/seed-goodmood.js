@@ -17,7 +17,7 @@ const COUNSELORS = [
   { username: 'tsai', name: '蔡琳', title: '', license_type: '諮商心理師' },
   { username: 'wu-ty', name: '吳宗怡', title: '', license_type: '諮商心理師' },
   { username: 'wang-mc', name: '王敏慈', title: '', license_type: '諮商心理師' },
-  { username: 'fang', name: '方鋮丞', title: '', license_type: '臨床心理師' },
+  { username: 'fang', name: '方鋕丞', title: '', license_type: '臨床心理師' },
   { username: 'lan', name: '藍挹丰', title: '', license_type: '諮商心理師', online_only: 1,
     intro: '僅接受線上通訊諮商' }
 ];

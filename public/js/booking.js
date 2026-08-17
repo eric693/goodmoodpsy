@@ -17,7 +17,10 @@ const BK = {
       return;
     }
     // 從 LINE 進來時網址會帶 userId，用於把預約結果直接推播回 LINE
-    BK.lineUserId = new URLSearchParams(location.search).get('line_user_id') || '';
+    // 從 LINE 官方帳號的專屬連結進來時帶 bk=token，送出時由後端換回 LINE 身分
+    const qs = new URLSearchParams(location.search);
+    BK.bookingToken = qs.get('bk') || '';
+    BK.lineUserId = qs.get('line_user_id') || '';
     if (!BK.cfg.enabled) {
       document.getElementById('app').innerHTML = `<div class="bk-card">
         <h2>線上預約暫停開放</h2>
@@ -83,8 +86,10 @@ const BK = {
         <h2><span class="step">4</span>選擇時段</h2>
         <div id="slots">請先選擇心理師</div>
         <div class="bk-field" style="margin-top:10px">
-          <label>其他可配合的時段（選填）</label>
-          <input id="alt_note" placeholder="例：平日晚上、週六上午皆可">
+          <label>欲安排之諮商時間 *</label>
+          <textarea id="alt_note" rows="2"
+            placeholder="請給至少三個方便的時段，例：星期一09:00-11:00、星期二14:00-16:00、星期五13:00-17:00"></textarea>
+          <div class="hint">上方選了時段仍建議填寫備選時段，若該時段剛好被約走，我們可以直接安排替代時間。</div>
         </div>
       </div>
 
@@ -95,10 +100,16 @@ const BK = {
           <div class="hint">預約結果與提醒會以電話或 LINE 通知您。</div></div>
         <div class="bk-field"><label>出生日期 ${BK.cfg.require_birth ? '*' : ''}</label><input id="birth_date" type="date">
           <div class="hint">用於核對方案資格（如補助方案的年齡限制）。</div></div>
-        <div class="bk-field"><label>性別</label>
-          <select id="gender"><option value="">不方便透露</option><option value="female">女</option>
+        <div class="bk-field"><label>生理性別 *</label>
+          <select id="gender"><option value="">請選擇</option><option value="female">女</option>
             <option value="male">男</option><option value="other">其他</option></select></div>
-        <div class="bk-field"><label>Email（選填）</label><input id="email" type="email" autocomplete="email"></div>
+        <div class="bk-field"><label>信箱 *</label><input id="email" type="email" autocomplete="email"></div>
+        <div class="bk-field"><label>地址 *</label><input id="address" autocomplete="street-address"></div>
+        <div class="bk-field"><label>身分證字號 *</label><input id="id_no" placeholder="A123456789">
+          <div class="hint">補助方案核銷與依法通報時需要；本所依個資法保管，不作其他用途。</div></div>
+        <div class="bk-field"><label>緊急聯絡人 *</label><input id="emergency_name"></div>
+        <div class="bk-field"><label>緊急聯絡人電話 *</label><input id="emergency_phone" inputmode="numeric"></div>
+        <div class="bk-field"><label>與緊急聯絡人的關係 *</label><input id="emergency_relationship" placeholder="例：配偶、父母"></div>
         <div class="bk-field" id="partner-row" style="display:none"><label>同行者姓名與關係</label>
           <input id="partner_name" placeholder="例：王小明（配偶）"></div>
         <div class="bk-field"><label>想談的困擾（選填）</label>
@@ -236,18 +247,34 @@ const BK = {
     };
     err.textContent = '';
     if (!BK.sel.plan) { err.textContent = '請選擇諮商方案'; return; }
+    const required = [['name', '姓名'], ['phone', '手機'], ['email', '信箱'], ['gender', '生理性別'],
+      ['birth_date', '出生年月日'], ['address', '地址'], ['id_no', '身分證字號'],
+      ['emergency_name', '緊急聯絡人'], ['emergency_phone', '緊急聯絡人電話'],
+      ['emergency_relationship', '與緊急聯絡人的關係']];
+    for (const [id, label] of required) {
+      if (!(document.getElementById(id).value || '').trim()) { err.textContent = `請填寫${label}`; return; }
+    }
+    // 沒挑到具體時段時，一定要留可配合的時間，櫃檯才排得下去
+    if (!BK.sel.date && !(document.getElementById('alt_note').value || '').trim()) {
+      err.textContent = '請填寫欲安排之諮商時間（至少三個方便的時段）';
+      return;
+    }
     btn.disabled = true;
     try {
       const body = {
         name: val('name'), phone: val('phone'), email: val('email'),
         gender: val('gender'), birth_date: val('birth_date'),
+        address: val('address'), id_no: val('id_no'),
+        emergency_name: val('emergency_name'), emergency_phone: val('emergency_phone'),
+        emergency_relationship: val('emergency_relationship'),
         plan_id: BK.sel.plan.id, topic_id: BK.sel.topic, topic_other: val('topic_other'),
         counselor_id: BK.sel.counselor, date: BK.sel.date, start_time: BK.sel.time,
         alt_note: val('alt_note'), fee_choice: BK.sel.fee,
         partner_name: val('partner_name'), main_issue: val('main_issue'),
         expectation: val('expectation'),
         consent: document.getElementById('consent').checked,
-        line_user_id: BK.lineUserId, source: BK.lineUserId ? 'line' : 'web'
+        booking_token: BK.bookingToken,
+        line_user_id: BK.lineUserId, source: (BK.bookingToken || BK.lineUserId) ? 'line' : 'web'
       };
       const r = await fetch('/api/public/bookings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)

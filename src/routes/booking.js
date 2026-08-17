@@ -57,6 +57,7 @@ router.get('/public/booking-config', publicRead, (req, res) => {
     privacy: getSetting('booking_privacy'),
     crisis_note: getSetting('ui_crisis_note'),
     line_add_friend_url: getSetting('line_add_friend_url'),
+    line_official_id: getSetting('line_official_id'),
     lead_days: Number(getSetting('booking_lead_days', '1')),
     max_days: Number(getSetting('booking_max_days', '45')),
     require_birth: getSetting('booking_require_birth', '1') === '1',
@@ -161,6 +162,16 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
   const quote = plans.resolveFee({ plan_id: plan.id, topic_id: topic ? topic.id : null,
     counselor_id: counselorId, fee_choice: b.fee_choice });
 
+  // 從 LINE 官方帳號的專屬連結進來的：以 token 換回 userId，不讓 userId 走網址列
+  let lineUserId = String(b.line_user_id || '').trim();
+  if (b.booking_token) {
+    const link = db.prepare('SELECT * FROM booking_links WHERE token = ?').get(String(b.booking_token));
+    if (link && (!link.expires_at || link.expires_at >= today())) {
+      lineUserId = link.line_user_id;
+      db.prepare('UPDATE booking_links SET used_at = ? WHERE id = ?').run(nowStamp(), link.id);
+    }
+  }
+
   const info = db.prepare(`INSERT INTO booking_requests
     (name, phone, email, gender, birth_date, is_new, client_id, plan_id, topic_id, counselor_id,
      date, start_time, alt_note, mode, fee_choice, partner_name, main_issue, expectation,
@@ -170,9 +181,14 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
     client ? 0 : 1, client ? client.id : null, plan.id, topic ? topic.id : null, counselorId || null,
     date, startTime, String(b.alt_note || ''), mode,
     quote.fee, String(b.partner_name || ''), String(b.main_issue || ''), String(b.expectation || ''),
-    b.source === 'line' ? 'line' : 'web', String(b.line_user_id || ''));
-  db.prepare('UPDATE booking_requests SET topic_other = ? WHERE id = ?')
-    .run(String(b.topic_other || '').slice(0, 100), info.lastInsertRowid);
+    lineUserId ? 'line' : 'web', lineUserId);
+  // 地址、身分證字號與緊急聯絡人：比照原本的紙本／Google 表單，建檔時直接帶入個案資料
+  db.prepare(`UPDATE booking_requests SET topic_other = ?, address = ?, id_no = ?,
+      emergency_name = ?, emergency_phone = ?, emergency_relationship = ? WHERE id = ?`).run(
+    String(b.topic_other || '').slice(0, 100), String(b.address || '').slice(0, 200),
+    String(b.id_no || '').trim().toUpperCase().slice(0, 20),
+    String(b.emergency_name || '').slice(0, 50), String(b.emergency_phone || '').slice(0, 30),
+    String(b.emergency_relationship || '').slice(0, 30), info.lastInsertRowid);
 
   const id = info.lastInsertRowid;
   audit('client', client ? client.id : null, name, '線上預約申請', String(id), { plan: plan.name, date, startTime });
@@ -182,9 +198,9 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
     counselor_name: counselor ? counselor.name : '', date, start_time: startTime,
     alt_note: b.alt_note || '', fee: quote.fee, main_issue: b.main_issue || ''
   };
-  // 個案若從 LINE 進來（帶 line_user_id）就回推一張「已收到申請」卡片
-  if (b.line_user_id) {
-    await line.pushFlex({ to: String(b.line_user_id), flex: line.bookingReceivedFlex(payload),
+  // 個案若從 LINE 進來就回推一張「已收到申請」卡片
+  if (lineUserId) {
+    await line.pushFlex({ to: lineUserId, flex: line.bookingReceivedFlex(payload),
       kind: 'booking', client_id: client ? client.id : null });
   }
   // 心理師端提醒：有人指名預約你
@@ -260,10 +276,14 @@ router.post('/bookings/:id/create-client', requireStaff('clients'), (req, res) =
   const adultAge = Number(getSetting('adult_age', '18'));
   const age = ageYears(b.birth_date, today());
   const info = db.prepare(`INSERT INTO clients
-    (code, name, gender, birth_date, phone, email, counselor_id, status, main_issue, source, is_minor, intake_date)
-    VALUES (?,?,?,?,?,?,?,'intake',?,?,?,?)`).run(
+    (code, name, gender, birth_date, phone, email, address, id_no,
+     emergency_name, emergency_phone, emergency_relationship,
+     counselor_id, status, main_issue, source, is_minor, intake_date)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'intake',?,?,?,?)`).run(
     code, b.name, b.gender || '', b.birth_date || '', b.phone, b.email || '',
-    b.counselor_id || null, b.main_issue || '', '線上預約表單',
+    b.address || '', b.id_no || '',
+    b.emergency_name || '', b.emergency_phone || '', b.emergency_relationship || '',
+    b.counselor_id || null, b.main_issue || '', b.source === 'google_form' ? 'Google 預約表單' : '線上預約表單',
     age !== null && age < adultAge ? 1 : 0, today());
   db.prepare('UPDATE booking_requests SET client_id = ? WHERE id = ?').run(info.lastInsertRowid, b.id);
   audit('staff', req.user.id, req.user.name, '由預約申請建檔', code);

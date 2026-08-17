@@ -335,9 +335,9 @@ App.page('client', {
     if (c.can_view_notes && App.can('plans')) tabs.push({ key: 'plans', label: '處遇計畫' });
     if (c.can_view_notes && App.can('notes')) tabs.push({ key: 'reports', label: '衡鑑報告' });
     if (App.can('assessments')) tabs.push({ key: 'assessments', label: '心理量表' });
-    if (App.can('risk')) tabs.push({ key: 'risk', label: '危機事件' });
+    if (App.can('risk') && !App.hidden('risk')) tabs.push({ key: 'risk', label: '危機事件' });
     // 安全計畫保密層級同晤談紀錄，故一併以 can_view_notes 判斷
-    if (App.can('risk') && c.can_view_notes) tabs.push({ key: 'safety', label: '安全計畫' });
+    if (App.can('risk') && c.can_view_notes && !App.hidden('safety')) tabs.push({ key: 'safety', label: '安全計畫' });
     if (c.can_view_notes && App.can('notes')) tabs.push({ key: 'aftercare', label: '轉介與追蹤' });
     if (App.can('consents')) tabs.push({ key: 'consents', label: '同意書' });
     if (App.can('billing')) tabs.push({ key: 'billing', label: '費用與方案' });

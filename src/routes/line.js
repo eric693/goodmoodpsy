@@ -39,18 +39,36 @@ function bindingWelcome(name) {
   });
 }
 
-function helpFlex() {
-  const url = getSetting('booking_public_url', '');
+// 個案在官方帳號要預約時，發給他一條「只屬於這個人」的表單連結：
+// 網址帶的是隨機 token，表單送出時由後端換回 LINE userId，
+// 預約成立、提醒與收據才推得回同一個人，過程中 userId 不會出現在網址列。
+function bookingLinkFor(lineUserId) {
+  const base = getSetting('booking_public_url', '').trim();
+  if (!base) return '';
+  const token = crypto.randomBytes(16).toString('hex');
+  db.prepare('INSERT INTO booking_links (token, line_user_id, expires_at) VALUES (?,?,?)')
+    .run(token, lineUserId, addDays(today(), 3));
+  return `${base}${base.includes('?') ? '&' : '?'}bk=${token}`;
+}
+
+function helpFlex(lineUserId) {
+  const url = lineUserId ? bookingLinkFor(lineUserId) : getSetting('booking_public_url', '');
+  const phone = getSetting('center_phone', '');
   return line.card({
     title: getSetting('center_name'),
     subtitle: '線上預約與提醒',
-    altText: '預約說明',
+    altText: '線上預約',
     body: [
       { type: 'text', size: 'sm', wrap: true, color: '#3b4a55',
-        text: '輸入諮商所提供的 6 碼綁定碼即可接收預約與晤談提醒。' },
-      line.noteBox(`預約請點下方按鈕或來電 ${getSetting('center_phone')}`)
+        text: '點下方「開始預約」填寫表單，送出後我們會在這裡通知您預約結果與晤談提醒。' },
+      line.noteBox('已是本所個案並收到 6 碼綁定碼，直接在此輸入即可接收提醒。\n'
+        + (phone ? `電話預約：${phone}\n` : '')
+        + '如遇立即危機請撥 1925 或 119，本帳號非緊急聯絡管道。')
     ],
-    footer: url ? [line.actionButton('線上預約', { type: 'uri', label: '線上預約', uri: url })] : []
+    footer: [
+      ...(url ? [line.actionButton('開始預約', { type: 'uri', label: '開始預約', uri: url })] : []),
+      ...(phone ? [line.actionButton('打電話給諮商所', { type: 'uri', label: '打電話給諮商所', uri: `tel:${phone}` }, 'secondary')] : [])
+    ]
   });
 }
 
@@ -78,12 +96,13 @@ async function handleEvent(ev) {
       await line.replyMessages(ev.replyToken, [line.textMessage('綁定碼不正確或已失效，請向諮商所索取新的綁定碼。')]);
       return;
     }
-    await line.replyMessages(ev.replyToken, [helpFlex()]);
+    await line.replyMessages(ev.replyToken, [helpFlex(lineUserId)]);
     return;
   }
 
+  // 加好友當下就給預約入口，個案不必再問「要怎麼預約」
   if (ev.type === 'follow') {
-    await line.replyMessages(ev.replyToken, [helpFlex()]);
+    await line.replyMessages(ev.replyToken, [helpFlex(lineUserId)]);
   }
 }
 
@@ -93,7 +112,7 @@ async function handleEvent(ev) {
 // 按「驗證連線」確認打得通，再按「設定 Webhook」把回呼網址寫回 LINE，
 // 綁定與自動回覆就會生效，不必自己到 LINE 後台貼網址。
 
-const LINE_SETTING_KEYS = ['line_official_name', 'line_add_friend_url', 'line_reminder_hours',
+const LINE_SETTING_KEYS = ['line_official_name', 'line_official_id', 'line_add_friend_url', 'line_reminder_hours',
   'line_counselor_daily_enabled', 'line_counselor_daily_time', 'line_flex_color', 'booking_public_url'];
 const MASK = '••••••••';
 

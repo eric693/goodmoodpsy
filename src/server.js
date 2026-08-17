@@ -96,6 +96,7 @@ app.use('/api', require('./routes/plans'));
 app.use('/api', require('./routes/receipts'));
 app.use('/api', require('./routes/booking'));
 app.use('/api', require('./routes/line'));
+app.use('/api', require('./routes/integrations'));
 
 // 手動觸發備份與附件同步：換機、要立刻帶走資料，或剛上傳完重要附件時不必等排程。
 // 僅管理者可用，並回報備份檔與同步的附件數，方便確認真的做了。

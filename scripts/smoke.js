@@ -927,6 +927,85 @@ function startServer() {
     equal(r.status, 200, '應靜默忽略');
   });
 
+  section('Google 表單同步與 LINE 預約入口');
+  await test('未設定密鑰時拒收表單資料', async () => {
+    const r = await fetch(BASE + '/api/integrations/google-form', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: 'x', answers: { 姓名: '測試' } })
+    });
+    equal(r.status, 401, 'HTTP 狀態');
+  });
+  await test('產生密鑰後可收表單回應並自動對應方案與心理師', async () => {
+    const gen = await admin.ok('PUT', '/api/integrations/google-form', { regenerate: true });
+    assert(gen.secret && gen.secret.length > 20, '應產生密鑰');
+    const payload = {
+      secret: gen.secret,
+      response_id: 'smoke-resp-1',
+      answers: {
+        姓名: '陳表單', 信箱: 'form@example.com', 聯絡電話: '0955-123-456', 生理性別: '女',
+        出生年月日: '1995/06/15', 地址: '台南市安平區測試路 1 號', 身分證字號: 'a123456789',
+        緊急聯絡人: '陳母', 緊急聯絡人電話: '0912345000', 緊急聯絡人關係: '母子',
+        '諮商方案 ': '個別心理諮商（50分鐘2000元）',
+        諮商主題: '情緒困擾',
+        '預約之心理師          好心情心理諮商所心理師介紹': '馬健倫 所長/諮商心理師',
+        欲安排之諮商時間: '星期一09:00-11:00、星期三14:00-16:00、星期五13:00-17:00'
+      }
+    };
+    const r = await fetch(BASE + '/api/integrations/google-form', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    assert(r.ok, '同步失敗：' + JSON.stringify(d));
+    equal(d.matched.plan, '個別心理諮商（50 分鐘）', '方案對應');
+    equal(d.matched.topic, '情緒困擾', '主題對應');
+    equal(d.matched.counselor, '馬健倫', '心理師對應');
+    // 同一份回應重送不應產生第二筆
+    const again = await (await fetch(BASE + '/api/integrations/google-form', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    })).json();
+    equal(again.id, d.id, '重送應回同一筆');
+    const rows = await admin.ok('GET', '/api/bookings?status=new');
+    const row = rows.find(x => x.id === d.id);
+    assert(row && row.phone === '0955123456', '電話應正規化');
+    assert(/星期一/.test(row.alt_note), '欲安排時間應存入');
+    // 建檔時把地址、身分證與緊急聯絡人一併帶進個案資料
+    const c = await admin.ok('POST', `/api/bookings/${d.id}/create-client`);
+    const client = await admin.ok('GET', `/api/clients/${c.client_id}`);
+    equal(client.id_no, 'A123456789', '身分證字號');
+    equal(client.emergency_phone, '0912345000', '緊急聯絡人電話');
+    assert(client.address.includes('安平'), '地址');
+  });
+  await test('表單同步設定頁提供 Apps Script 程式碼', async () => {
+    const d = await admin.ok('GET', '/api/integrations/google-form');
+    assert(d.script.includes('onFormSubmit') && d.script.includes(d.endpoint), '應含觸發函式與接收網址');
+    assert(/\/api\/integrations\/google-form$/.test(d.endpoint), '接收網址');
+  });
+  await test('簽章正確的 LINE 訊息會被受理（預約入口）', async () => {
+    await admin.ok('PUT', '/api/line/settings', { line_channel_secret: 'smoke-secret' });
+    const body = JSON.stringify({
+      events: [{ type: 'message', replyToken: 'r1', source: { userId: 'Usmoke001' },
+        message: { type: 'text', text: '預約' } }]
+    });
+    const sig = require('crypto').createHmac('sha256', 'smoke-secret').update(body).digest('base64');
+    const r = await fetch(BASE + '/api/line/webhook', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-line-signature': sig }, body
+    });
+    equal(r.status, 200, 'HTTP 狀態');
+    const d = await r.json().catch(() => ({}));
+    assert(d.ok, '簽章正確時應處理事件');
+    await admin.ok('PUT', '/api/line/settings', { line_channel_secret: '' });
+  });
+  await test('偽造簽章的訊息不會被處理', async () => {
+    await admin.ok('PUT', '/api/line/settings', { line_channel_secret: 'smoke-secret' });
+    const body = JSON.stringify({ events: [{ type: 'message', source: { userId: 'U-bad' }, message: { type: 'text', text: '預約' } }] });
+    const r = await fetch(BASE + '/api/line/webhook', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-line-signature': 'wrong' }, body
+    });
+    equal(r.status, 200, '應靜默忽略');
+    equal((await r.text()).trim(), '', '不應回傳處理結果');
+    await admin.ok('PUT', '/api/line/settings', { line_channel_secret: '' });
+  });
+
   // ---- 結果 ----
   console.log(`\n${'─'.repeat(46)}`);
   if (failures.length) {
