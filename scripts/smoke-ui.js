@@ -27,6 +27,19 @@ const ACCOUNTS = [
 ];
 const PORTAL = { phone: '0912345678', pass: '345678' };
 
+// 頁面資料是非同步載入的，固定等一段時間會隨資料量變多而誤判；
+// 改成等到「載入中」消失為止，逾時才算真的卡住。
+async function settledText(page, selector, timeoutMs = 6000) {
+  const deadline = Date.now() + timeoutMs;
+  let text = '';
+  while (Date.now() < deadline) {
+    text = (await page.textContent(selector).catch(() => '')) || '';
+    if (text.trim() && !text.includes('載入中')) return text;
+    await page.waitForTimeout(200);
+  }
+  return text;
+}
+
 function loadPlaywright() {
   for (const p of CANDIDATES) {
     try {
@@ -74,9 +87,8 @@ function loadPlaywright() {
     if (!navs.length) problems.push(`${acct.label}：登入後看不到任何導覽項目`);
     for (const key of navs) {
       await page.goto(`${BASE}/#${key}`, { waitUntil: 'load' });
-      await page.waitForTimeout(850);
       checked++;
-      const body = (await page.textContent('#page-body').catch(() => '')) || '';
+      const body = await settledText(page, '#page-body');
       if (!body.trim()) problems.push(`${acct.label} / #${key}：頁面空白`);
       else if (body.includes('載入中')) problems.push(`${acct.label} / #${key}：卡在載入中`);
     }
@@ -89,9 +101,8 @@ function loadPlaywright() {
       const tabs = await page.$$eval('[data-tab]', els => els.map(e => e.dataset.tab));
       for (const t of tabs) {
         await page.click(`[data-tab=${t}]`);
-        await page.waitForTimeout(750);
         checked++;
-        const c = (await page.textContent('#tab-body').catch(() => '')) || '';
+        const c = await settledText(page, '#tab-body');
         if (!c.trim()) problems.push(`${acct.label} / 個案頁 ${t}：空白`);
         else if (c.includes('載入中')) problems.push(`${acct.label} / 個案頁 ${t}：卡在載入中`);
       }
