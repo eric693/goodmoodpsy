@@ -179,7 +179,7 @@ App.page('notes-review', {
   title: '紀錄覆核',
   sub: '實習心理師的晤談紀錄需經指定督導覆核後才定稿',
   module: 'notes',
-  visible: () => App.me && (App.me.is_supervisor || App.me.is_intern),
+  visible: () => App.meta.intern_review && App.me && (App.me.is_supervisor || App.me.is_intern),
   async render(el) {
     const d = await GET('/notes/review-queue');
     el.innerHTML = `

@@ -1,0 +1,291 @@
+// 方案設定（方案 × 主題 × 心理師費率）、方案人次看板、心理師月收支
+
+const PLAN_KIND = { self: '自費', subsidy: '補助方案', partner: '合作單位' };
+
+function planDialog(p, onDone) {
+  const isNew = !p;
+  const d = p || {
+    kind: 'self', appt_type: 'individual', fee_mode: 'fixed', fee: App.meta.default_fee || 2000,
+    share_mode: 'percent', share_percent: 0.6, portal_visible: 1, require_review: 1, active: 1
+  };
+  UI.modal({
+    title: isNew ? '新增方案' : `編輯方案：${d.name}`,
+    wide: true,
+    body: `<div class="form-grid">
+      ${UI.input('name', '方案名稱', { value: d.name || '', required: true, full: true })}
+      ${UI.select('kind', '性質', Object.entries(PLAN_KIND), { value: d.kind })}
+      ${UI.select('appt_type', '晤談類型', App.enumOptions('appt_type'), { value: d.appt_type })}
+      ${UI.select('fee_mode', '收費方式', [['fixed', '固定金額'], ['choice', '預約時挑選金額']], { value: d.fee_mode })}
+      ${UI.input('fee', '金額（預設）', { type: 'number', value: d.fee || 0 })}
+      ${UI.input('fee_options', '可選金額（逗號分隔）', { value: d.fee_options || '', placeholder: '3000,3600,4500', full: true })}
+      ${UI.input('session_minutes', '晤談時長（分鐘，0 沿用系統設定）', { type: 'number', value: d.session_minutes || 0 })}
+      ${UI.input('subsidy_amount', '方案給付金額（其餘為個案自付）', { type: 'number', value: d.subsidy_amount || 0 })}
+      ${UI.inputList('subsidy_program', '核銷用方案名稱', App.meta.subsidy_programs || [], { value: d.subsidy_program || '', full: true })}
+      ${UI.input('age_min', '年齡下限（0 不限）', { type: 'number', value: d.age_min || 0 })}
+      ${UI.input('age_max', '年齡上限（0 不限）', { type: 'number', value: d.age_max || 0 })}
+      ${UI.input('quota_per_year', '每人每年可用次數（0 不限）', { type: 'number', value: d.quota_per_year || 0 })}
+      ${UI.input('counselor_week_limit', '每位心理師每週人次（0 不限）', { type: 'number', value: d.counselor_week_limit || 0 })}
+      ${UI.input('counselor_month_limit', '每位心理師每月人次（0 不限）', { type: 'number', value: d.counselor_month_limit || 0 })}
+      ${UI.select('share_mode', '心理師報酬方式', [['percent', '抽成比例'], ['fixed', '固定鐘點費']], { value: d.share_mode })}
+      ${UI.input('share_percent', '抽成比例（可填 0.6 或 60）', { value: d.share_percent || 0 })}
+      ${UI.input('share_fixed', '固定鐘點費', { type: 'number', value: d.share_fixed || 0 })}
+      ${UI.textarea('intro', '線上預約表單上的說明', { value: d.intro || '' })}
+      ${UI.textarea('note', '內部備註', { value: d.note || '' })}
+      ${UI.checkbox('portal_visible', '開放線上預約表單顯示此方案', d.portal_visible)}
+      ${UI.checkbox('require_review', '線上預約需櫃檯確認才成立', d.require_review)}
+      ${UI.input('sort', '排序', { type: 'number', value: d.sort || 0 })}
+      ${isNew ? '' : UI.checkbox('active', '啟用中', d.active)}
+    </div>
+    <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+      年齡與次數限制用於補助方案的資格控管（如衛福部年輕族群方案 15-45 歲、每年 3 次）；
+      每位心理師的人次上限可在下方「心理師費率」再個別調整。</div>`,
+    onSubmit: async el => {
+      const data = UI.formData(el);
+      if (isNew) await POST('/service-plans', data); else await PUT(`/service-plans/${d.id}`, data);
+      UI.toast('已儲存');
+      onDone && onDone();
+    }
+  });
+}
+
+function topicDialog(planId, t, onDone) {
+  const d = t || { fee: 0, sort: 0, active: 1 };
+  UI.modal({
+    title: t ? '編輯主題' : '新增主題',
+    body: `<div class="form-grid">
+      ${UI.input('name', '主題名稱', { value: d.name || '', required: true, full: true })}
+      ${UI.input('fee', '金額（0 沿用方案）', { type: 'number', value: d.fee || 0 })}
+      ${UI.input('sort', '排序', { type: 'number', value: d.sort || 0 })}
+      ${UI.input('fee_options', '可選金額（逗號分隔，0 沿用方案）', { value: d.fee_options || '', full: true })}
+      ${UI.textarea('note', '備註', { value: d.note || '' })}
+      ${t ? UI.checkbox('active', '啟用中', d.active) : ''}
+    </div>`,
+    onSubmit: async el => {
+      const data = UI.formData(el);
+      if (t) await PUT(`/topics/${t.id}`, data); else await POST(`/service-plans/${planId}/topics`, data);
+      UI.toast('已儲存');
+      onDone && onDone();
+    }
+  });
+}
+
+function rateDialog(plan, r, onDone) {
+  const d = r || { share_mode: '', share_percent: 0, week_limit: '', month_limit: '', bookable: 1, active: 1 };
+  UI.modal({
+    title: r ? `編輯費率：${r.counselor_name}` : `新增心理師費率：${plan.name}`,
+    wide: true,
+    body: `<div class="form-grid">
+      ${r ? '' : UI.select('counselor_id', '心理師', App.counselorOptions(), { value: d.counselor_id || '' })}
+      ${r ? '' : UI.select('topic_id', '限定主題（可留空 = 全部主題）',
+      [['', '全部主題']].concat((plan.topics || []).filter(t => t.active).map(t => [t.id, t.name])), { value: '' })}
+      ${UI.input('fee', '金額（0 沿用方案／主題）', { type: 'number', value: d.fee || 0 })}
+      ${UI.select('share_mode', '報酬方式', [['', '沿用方案'], ['percent', '抽成比例'], ['fixed', '固定鐘點費']], { value: d.share_mode })}
+      ${UI.input('share_percent', '抽成比例（0.6 或 60）', { value: d.share_percent || 0 })}
+      ${UI.input('share_fixed', '固定鐘點費', { type: 'number', value: d.share_fixed || 0 })}
+      ${UI.input('week_limit', '每週人次（留空沿用方案，0 不限）', { type: 'number', value: d.week_limit === -1 ? '' : d.week_limit })}
+      ${UI.input('month_limit', '每月人次（留空沿用方案，0 不限）', { type: 'number', value: d.month_limit === -1 ? '' : d.month_limit })}
+      ${UI.checkbox('bookable', '開放此方案的線上預約', d.bookable)}
+      ${r ? UI.checkbox('active', '啟用中', d.active) : ''}
+    </div>`,
+    onSubmit: async el => {
+      const data = UI.formData(el);
+      if (r) await PUT(`/rates/${r.id}`, data); else await POST(`/service-plans/${plan.id}/rates`, data);
+      UI.toast('已儲存');
+      onDone && onDone();
+    }
+  });
+}
+
+App.page('plans', {
+  title: '方案設定',
+  sub: '方案 × 主題 × 心理師的收費、資格與人次上限，皆可自訂',
+  module: 'settings',
+  async render(el) {
+    const plans = await GET('/service-plans');
+    const shareText = p => (p.share_mode === 'fixed'
+      ? `固定 ${UI.fmtMoney(p.share_fixed)}`
+      : `${Math.round((p.share_percent || 0) * 100)}%`);
+    el.innerHTML = `<div class="toolbar"><div class="spacer"></div>
+        <button class="btn" id="add">新增方案</button></div>
+      ${plans.map(p => `<div class="card"${p.active ? '' : ' style="opacity:.6"'}>
+        <h3>${UI.esc(p.name)}
+          ${UI.tag(PLAN_KIND[p.kind] || p.kind, p.kind === 'subsidy' ? 'warn' : 'primary')}
+          ${p.active ? '' : UI.tag('已停用', 'danger')}
+          ${p.portal_visible ? UI.tag('線上可約', 'ok') : ''}</h3>
+        <div style="font-size:13.5px;color:var(--muted);line-height:1.9;margin-bottom:8px">
+          金額：${p.fee_mode === 'choice' ? `可選 ${p.fee_option_list.join(' / ')}（預設 ${p.fee}）` : UI.fmtMoney(p.fee)}
+          ${p.subsidy_amount ? `　方案給付 ${UI.fmtMoney(p.subsidy_amount)}／自付 ${UI.fmtMoney(Math.max(0, p.fee - p.subsidy_amount))}` : ''}
+          　時長：${p.session_minutes || App.meta.session_minutes} 分鐘　心理師報酬：${shareText(p)}<br>
+          資格：${p.age_min || p.age_max ? `${p.age_min || 0}-${p.age_max || '不限'} 歲` : '不限年齡'}
+          ${p.quota_per_year ? `　每人每年 ${p.quota_per_year} 次` : ''}
+          ${p.counselor_week_limit ? `　每位心理師每週 ${p.counselor_week_limit} 人次` : ''}
+          ${p.counselor_month_limit ? `　每月 ${p.counselor_month_limit} 人次` : ''}
+          　本月已排 ${p.month_sessions} 人次
+        </div>
+        <div class="toolbar" style="margin-bottom:6px">
+          <button class="btn tiny secondary" data-ep="${p.id}">編輯方案</button>
+          <button class="btn tiny secondary" data-at="${p.id}">新增主題</button>
+          <button class="btn tiny secondary" data-ar="${p.id}">新增心理師費率</button>
+          <div class="spacer"></div>
+          <button class="btn tiny danger" data-dp="${p.id}">刪除／停用</button>
+        </div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div style="flex:1;min-width:260px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px">主題</div>
+            ${p.topics.length ? p.topics.map(t => `<span class="tag" style="margin:2px">${UI.esc(t.name)}${t.fee ? `／${t.fee}` : ''}
+              <a href="#" data-et="${t.id}" style="margin-left:4px">改</a>
+              <a href="#" data-dt="${t.id}" style="margin-left:2px">刪</a></span>`).join('')
+    : '<span style="color:var(--muted);font-size:13px">尚未設定主題</span>'}
+          </div>
+          <div style="flex:1;min-width:300px">
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px">心理師費率</div>
+            ${p.rates.length ? UI.table(['心理師', '金額', '報酬', '週／月人次', ''], p.rates.map(r => `<tr>
+                <td>${UI.esc(r.counselor_name)}${r.topic_id ? '（限主題）' : ''}</td>
+                <td>${r.fee ? UI.fmtMoney(r.fee) : '沿用'}</td>
+                <td>${r.share_mode === 'fixed' ? UI.fmtMoney(r.share_fixed)
+      : r.share_mode === 'percent' ? Math.round(r.share_percent * 100) + '%' : '沿用'}</td>
+                <td>${r.week_limit === -1 ? '沿用' : (r.week_limit || '不限')} / ${r.month_limit === -1 ? '沿用' : (r.month_limit || '不限')}</td>
+                <td><button class="btn tiny secondary" data-er="${r.id}">改</button>
+                  <button class="btn tiny danger" data-dr="${r.id}">刪</button></td></tr>`))
+    : '<span style="color:var(--muted);font-size:13px">未設定，全所沿用方案預設</span>'}
+          </div>
+        </div>
+      </div>`).join('')}`;
+
+    const reload = () => App.go('plans');
+    el.querySelector('#add').onclick = () => planDialog(null, reload);
+    const find = id => plans.find(p => p.id === Number(id));
+    el.querySelectorAll('[data-ep]').forEach(b => { b.onclick = () => planDialog(find(b.dataset.ep), reload); });
+    el.querySelectorAll('[data-at]').forEach(b => { b.onclick = () => topicDialog(Number(b.dataset.at), null, reload); });
+    el.querySelectorAll('[data-ar]').forEach(b => { b.onclick = () => rateDialog(find(b.dataset.ar), null, reload); });
+    el.querySelectorAll('[data-dp]').forEach(b => {
+      b.onclick = async () => {
+        if (!await UI.confirm('確定要刪除此方案嗎？已有預約使用者會改為停用。')) return;
+        const r = await DEL(`/service-plans/${b.dataset.dp}`);
+        UI.toast(r.message || '已刪除');
+        reload();
+      };
+    });
+    el.querySelectorAll('[data-et]').forEach(a => {
+      a.onclick = e => {
+        e.preventDefault();
+        const t = plans.flatMap(p => p.topics).find(x => x.id === Number(a.dataset.et));
+        topicDialog(t.plan_id, t, reload);
+      };
+    });
+    el.querySelectorAll('[data-dt]').forEach(a => {
+      a.onclick = async e => {
+        e.preventDefault();
+        if (!await UI.confirm('確定要刪除此主題嗎？')) return;
+        const r = await DEL(`/topics/${a.dataset.dt}`);
+        UI.toast(r.message || '已刪除');
+        reload();
+      };
+    });
+    el.querySelectorAll('[data-er]').forEach(b => {
+      b.onclick = () => {
+        const r = plans.flatMap(p => p.rates).find(x => x.id === Number(b.dataset.er));
+        rateDialog(find(r.plan_id), r, reload);
+      };
+    });
+    el.querySelectorAll('[data-dr]').forEach(b => {
+      b.onclick = async () => {
+        if (!await UI.confirm('確定要刪除此費率設定？該心理師將沿用方案預設。')) return;
+        await DEL(`/rates/${b.dataset.dr}`);
+        UI.toast('已刪除');
+        reload();
+      };
+    });
+  }
+});
+
+App.page('plan-board', {
+  title: '方案人次',
+  sub: '各心理師在限量方案的本週／本月已排人次，額滿者顯示下週餘額',
+  module: 'schedule',
+  async render(el) {
+    const date = (location.hash.split('/')[1]) || UI.today();
+    const data = await GET(`/plan-board?date=${date}`);
+    const byPlan = new Map();
+    for (const r of data.rows) {
+      if (!byPlan.has(r.plan_name)) byPlan.set(r.plan_name, []);
+      byPlan.get(r.plan_name).push(r);
+    }
+    el.innerHTML = `<div class="toolbar">
+        <input type="date" id="d" value="${date}">
+        <div class="spacer"></div></div>
+      ${[...byPlan.entries()].map(([name, rows]) => `<div class="card"><h3>${UI.esc(name)}</h3>
+        ${UI.table(['心理師', `本週（${rows[0].week_start} ~ ${rows[0].week_end}）`, '本月', '狀態'], rows.map(r => `<tr>
+          <td>${UI.esc(r.counselor_name)}</td>
+          <td>${r.week_used}${r.week_limit ? ' / ' + r.week_limit : '（不限）'}</td>
+          <td>${r.month_used}${r.month_limit ? ' / ' + r.month_limit : '（不限）'}</td>
+          <td>${r.week_full
+      ? UI.tag('本週額滿', 'danger') + (r.next_week ? `<span style="font-size:12px;color:var(--muted)">　下週 ${r.next_week.week_start} 起尚餘 ${r.next_week.remaining ?? '不限'} 人次</span>` : '')
+      : r.month_full ? UI.tag('本月額滿', 'danger')
+        : UI.tag(`尚可 ${r.week_remaining ?? '不限'} 人次`, 'ok')}</td></tr>`))}
+      </div>`).join('') || '<div class="empty">目前沒有設定人次上限的方案</div>'}`;
+    el.querySelector('#d').onchange = e => { location.hash = `plan-board/${e.target.value}`; };
+  }
+});
+
+App.page('income', {
+  title: '心理師收支',
+  sub: '依方案別結算每位心理師每月的服務量、收入、報酬與所方淨收',
+  module: 'reports',
+  async render(el) {
+    const month = (location.hash.split('/')[1]) || UI.thisMonth();
+    const d = await GET(`/plan-income?month=${month}`);
+    const t = d.total;
+    el.innerHTML = `<div class="toolbar">
+        <input type="month" id="m" value="${month}">
+        <div class="spacer"></div></div>
+      <div class="card"><h3>${month} 全所合計</h3>
+        <div class="stat-row" style="display:flex;gap:18px;flex-wrap:wrap;font-size:14px">
+          <div><div class="dg-label">完成場次</div><strong>${t.sessions}</strong>（未到 ${t.no_shows}）</div>
+          <div><div class="dg-label">應收總額</div><strong>${UI.fmtMoney(t.gross)}</strong></div>
+          <div><div class="dg-label">方案給付／自付</div>${UI.fmtMoney(t.subsidy)} / ${UI.fmtMoney(t.self_pay)}</div>
+          <div><div class="dg-label">心理師報酬</div><strong>${UI.fmtMoney(t.share)}</strong></div>
+          <div><div class="dg-label">所方淨收</div><strong>${UI.fmtMoney(t.center)}</strong></div>
+          <div><div class="dg-label">實收／未收</div>${UI.fmtMoney(t.collected)} / <span style="color:var(--danger)">${UI.fmtMoney(t.uncollected)}</span></div>
+        </div>
+        ${UI.barChart(d.rows.map(r => ({ label: r.counselor_name, value: r.share, note: `${r.sessions} 場` })),
+      { horizontal: true, format: v => UI.fmtMoney(v), title: '心理師報酬' })}
+      </div>
+      ${d.rows.map(r => `<div class="card"><h3>${UI.esc(r.counselor_name)}
+          <span style="font-size:13px;font-weight:400;color:var(--muted)">
+            ${r.sessions} 場｜應收 ${UI.fmtMoney(r.gross)}｜報酬 ${UI.fmtMoney(r.share)}｜所方 ${UI.fmtMoney(r.center)}</span>
+          ${r.payout_status === 'paid' ? UI.tag('報酬已付', 'ok') : r.payout_status === 'pending' ? UI.tag('報酬待付', 'warn') : ''}</h3>
+        ${UI.table(['方案', '場次', '應收', '方案給付', '自付', '心理師報酬', '所方淨收'], r.plans.map(p => `<tr>
+          <td>${UI.esc(p.plan_name)}</td><td>${p.sessions}</td><td>${UI.fmtMoney(p.gross)}</td>
+          <td>${UI.fmtMoney(p.subsidy)}</td><td>${UI.fmtMoney(p.self_pay)}</td>
+          <td>${UI.fmtMoney(p.share)}</td><td>${UI.fmtMoney(p.center)}</td></tr>`))}
+        <div class="toolbar" style="margin-top:8px"><div class="spacer"></div>
+          <button class="btn tiny secondary" data-detail="${r.counselor_id}">明細／列印</button></div>
+      </div>`).join('') || '<div class="empty">本月尚無已完成的晤談</div>'}`;
+
+    el.querySelector('#m').onchange = e => { location.hash = `income/${e.target.value}`; };
+    el.querySelectorAll('[data-detail]').forEach(b => {
+      b.onclick = async () => {
+        const dd = await GET(`/plan-income/${b.dataset.detail}/detail?month=${month}`);
+        UI.modal({
+          title: `${dd.counselor.name}　${month} 明細`, wide: true, hideFooter: true,
+          body: `<div id="printable">
+            <div style="text-align:center;font-size:17px;font-weight:700;margin-bottom:8px">
+              ${UI.esc(dd.center_name)}　心理師服務明細</div>
+            <div style="font-size:14px;margin-bottom:8px">心理師：${UI.esc(dd.counselor.name)}　結算月份：${month}</div>
+            ${UI.table(['日期', '時間', '個案', '方案／主題', '狀態', '費用', '報酬', '收款'], dd.rows.map(r => `<tr>
+              <td>${r.date}</td><td>${r.start_time}</td>
+              <td>${UI.esc(r.client_code || '')} ${UI.esc(r.client_name || '')}</td>
+              <td>${UI.esc(r.plan_name || '-')}${r.topic_name ? '／' + UI.esc(r.topic_name) : ''}</td>
+              <td>${TW.appt_status[r.status]}</td>
+              <td>${UI.fmtMoney(r.fee)}</td><td>${UI.fmtMoney(r.counselor_share)}</td>
+              <td>${r.invoice_status ? TW.inv_status[r.invoice_status] : '-'}</td></tr>`))}
+            <div style="margin-top:10px;font-size:15px;text-align:right">
+              應收合計 ${UI.fmtMoney(dd.total_gross)}　心理師報酬合計 <strong>${UI.fmtMoney(dd.total_share)}</strong></div>
+          </div>
+          <button class="btn small secondary" style="margin-top:14px" onclick="window.print()">列印</button>`
+        });
+      };
+    });
+  }
+});

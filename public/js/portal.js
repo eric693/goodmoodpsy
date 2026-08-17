@@ -40,7 +40,7 @@ const Portal = {
     const t = await GET('/public/ui-texts').catch(() => ({}));
     document.getElementById('app').innerHTML = `
       <div class="login-wrap"><div class="login-card">
-        <h1>${UI.esc(t.ui_portal_title || 'MindCare 個案專區')}</h1>
+        <h1>${UI.esc(t.ui_portal_title || '好心情個案專區')}</h1>
         <div class="sub">${UI.esc(t.ui_portal_login_sub || '預約與行政事項')}</div>
         <div class="form-row"><label>手機號碼</label><input id="lg-user" inputmode="numeric" autocomplete="username"></div>
         <div class="form-row"><label>密碼</label><input id="lg-pass" type="password" autocomplete="current-password"></div>
@@ -126,7 +126,7 @@ const Portal = {
           ${next ? `<div style="font-size:16px;font-weight:700">${next.date}（${UI.weekdayName(next.date)}）${next.start_time}-${next.end_time}</div>
             <div style="font-size:14px;color:var(--muted);margin-top:4px">
               ${UI.esc(next.counselor_name || '')}　${UI.esc(TW.appt_type[next.type] || '')}　${UI.esc(TW.appt_mode[next.mode])}
-              ${next.room_name ? '　' + UI.esc(next.room_name) : ''}</div>
+              ${next.plan_name ? '　' + UI.esc(next.plan_name) : ''}</div>
             ${next.mode === 'online' && next.meeting_url ? `<a class="btn small" style="margin-top:10px"
               href="${UI.esc(next.meeting_url)}" target="_blank" rel="noopener noreferrer">進入視訊晤談</a>` : ''}`
       : '<div style="color:var(--muted);font-size:14px">目前沒有預約，可至「預約」頁面安排時段。</div>'}

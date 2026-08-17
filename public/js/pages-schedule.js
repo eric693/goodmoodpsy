@@ -18,10 +18,13 @@ async function apptDialog(appt, onDone, defaults) {
       ${UI.select('counselor_id', '心理師', App.counselorOptions(), { value: a.counselor_id })}
       ${UI.input('date', '日期', { type: 'date', value: a.date })}
       ${UI.input('start_time', '開始時間', { type: 'time', value: a.start_time })}
+      ${UI.select('plan_id', '方案', [['', '不指定方案']].concat((App.meta.plans || []).map(p => [p.id, p.name])), { value: a.plan_id || '' })}
+      ${UI.select('topic_id', '主題', [['', '不指定主題']], { value: a.topic_id || '' })}
       ${UI.select('type', '晤談類型', App.enumOptions('appt_type'), { value: a.type })}
       ${UI.select('mode', '形式', App.enumOptions('appt_mode'), { value: a.mode })}
-      ${UI.select('room_id', '諮商室', App.roomOptions(), { value: a.room_id || '' })}
+      ${UI.select('room_id', '諮商室', [['', '自動指派']].concat((App.meta.rooms || []).map(r => [r.id, r.name])), { value: a.room_id || '' })}
       ${UI.input('fee', '費用', { type: 'number', value: a.fee !== undefined ? a.fee : (App.meta.default_fee || 2000) })}
+      <div class="form-row full" id="quota-hint" style="display:none"></div>
       ${UI.select('package_id', '扣抵方案', [['', '不扣抵（單次收費）']].concat(packages.map(p => [p.id, `${p.name}（剩 ${p.remaining} 次）`])), { value: a.package_id || '' })}
       <div class="form-row full" id="mu-row" style="${a.mode === 'online' ? '' : 'display:none'}">
         <label>視訊連結</label>
@@ -49,8 +52,57 @@ async function apptDialog(appt, onDone, defaults) {
           });
         } catch { hint.textContent = ''; }
       };
-      el.querySelector('[name=counselor_id]').onchange = refresh;
-      el.querySelector('[name=date]').onchange = refresh;
+      // 方案 → 主題連動；同時即時試算金額並檢查額度（個案年度次數、心理師週人次）
+      const planSel = el.querySelector('[name=plan_id]');
+      const topicSel = el.querySelector('[name=topic_id]');
+      const hintBox = el.querySelector('#quota-hint');
+      const fillTopics = keep => {
+        const plan = (App.meta.plans || []).find(p => String(p.id) === String(planSel.value));
+        const topics = plan ? plan.topics : [];
+        topicSel.innerHTML = ['<option value="">不指定主題</option>']
+          .concat(topics.map(t => `<option value="${t.id}"${String(t.id) === String(keep) ? ' selected' : ''}>${UI.esc(t.name)}</option>`)).join('');
+        if (plan && plan.appt_type) el.querySelector('[name=type]').value = plan.appt_type;
+      };
+      const quote = async () => {
+        const q = new URLSearchParams({
+          plan_id: planSel.value, topic_id: topicSel.value,
+          counselor_id: el.querySelector('[name=counselor_id]').value,
+          client_id: el.querySelector('[name=client_id]').value,
+          date: el.querySelector('[name=date]').value,
+          ...(a.id ? { appointment_id: a.id } : {})
+        });
+        if (!planSel.value) { hintBox.style.display = 'none'; return; }
+        try {
+          const r = await GET('/plan-quote?' + q.toString());
+          el.querySelector('[name=fee]').value = r.fee;
+          const parts = [];
+          if (r.subsidy_amount) parts.push(`方案給付 ${UI.fmtMoney(r.subsidy_amount)}、自付 ${UI.fmtMoney(r.self_pay)}`);
+          if (r.usage) parts.push(`此個案 ${r.usage.year} 年已用 <strong>${r.usage.used}/${r.usage.quota}</strong> 次`);
+          if (r.load && r.load.week_limit) parts.push(`該心理師本週此方案 <strong>${r.load.week_used}/${r.load.week_limit}</strong> 人次`);
+          const errs = (r.errors || []).map(e => `<div style="color:var(--danger)">✕ ${UI.esc(e)}</div>`).join('');
+          const warns = (r.warnings || []).map(w => `<div style="color:var(--warn,#b8860b)">！${UI.esc(w)}</div>`).join('');
+          const next = r.next_week
+            ? `<div style="margin-top:4px">改約下週（${r.next_week.week_start} 起）尚餘 ${r.next_week.remaining ?? '不限'} 人次
+                 <button class="btn tiny secondary" type="button" id="jump-next">改到下週</button></div>`
+            : '';
+          hintBox.style.display = '';
+          hintBox.innerHTML = `<div style="font-size:13px;line-height:1.8;background:var(--primary-light);padding:10px;border-radius:8px">
+            ${parts.join('　')}${errs}${warns}${next}</div>`;
+          const jump = hintBox.querySelector('#jump-next');
+          if (jump) jump.onclick = () => {
+            const d = el.querySelector('[name=date]');
+            d.value = UI.addDays(d.value, 7);
+            refresh(); quote();
+          };
+        } catch { hintBox.style.display = 'none'; }
+      };
+      planSel.onchange = () => { fillTopics(); quote(); };
+      topicSel.onchange = quote;
+      el.querySelector('[name=client_id]').addEventListener('change', quote);
+      fillTopics(a.topic_id);
+      quote();
+      el.querySelector('[name=counselor_id]').onchange = () => { refresh(); quote(); };
+      el.querySelector('[name=date]').onchange = () => { refresh(); quote(); };
       el.querySelector('[name=client_id]').onchange = async e => {
         const sel = el.querySelector('[name=package_id]');
         const list = e.target.value ? await GET(`/clients/${e.target.value}/active-packages`).catch(() => []) : [];
@@ -67,8 +119,16 @@ async function apptDialog(appt, onDone, defaults) {
     },
     onSubmit: async el => {
       const data = UI.formData(el);
-      if (isNew) await POST('/appointments', data);
-      else await PUT(`/appointments/${a.id}`, data);
+      const save = () => (isNew ? POST('/appointments', data) : PUT(`/appointments/${a.id}`, data));
+      try {
+        await save();
+      } catch (e) {
+        // 方案額度或人次上限擋下時，讓有權限的人確認後仍可排入（會寫進稽核軌跡）
+        if (!/已使用|已排滿|限 /.test(e.message)) throw e;
+        if (!await UI.confirm(`${e.message}\n\n仍要排入嗎？（此決定會記錄於稽核軌跡）`)) return false;
+        data.override = true;
+        await save();
+      }
       UI.toast('已儲存');
       onDone && onDone();
     }

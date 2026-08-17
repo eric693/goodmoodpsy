@@ -14,12 +14,13 @@ const loginRateLimit = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, prefix: 'lo
 
 const app = express();
 app.disable('x-powered-by');
-app.use(express.json({ limit: '2mb' }));
+// 保留原始 body：LINE Webhook 的簽章要對未經解析的位元組做 HMAC 驗證
+app.use(express.json({ limit: '2mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 // ---- 公開端點：登入頁文字 ----
 app.get('/api/public/ui-texts', (req, res) => {
   const out = {
-    center_name: getSetting('center_name', 'MindCare 心理諮商所'),
+    center_name: getSetting('center_name', '好心情心理諮商所'),
     center_phone: getSetting('center_phone'),
     center_address: getSetting('center_address')
   };
@@ -58,7 +59,7 @@ app.get('/api/me', requireStaff(), (req, res) => {
     is_supervisor: req.user.role === 'admin' || req.user.role === 'supervisor'
       || !!db.prepare('SELECT 1 FROM users WHERE supervisor_id = ? AND active = 1').get(req.user.id),
     modules: req.user.role === 'admin' ? MODULE_KEYS : parsePermissions(req.user.permissions),
-    center_name: getSetting('center_name', 'MindCare 心理諮商所')
+    center_name: getSetting('center_name', '好心情心理諮商所')
   });
 });
 
@@ -91,6 +92,10 @@ app.use('/api', require('./routes/billing'));
 app.use('/api', require('./routes/org'));
 app.use('/api', require('./routes/attachments'));
 app.use('/api', require('./routes/imports'));
+app.use('/api', require('./routes/plans'));
+app.use('/api', require('./routes/receipts'));
+app.use('/api', require('./routes/booking'));
+app.use('/api', require('./routes/line'));
 
 // 手動觸發備份與附件同步：換機、要立刻帶走資料，或剛上傳完重要附件時不必等排程。
 // 僅管理者可用，並回報備份檔與同步的附件數，方便確認真的做了。
@@ -237,8 +242,13 @@ async function dailyMaintenance(force = false) {
 dailyMaintenance();
 setInterval(dailyMaintenance, 6 * 3600 * 1000);
 
-const PORT = process.env.PORT || 3270;
+// LINE 每日推播（心理師隔日行程、個案晤談提醒）：每 10 分鐘檢查一次是否到了設定時間
+const { runDailyPush } = require('./routes/line');
+setInterval(() => { runDailyPush().catch(e => console.error('LINE 每日推播失敗：', e.message)); }, 10 * 60 * 1000);
+
+const PORT = process.env.PORT || 3340;
 app.listen(PORT, () => {
-  console.log(`MindCare 心理諮商所管理系統 http://localhost:${PORT}`);
+  console.log(`好心情心理諮商所管理系統 http://localhost:${PORT}`);
   console.log(`個案專區 http://localhost:${PORT}/portal.html`);
+  console.log(`線上預約表單 http://localhost:${PORT}/booking.html`);
 });

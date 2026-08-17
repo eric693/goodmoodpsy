@@ -52,7 +52,7 @@ const App = {
     document.getElementById('app').innerHTML = `
       <div class="login-wrap">
         <div class="login-card">
-          <h1>${UI.esc(t.ui_staff_login_title || 'MindCare 心理諮商所')}</h1>
+          <h1>${UI.esc(t.ui_staff_login_title || '好心情心理諮商所')}</h1>
           <div class="sub">${UI.esc(t.ui_staff_login_sub || '諮商所管理系統')}</div>
           <div class="form-row"><label>帳號</label><input id="lg-user" autocomplete="username"></div>
           <div class="form-row"><label>密碼</label><input id="lg-pass" type="password" autocomplete="current-password"></div>
@@ -78,10 +78,10 @@ const App = {
   },
 
   navGroups: [
-    { label: '每日作業', keys: ['dashboard', 'my', 'calendar', 'schedule', 'myshift', 'waitlist', 'today', 'reminders', 'notes-pending', 'notes-review', 'messages'] },
+    { label: '每日作業', keys: ['dashboard', 'my', 'calendar', 'schedule', 'myshift', 'bookings', 'waitlist', 'today', 'reminders', 'notes-pending', 'notes-review', 'messages'] },
     { label: '個案服務', keys: ['intake', 'intake-forms', 'clients', 'groups', 'assessments', 'risk', 'safety', 'follow-ups', 'consents'] },
-    { label: '專業與營運', keys: ['supervision', 'hr', 'payouts', 'billing', 'overdue', 'packages', 'partners', 'announcements', 'reports'] },
-    { label: '系統', keys: ['users', 'settings', 'imports', 'retention', 'audit'] }
+    { label: '專業與營運', keys: ['supervision', 'hr', 'payouts', 'billing', 'receipts', 'overdue', 'packages', 'partners', 'plan-board', 'income', 'announcements', 'reports'] },
+    { label: '系統', keys: ['users', 'plans', 'line', 'settings', 'imports', 'retention', 'audit'] }
   ],
 
   renderLayout() {
@@ -105,7 +105,7 @@ const App = {
       <div class="backdrop" id="backdrop"></div>
       <div class="layout">
         <aside class="sidebar" id="sidebar">
-          <div class="brand">${UI.esc(App.me.center_name)}<small>MindCare 諮商所管理系統</small></div>
+          <div class="brand">${UI.esc(App.me.center_name)}<small>好心情諮商所管理系統</small></div>
           <nav class="nav" id="nav">${navHtml}</nav>
           <div class="user-box">
             <div class="name">${UI.esc(App.me.name)}</div>

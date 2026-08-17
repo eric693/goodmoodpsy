@@ -274,7 +274,19 @@ router.get('/meta', requireStaff(), (req, res) => {
         };
       }).filter(Boolean)
     },
-    partners: db.prepare('SELECT id, name, type, rate FROM partners WHERE active = 1 ORDER BY id').all()
+    partners: db.prepare('SELECT id, name, type, rate FROM partners WHERE active = 1 ORDER BY id').all(),
+    // 方案別：預約表單、收費與統計都要用，一次帶齊方案與其主題
+    plans: db.prepare('SELECT * FROM service_plans WHERE active = 1 ORDER BY sort, id').all().map(p => ({
+      id: p.id, name: p.name, kind: p.kind, appt_type: p.appt_type, fee: p.fee, fee_mode: p.fee_mode,
+      fee_options: String(p.fee_options || '').split(',').map(Number).filter(Boolean),
+      subsidy_amount: p.subsidy_amount, quota_per_year: p.quota_per_year,
+      session_minutes: p.session_minutes || Number(getSetting('session_minutes', '50')),
+      age_min: p.age_min, age_max: p.age_max,
+      topics: db.prepare('SELECT id, name, fee FROM plan_topics WHERE plan_id = ? AND active = 1 ORDER BY sort, id').all(p.id)
+    })),
+    line_enabled: !!getSetting('line_channel_token').trim(),
+    intern_review: getSetting('intern_review_enabled', '0') === '1',
+    room_hide_from_client: getSetting('room_hide_from_client', '1') === '1'
   };
   for (const k of ['counseling_types', 'approach_options', 'source_options', 'close_reasons', 'risk_types',
     'report_channels', 'pay_methods', 'payer_types', 'partner_types', 'time_off_reasons',
@@ -673,7 +685,7 @@ router.get('/exports/:kind', requireStaff('reports'), (req, res) => {
   if (format === 'pdf') {
     // 交由瀏覽器列印為 PDF：inline 開啟，頁面載入後自動帶出列印對話框
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(toPrintHtml(def.name, def.headers, rows, subtitle, getSetting('org_name') || 'MindCare 心理諮商所'));
+    return res.send(toPrintHtml(def.name, def.headers, rows, subtitle, getSetting('org_name') || getSetting('center_name', '好心情心理諮商所')));
   }
   if (format === 'xls') {
     res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');

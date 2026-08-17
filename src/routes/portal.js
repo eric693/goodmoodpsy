@@ -6,6 +6,7 @@ const {
   loginLockedMinutes, loginFailed, loginSucceeded, rateLimit, clientIp
 } = require('../auth');
 const { SCALE_KEYS, score, publicScales } = require('../scales');
+const plans = require('../plans');
 const { freeSlots, conflictOf } = require('./schedule');
 
 const router = express.Router();
@@ -73,8 +74,9 @@ router.get('/appointments', requireClient, (req, res) => {
   const hours = Number(getSetting('cancel_hours', '24'));
   const rows = db.prepare(`SELECT a.id, a.date, a.start_time, a.end_time, a.type, a.mode, a.status, a.fee, a.note,
       a.meeting_url, a.counselor_id, a.reschedule_count, a.cancel_requested_at,
-      u.name AS counselor_name, r.name AS room_name
-    FROM appointments a LEFT JOIN users u ON u.id = a.counselor_id LEFT JOIN rooms r ON r.id = a.room_id
+      u.name AS counselor_name, p.name AS plan_name
+    FROM appointments a LEFT JOIN users u ON u.id = a.counselor_id
+    LEFT JOIN service_plans p ON p.id = a.plan_id
     WHERE a.client_id = ? ORDER BY a.date DESC, a.start_time DESC LIMIT 60`).all(req.client.id);
   // 由後端算出「還能不能自行改期／取消」，前端只負責顯示，規則不會兩邊各算一套
   res.json(rows.map(a => {
@@ -149,13 +151,14 @@ router.post('/appointments/:id/reschedule', requireClient, (req, res) => {
   const original = `${a.date} ${a.start_time}`;
   // 可預約時段只看心理師，不看諮商室；若原本的諮商室在新時段已被別人用了，
   // 就把諮商室清空交由櫃檯重新安排（並在備註標明），避免兩組人被排到同一間。
+  // 諮商室由系統重新指派；個案端自始不顯示空間配置，只看時間與心理師
   let roomId = a.room_id;
   let roomNote = '';
   if (roomId && conflictOf({
     id: a.id, date, start_time, end_time: slot.end_time, counselor_id: a.counselor_id, room_id: roomId
   })) {
-    roomId = null;
-    roomNote = '；改期後諮商室待重新安排';
+    roomId = plans.pickRoom({ date, start_time, end_time: slot.end_time, exclude_appointment_id: a.id });
+    roomNote = roomId ? '' : '；改期後諮商室待重新安排';
   }
   db.prepare(`UPDATE appointments SET date = ?, start_time = ?, end_time = ?, reminded_at = '',
       room_id = ?, rescheduled_from = ?, reschedule_count = reschedule_count + 1,
@@ -263,7 +266,10 @@ router.get('/billing', requireClient, (req, res) => {
       FROM invoices WHERE client_id = ? AND status != 'void' ORDER BY date DESC, id DESC LIMIT 60`).all(req.client.id),
     packages: db.prepare(`SELECT name, sessions_total, sessions_used, (sessions_total - sessions_used) AS remaining,
       expire_date, status FROM packages WHERE client_id = ? ORDER BY id DESC`).all(req.client.id),
-    unpaid: db.prepare("SELECT COALESCE(SUM(amount),0) n FROM invoices WHERE client_id = ? AND status = 'unpaid'").get(req.client.id).n
+    unpaid: db.prepare("SELECT COALESCE(SUM(amount),0) n FROM invoices WHERE client_id = ? AND status = 'unpaid'").get(req.client.id).n,
+    // 已開立的收據：個案自己查得到編號與金額，需要紙本時報編號給櫃檯即可補印
+    receipts: db.prepare(`SELECT receipt_no, date, item, amount, title FROM receipts
+      WHERE client_id = ? AND status = 'valid' ORDER BY date DESC, id DESC LIMIT 60`).all(req.client.id)
   });
 });
 

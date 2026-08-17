@@ -3,6 +3,7 @@ const { db, audit, today, getSetting, addDays, nowStamp } = require('../db');
 const { requireStaff } = require('../auth');
 const { sendNotification } = require('../notify');
 const { ensureToken, resetToken } = require('../ics');
+const plans = require('../plans');
 
 const router = express.Router();
 
@@ -47,12 +48,14 @@ function endTime(start, minutes) {
 }
 
 const LIST_SQL = `SELECT a.*, c.name AS client_name, c.code AS client_code, c.risk_level, c.phone AS client_phone,
-    u.name AS counselor_name, r.name AS room_name,
+    u.name AS counselor_name, r.name AS room_name, sp.name AS plan_name, pt.name AS topic_name,
     (SELECT COUNT(*) FROM session_notes n WHERE n.appointment_id = a.id) AS has_note
   FROM appointments a
   LEFT JOIN clients c ON c.id = a.client_id
   LEFT JOIN users u ON u.id = a.counselor_id
-  LEFT JOIN rooms r ON r.id = a.room_id`;
+  LEFT JOIN rooms r ON r.id = a.room_id
+  LEFT JOIN service_plans sp ON sp.id = a.plan_id
+  LEFT JOIN plan_topics pt ON pt.id = a.topic_id`;
 
 router.get('/appointments', requireStaff('schedule'), (req, res) => {
   const { date = '', from = '', to = '', counselor_id = '', client_id = '', status = '' } = req.query;
@@ -94,7 +97,9 @@ router.post('/appointments', requireStaff('schedule'), (req, res) => {
   if (!client) return res.status(400).json({ error: '請選擇個案' });
   if (!b.counselor_id) return res.status(400).json({ error: '請選擇心理師' });
   if (!b.date || !b.start_time) return res.status(400).json({ error: '請填寫日期與時間' });
-  const end_time = b.end_time || endTime(b.start_time, getSetting('session_minutes', '50'));
+  // 方案可有自己的時長（40／50／80 分鐘），未指定結束時間時依方案推算
+  const planMinutes = b.plan_id ? plans.resolveFee({ plan_id: b.plan_id }).session_minutes : 0;
+  const end_time = b.end_time || endTime(b.start_time, planMinutes || getSetting('session_minutes', '50'));
   const hit = conflictOf({ ...b, end_time });
   if (hit) {
     return res.status(400).json({ error: `${hit.kind}時段衝突：${hit.row.date} ${hit.row.start_time}-${hit.row.end_time} 已有預約` });
@@ -113,17 +118,43 @@ router.post('/appointments', requireStaff('schedule'), (req, res) => {
   } else {
     meeting_url = '';
   }
-  const fee = b.fee !== undefined && b.fee !== ''
-    ? Number(b.fee)
+  // 方案別決定金額、補助拆帳與心理師報酬；沒帶方案時維持原本的預設收費
+  const quote = plans.resolveFee({
+    plan_id: b.plan_id, topic_id: b.topic_id, counselor_id: b.counselor_id,
+    fee_choice: b.fee_choice,
+    fee_override: b.fee !== undefined && b.fee !== '' ? b.fee : undefined
+  });
+  const fee = b.plan_id || (b.fee !== undefined && b.fee !== '')
+    ? quote.fee
     : Number(getSetting(b.type === 'intake' ? 'intake_fee' : 'default_fee', '2000'));
+
+  // 方案額度：個案年度次數與心理師每週／每月人次上限。
+  // 超額預設擋下（可由設定改為僅警示），櫃檯確認要排時可帶 override 放行並留稽核。
+  const check = plans.checkBooking({
+    plan_id: b.plan_id, client, counselor_id: b.counselor_id, date: b.date
+  });
+  if (check.errors.length && !b.override && getSetting('plan_quota_enforce', '1') === '1') {
+    return res.status(400).json({
+      error: check.errors.join('；'), errors: check.errors,
+      next_week: check.next_week, usage: check.usage, load: check.load, can_override: true
+    });
+  }
+
+  // 諮商室：櫃檯可指定，未指定則自動挑一間空的（個案端不顯示空間配置）
+  const roomId = Number(b.room_id) || plans.pickRoom({ date: b.date, start_time: b.start_time, end_time });
+
   const info = db.prepare(`INSERT INTO appointments
-    (client_id, counselor_id, room_id, date, start_time, end_time, type, mode, status, fee, package_id, source, note, meeting_url, created_by)
-    VALUES (?,?,?,?,?,?,?,?,'booked',?,?,?,?,?,?)`).run(
-    client.id, Number(b.counselor_id), Number(b.room_id) || null, b.date, b.start_time, end_time,
-    b.type || 'individual', b.mode || 'onsite', fee, Number(b.package_id) || null,
+    (client_id, counselor_id, room_id, date, start_time, end_time, type, mode, status, fee, package_id,
+     plan_id, topic_id, counselor_share, source, note, meeting_url, created_by)
+    VALUES (?,?,?,?,?,?,?,?,'booked',?,?,?,?,?,?,?,?,?)`).run(
+    client.id, Number(b.counselor_id), roomId, b.date, b.start_time, end_time,
+    b.type || (quote.plan ? quote.plan.appt_type : 'individual'), b.mode || 'onsite',
+    fee, Number(b.package_id) || null,
+    Number(b.plan_id) || null, Number(b.topic_id) || null, quote.counselor_share,
     b.source || 'staff', b.note || '', meeting_url, req.user.id);
-  audit('staff', req.user.id, req.user.name, '新增預約', client.code, { date: b.date, time: b.start_time });
-  res.json({ id: info.lastInsertRowid });
+  audit('staff', req.user.id, req.user.name, '新增預約', client.code,
+    { date: b.date, time: b.start_time, plan_id: b.plan_id || null, override: !!b.override });
+  res.json({ id: info.lastInsertRowid, room_id: roomId, warnings: check.warnings, usage: check.usage });
 });
 
 router.put('/appointments/:id', requireStaff('schedule'), (req, res) => {
@@ -145,10 +176,27 @@ router.put('/appointments/:id', requireStaff('schedule'), (req, res) => {
     // 改回到所（或其他形式）時一併清掉連結，避免留著失效的舊會議室
     meeting_url = '';
   }
+  // 改方案／改主題／改心理師都會影響金額與報酬，一律重算一次
+  const quote = plans.resolveFee({
+    plan_id: b.plan_id, topic_id: b.topic_id, counselor_id: b.counselor_id,
+    fee_choice: b.fee_choice,
+    fee_override: req.body.fee !== undefined && req.body.fee !== '' ? req.body.fee : (b.plan_id ? undefined : b.fee)
+  });
+  const check = plans.checkBooking({
+    plan_id: b.plan_id, client: db.prepare('SELECT * FROM clients WHERE id = ?').get(a.client_id),
+    counselor_id: b.counselor_id, date: b.date, appointment_id: a.id
+  });
+  if (check.errors.length && !req.body.override && getSetting('plan_quota_enforce', '1') === '1') {
+    return res.status(400).json({ error: check.errors.join('；'), errors: check.errors,
+      next_week: check.next_week, can_override: true });
+  }
+  const roomId = Number(b.room_id)
+    || plans.pickRoom({ date: b.date, start_time: b.start_time, end_time: b.end_time, exclude_appointment_id: a.id });
   db.prepare(`UPDATE appointments SET counselor_id = ?, room_id = ?, date = ?, start_time = ?, end_time = ?,
-    type = ?, mode = ?, fee = ?, note = ?, meeting_url = ? WHERE id = ?`).run(
-    Number(b.counselor_id), Number(b.room_id) || null, b.date, b.start_time, b.end_time,
-    b.type, b.mode, Number(b.fee) || 0, b.note || '', meeting_url, a.id);
+    type = ?, mode = ?, fee = ?, plan_id = ?, topic_id = ?, counselor_share = ?, note = ?, meeting_url = ? WHERE id = ?`).run(
+    Number(b.counselor_id), roomId, b.date, b.start_time, b.end_time,
+    b.type, b.mode, quote.fee, Number(b.plan_id) || null, Number(b.topic_id) || null,
+    quote.counselor_share, b.note || '', meeting_url, a.id);
   audit('staff', req.user.id, req.user.name, '修改預約', String(a.id));
   res.json({ ok: true });
 });
@@ -194,10 +242,23 @@ router.post('/appointments/:id/status', requireStaff('schedule'), (req, res) => 
         db.prepare('UPDATE packages SET sessions_used = sessions_used + 1 WHERE id = ?').run(a.package_id);
         db.prepare(`UPDATE packages SET status = 'used_up' WHERE id = ? AND sessions_used >= sessions_total`).run(a.package_id);
       } else if (a.fee > 0) {
-        db.prepare(`INSERT INTO invoices (client_id, appointment_id, date, item, amount, status, payer)
-                    VALUES (?,?,?,?,?, 'unpaid', ?)`).run(
+        // 方案別決定付款人與補助拆帳：補助款由方案支付，只有自付差額要向個案收
+        const q = plans.resolveFee({ plan_id: a.plan_id, topic_id: a.topic_id,
+          counselor_id: a.counselor_id, fee_override: a.fee });
+        const subsidy = Math.min(q.subsidy_amount, a.fee);
+        db.prepare(`INSERT INTO invoices (client_id, appointment_id, date, item, amount, status, payer,
+            plan_id, topic_id, subsidy_program, subsidy_amount, self_pay)
+                    VALUES (?,?,?,?,?, 'unpaid', ?,?,?,?,?,?)`).run(
           a.client_id, a.id, a.date,
-          `${a.date} 晤談費用`, a.fee, getSetting('payer_type_default', '自費'));
+          `${a.date} ${q.plan ? q.plan.name : '晤談費用'}`, a.fee,
+          q.plan && q.plan.kind === 'subsidy'
+            ? getSetting('payer_type_default', '自費').replace(/^自費$/, '心理健康支持方案')
+            : getSetting('payer_type_default', '自費'),
+          a.plan_id || null, a.topic_id || null, q.subsidy_program, subsidy, a.fee - subsidy);
+        // 心理師報酬在結案當下鎖定，日後改方案費率不會回頭改動已結算的月份
+        if (!a.counselor_share) {
+          db.prepare('UPDATE appointments SET counselor_share = ? WHERE id = ?').run(q.counselor_share, a.id);
+        }
       }
       // 初談完成後個案由 intake 轉為進行中
       if (client && client.status === 'intake') db.prepare("UPDATE clients SET status = 'active' WHERE id = ?").run(client.id);
@@ -385,9 +446,11 @@ router.get('/schedule/calendar', requireStaff('schedule'), (req, res) => {
 });
 
 // 指定心理師某日的可預約時段（扣掉已被預約的），個案端與櫃檯共用
-function freeSlots(counselorId, date) {
+// minutesOverride：方案有自己的時長（如 40 分鐘的大學生方案、80 分鐘的伴侶諮商）時帶入，
+// 未帶則沿用系統預設的晤談長度。
+function freeSlots(counselorId, date, minutesOverride) {
   const weekday = new Date(date + 'T00:00:00').getDay();
-  const minutes = Number(getSetting('session_minutes', '50'));
+  const minutes = Number(minutesOverride) || Number(getSetting('session_minutes', '50'));
   const ranges = db.prepare('SELECT * FROM availability WHERE counselor_id = ? AND weekday = ? ORDER BY start_time')
     .all(counselorId, weekday);
   const booked = db.prepare(`SELECT start_time, end_time FROM appointments

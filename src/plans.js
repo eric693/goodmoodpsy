@@ -1,0 +1,229 @@
+// 方案別（社會局／衛福部補助方案、自費方案、合作單位方案）的取價、額度與抽成計算。
+//
+// 三個層級由細到粗覆寫：心理師費率（plan_counselors）→ 主題（plan_topics）→ 方案（service_plans）。
+// 額度有兩種，兩者互不相干，違反的原因也要分開講清楚：
+//   1. 個案額度：某方案每人每年可用幾次（如衛福部青壯年方案一年 3 次）
+//   2. 心理師人次上限：某方案每位心理師一週／一月可排幾人次（如一週 6 人次）
+// 兩種上限都可在方案設定調整，也可針對個別心理師另訂（plan_counselors.week_limit）。
+
+const { db, getSetting, ageYears } = require('./db');
+
+// 佔用額度的預約狀態：已預約、已報到、已完成都算數；
+// 取消不算，未到是否算由所方決定（預設算，因為補助方案的名額實際已被占用）。
+const COUNTED_STATUSES = ['booked', 'arrived', 'done', 'no_show'];
+const COUNTED_SQL = `('${COUNTED_STATUSES.join("','")}')`;
+
+function getPlan(id) {
+  return db.prepare('SELECT * FROM service_plans WHERE id = ?').get(Number(id) || 0) || null;
+}
+function getTopic(id) {
+  return db.prepare('SELECT * FROM plan_topics WHERE id = ?').get(Number(id) || 0) || null;
+}
+function getRate(planId, counselorId, topicId) {
+  if (!planId || !counselorId) return null;
+  // 先找「方案 × 心理師 × 主題」的專屬費率，沒有才用「方案 × 心理師」的通用費率
+  return db.prepare(`SELECT * FROM plan_counselors
+      WHERE plan_id = ? AND counselor_id = ? AND active = 1 AND topic_id = ?`)
+    .get(Number(planId), Number(counselorId), Number(topicId) || 0)
+    || db.prepare(`SELECT * FROM plan_counselors
+      WHERE plan_id = ? AND counselor_id = ? AND active = 1 AND (topic_id IS NULL OR topic_id = 0)`)
+      .get(Number(planId), Number(counselorId))
+    || null;
+}
+
+function parseOptions(str) {
+  return String(str || '').split(',').map(s => Number(String(s).trim())).filter(n => n > 0);
+}
+
+// 取價：回傳這次晤談應收多少、其中多少由方案支付、心理師分得多少。
+// fee_override 讓櫃檯在個案有特殊約定時仍能手動指定金額（會被完整記錄）。
+function resolveFee({ plan_id, topic_id, counselor_id, fee_choice, fee_override }) {
+  const plan = getPlan(plan_id);
+  if (!plan) {
+    const fee = Number(fee_override) || 0;
+    return { plan: null, topic: null, fee, subsidy_amount: 0, self_pay: fee,
+      counselor_share: 0, session_minutes: Number(getSetting('session_minutes', '50')), subsidy_program: '' };
+  }
+  const topic = getTopic(topic_id);
+  const rate = getRate(plan.id, counselor_id, topic_id);
+
+  // 可選金額方案（伴侶／家族）：以預約時挑選的金額為準，但只接受設定裡列出的選項，
+  // 避免前端被改參數後送進任意金額。
+  const options = parseOptions((topic && topic.fee_options) || plan.fee_options);
+  let fee;
+  if (fee_override !== undefined && fee_override !== '' && fee_override !== null) {
+    fee = Number(fee_override) || 0;
+  } else if (plan.fee_mode === 'choice' && options.length) {
+    const picked = Number(fee_choice) || 0;
+    fee = options.includes(picked) ? picked : ((rate && rate.fee) || (topic && topic.fee) || plan.fee);
+  } else {
+    fee = (rate && rate.fee) || (topic && topic.fee) || plan.fee;
+  }
+  fee = Math.max(0, Math.round(fee));
+
+  const subsidy = Math.min(plan.subsidy_amount || 0, fee);
+  const shareMode = (rate && rate.share_mode) || plan.share_mode || 'percent';
+  const share = shareMode === 'fixed'
+    ? Math.round((rate && rate.share_fixed) || plan.share_fixed || 0)
+    : Math.round(fee * ((rate && rate.share_mode ? rate.share_percent : plan.share_percent) || 0));
+
+  return {
+    plan, topic, rate, fee,
+    fee_options: options,
+    subsidy_amount: subsidy,
+    self_pay: fee - subsidy,
+    counselor_share: share,
+    share_mode: shareMode,
+    session_minutes: plan.session_minutes || Number(getSetting('session_minutes', '50')),
+    subsidy_program: plan.subsidy_program || ''
+  };
+}
+
+// ---- 個案在某方案的年度使用次數 ----
+// 「用了幾次」= 本系統該年度的有效預約 + 人工調整（在他所已用過的次數）
+function clientUsage(clientId, planId, year) {
+  const y = String(year || new Date().getFullYear());
+  const used = db.prepare(`SELECT COUNT(*) n FROM appointments
+      WHERE client_id = ? AND plan_id = ? AND substr(date,1,4) = ? AND status IN ${COUNTED_SQL}`)
+    .get(Number(clientId), Number(planId), y).n;
+  const adj = db.prepare('SELECT * FROM plan_usage_adjustments WHERE client_id = ? AND plan_id = ? AND year = ?')
+    .get(Number(clientId), Number(planId), y);
+  const plan = getPlan(planId);
+  const total = used + (adj ? adj.used_offset : 0);
+  const quota = plan ? plan.quota_per_year : 0;
+  return {
+    year: y,
+    plan_id: Number(planId),
+    plan_name: plan ? plan.name : '',
+    quota,
+    used_system: used,
+    used_offset: adj ? adj.used_offset : 0,
+    used: total,
+    remaining: quota ? Math.max(0, quota - total) : null,
+    over: !!(quota && total >= quota),
+    note: adj ? adj.note : ''
+  };
+}
+
+// 個案所有「有次數限制」方案的使用情形，供個案頁與預約時顯示
+function clientUsageAll(clientId, year) {
+  const y = String(year || new Date().getFullYear());
+  const plans = db.prepare('SELECT * FROM service_plans WHERE quota_per_year > 0 AND active = 1 ORDER BY sort, id').all();
+  return plans.map(p => clientUsage(clientId, p.id, y)).filter(u => u.used > 0 || u.quota > 0);
+}
+
+// ---- 心理師在某方案的人次負載 ----
+// 週以「週一起算」計，與班表、後台週檢視一致。
+function weekRange(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const dow = (d.getDay() + 6) % 7;          // 0 = 週一
+  const start = new Date(d); start.setDate(d.getDate() - dow);
+  const end = new Date(start); end.setDate(start.getDate() + 6);
+  const f = x => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  return { start: f(start), end: f(end) };
+}
+
+function counselorLoad(counselorId, planId, dateStr, excludeApptId) {
+  const plan = getPlan(planId);
+  const rate = getRate(planId, counselorId, null);
+  const wk = weekRange(dateStr);
+  const month = dateStr.slice(0, 7);
+  const ex = excludeApptId ? Number(excludeApptId) : 0;
+
+  const weekUsed = db.prepare(`SELECT COUNT(*) n FROM appointments
+      WHERE counselor_id = ? AND plan_id = ? AND date BETWEEN ? AND ? AND status IN ${COUNTED_SQL} AND id != ?`)
+    .get(Number(counselorId), Number(planId), wk.start, wk.end, ex).n;
+  const monthUsed = db.prepare(`SELECT COUNT(*) n FROM appointments
+      WHERE counselor_id = ? AND plan_id = ? AND substr(date,1,7) = ? AND status IN ${COUNTED_SQL} AND id != ?`)
+    .get(Number(counselorId), Number(planId), month, ex).n;
+
+  // -1 表示沿用方案設定；方案為 0 則再退回系統預設值
+  const pick = (rateVal, planVal, settingKey) => {
+    if (rateVal !== undefined && rateVal !== null && rateVal >= 0) return rateVal;
+    if (planVal > 0) return planVal;
+    return Number(getSetting(settingKey, '0')) || 0;
+  };
+  const weekLimit = pick(rate ? rate.week_limit : -1, plan ? plan.counselor_week_limit : 0, 'plan_default_week_limit');
+  const monthLimit = pick(rate ? rate.month_limit : -1, plan ? plan.counselor_month_limit : 0, 'plan_default_month_limit');
+
+  return {
+    week_start: wk.start, week_end: wk.end, month,
+    week_used: weekUsed, week_limit: weekLimit,
+    week_remaining: weekLimit ? Math.max(0, weekLimit - weekUsed) : null,
+    month_used: monthUsed, month_limit: monthLimit,
+    month_remaining: monthLimit ? Math.max(0, monthLimit - monthUsed) : null,
+    week_full: !!(weekLimit && weekUsed >= weekLimit),
+    month_full: !!(monthLimit && monthUsed >= monthLimit)
+  };
+}
+
+// 下週同一心理師同方案還剩幾人次：本週滿了要能直接告訴櫃檯「改約下週」
+function nextWeekHint(counselorId, planId, dateStr) {
+  const wk = weekRange(dateStr);
+  const d = new Date(wk.start + 'T00:00:00');
+  d.setDate(d.getDate() + 7);
+  const next = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const load = counselorLoad(counselorId, planId, next);
+  return { date: next, week_start: load.week_start, week_end: load.week_end,
+    used: load.week_used, limit: load.week_limit, remaining: load.week_remaining };
+}
+
+// 預約前檢查：年齡資格、個案年度額度、心理師人次上限。
+// errors 會擋下預約（可由 override 放行並留稽核），warnings 只提醒。
+function checkBooking({ plan_id, client, counselor_id, date, appointment_id, birth_date }) {
+  const plan = getPlan(plan_id);
+  const out = { errors: [], warnings: [], usage: null, load: null, next_week: null };
+  if (!plan) return out;
+
+  const bd = (client && client.birth_date) || birth_date || '';
+  const age = ageYears(bd, date);
+  if ((plan.age_min || plan.age_max) && bd) {
+    if (plan.age_min && age < plan.age_min) out.errors.push(`${plan.name}限 ${plan.age_min} 歲以上（目前 ${age} 歲）`);
+    if (plan.age_max && age > plan.age_max) out.errors.push(`${plan.name}限 ${plan.age_max} 歲以下（目前 ${age} 歲）`);
+  } else if ((plan.age_min || plan.age_max) && !bd) {
+    out.warnings.push(`${plan.name}有年齡限制（${plan.age_min || 0}-${plan.age_max || '不限'} 歲），此個案未填生日，請先確認資格`);
+  }
+
+  if (client && plan.quota_per_year > 0) {
+    const usage = clientUsage(client.id, plan.id, String(date || '').slice(0, 4));
+    out.usage = usage;
+    // 本筆預約本身要算進去，所以判斷「已用 >= 額度」即為超額
+    if (usage.over) {
+      out.errors.push(`${client.name} ${usage.year} 年的「${plan.name}」已使用 ${usage.used}/${usage.quota} 次，額度已用完`);
+    } else if (usage.remaining === 1) {
+      out.warnings.push(`這是 ${client.name} ${usage.year} 年「${plan.name}」的最後 1 次（已用 ${usage.used}/${usage.quota}）`);
+    }
+  }
+
+  if (counselor_id && date) {
+    const load = counselorLoad(counselor_id, plan.id, date, appointment_id);
+    out.load = load;
+    if (load.week_full) {
+      out.next_week = nextWeekHint(counselor_id, plan.id, date);
+      out.errors.push(`該心理師本週（${load.week_start}~${load.week_end}）的「${plan.name}」已排滿 ${load.week_used}/${load.week_limit} 人次`);
+    }
+    if (load.month_full) {
+      out.errors.push(`該心理師本月（${load.month}）的「${plan.name}」已排滿 ${load.month_used}/${load.month_limit} 人次`);
+    }
+  }
+  return out;
+}
+
+// 未指定諮商室時自動指派：個案端與線上表單一律看不到空間配置，
+// 由系統挑一間該時段沒被占用的諮商室（只有 2-3 間，取編號最小的即可）。
+function pickRoom({ date, start_time, end_time, exclude_appointment_id }) {
+  if (getSetting('room_auto_assign', '1') !== '1') return null;
+  const rooms = db.prepare('SELECT * FROM rooms WHERE active = 1 ORDER BY id').all();
+  if (!rooms.length) return null;
+  const busy = new Set(db.prepare(`SELECT room_id FROM appointments
+      WHERE date = ? AND status IN ('booked','arrived') AND start_time < ? AND end_time > ?
+        AND room_id IS NOT NULL AND id != ?`)
+    .all(date, end_time, start_time, Number(exclude_appointment_id) || 0).map(r => r.room_id));
+  const free = rooms.find(r => !busy.has(r.id));
+  return free ? free.id : null;
+}
+
+module.exports = {
+  COUNTED_STATUSES, getPlan, getTopic, getRate, parseOptions, resolveFee,
+  clientUsage, clientUsageAll, counselorLoad, nextWeekHint, weekRange, checkBooking, pickRoom
+};

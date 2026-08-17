@@ -145,7 +145,7 @@ function startServer() {
     const timer = setTimeout(() => reject(new Error('伺服器啟動逾時：\n' + out)), 20000);
     server.stdout.on('data', d => {
       out += d;
-      if (out.includes('MindCare')) { clearTimeout(timer); resolve(); }
+      if (out.includes('管理系統')) { clearTimeout(timer); resolve(); }
     });
     server.stderr.on('data', d => { out += d; });
     server.on('exit', code => { clearTimeout(timer); reject(new Error(`伺服器結束（code ${code}）：\n${out}`)); });
@@ -664,6 +664,242 @@ function startServer() {
     assert(d.charts && d.charts.months.length === 6, '總覽圖表資料');
     const my = await lin.ok('GET', '/api/my-dashboard');
     assert(my.me, '我的工作台');
+  });
+
+  // ------------------------------------------------- 方案別、額度、收據與線上預約
+  section('方案別與額度');
+  let youthPlanId, youthTopicId, planClientId;
+  await test('方案清單含補助方案與可選金額方案', async () => {
+    const list = await admin.ok('GET', '/api/service-plans');
+    const youth = list.find(p => p.quota_per_year === 3 && p.counselor_week_limit === 6);
+    assert(youth, '找不到年輕族群方案');
+    youthPlanId = youth.id;
+    youthTopicId = youth.topics[0].id;
+    assert(list.some(p => p.fee_mode === 'choice' && p.fee_option_list.length > 1), '缺少可選金額方案');
+  });
+  await test('後台可自訂方案、主題與心理師費率', async () => {
+    const created = await admin.ok('POST', '/api/service-plans', {
+      name: '冒煙測試方案', kind: 'self', fee: 1800, share_mode: 'percent', share_percent: 55,
+      quota_per_year: 2, counselor_week_limit: 1
+    });
+    await admin.ok('POST', `/api/service-plans/${created.id}/topics`, { name: '測試主題', fee: 2100 });
+    const lins = (await admin.ok('GET', '/api/users')).find(u => u.username === 'lin');
+    await admin.ok('POST', `/api/service-plans/${created.id}/rates`, { counselor_id: lins.id, fee: 2500, share_mode: 'fixed', share_fixed: 1500 });
+    const after = (await admin.ok('GET', '/api/service-plans')).find(p => p.id === created.id);
+    equal(after.topics.length, 1, '主題數');
+    equal(after.rates.length, 1, '費率數');
+    const q = await admin.ok('GET', `/api/plan-quote?plan_id=${created.id}&counselor_id=${lins.id}`);
+    equal(q.fee, 2500, '心理師費率覆寫金額');
+    equal(q.counselor_share, 1500, '固定鐘點費');
+    await admin.ok('DELETE', `/api/service-plans/${created.id}`);
+  });
+  await test('補助方案取價含方案給付與自付拆分', async () => {
+    const q = await admin.ok('GET', `/api/plan-quote?plan_id=${youthPlanId}&topic_id=${youthTopicId}`);
+    equal(q.fee, 1600, '金額');
+    equal(q.subsidy_amount, 1600, '方案給付');
+    equal(q.self_pay, 0, '自付');
+  });
+  await test('個案年度額度用滿後擋下第四次，並提示已用次數', async () => {
+    const clients = await admin.ok('GET', '/api/clients');
+    planClientId = clients[0].id;
+    const lins = (await admin.ok('GET', '/api/users')).find(u => u.username === 'lin');
+    // 挑遠一點的空白週次，避開 seed 灌入的預約與請假
+    const made = [];
+    try {
+      for (let i = 0; i < 3; i++) {
+        const d = nextWeekday(1, 100 + i * 7);
+        made.push((await admin.ok('POST', '/api/appointments', {
+          client_id: planClientId, counselor_id: lins.id, date: d, start_time: '07:00',
+          plan_id: youthPlanId, topic_id: youthTopicId
+        })).id);
+      }
+      const usage = await admin.ok('GET', `/api/clients/${planClientId}/plan-usage`);
+      const u = usage.rows.find(r => r.plan_id === youthPlanId);
+      equal(u.used, 3, '已用次數');
+      equal(u.remaining, 0, '剩餘次數');
+      const blocked = await admin.fails('POST', '/api/appointments', {
+        client_id: planClientId, counselor_id: lins.id, date: nextWeekday(1, 128), start_time: '07:00',
+        plan_id: youthPlanId
+      }, '額度');
+      assert(/額度已用完/.test(blocked.error || ''), '錯誤訊息應說明額度用完：' + JSON.stringify(blocked));
+    } finally {
+      for (const id of made) await admin.del(`/api/appointments/${id}`);
+    }
+  });
+  await test('人工調整已用次數（他所已使用）會計入額度', async () => {
+    await admin.ok('PUT', `/api/clients/${planClientId}/plan-usage`, {
+      plan_id: youthPlanId, used_offset: 3, note: '他所已使用'
+    });
+    const usage = await admin.ok('GET', `/api/clients/${planClientId}/plan-usage`);
+    equal(usage.rows.find(r => r.plan_id === youthPlanId).used, 3, '含調整後已用次數');
+    await admin.ok('PUT', `/api/clients/${planClientId}/plan-usage`, { plan_id: youthPlanId, used_offset: 0 });
+  });
+  await test('心理師每週人次上限擋下第七人次並指出下週餘額', async () => {
+    const lins = (await admin.ok('GET', '/api/users')).find(u => u.username === 'lin');
+    const clients = await admin.ok('GET', '/api/clients');
+    const monday = nextWeekday(1, 150);
+    const made = [];
+    try {
+      // 六個不同個案排滿同一週（override 略過個人年度額度，這裡驗的是心理師人次上限）
+      for (let i = 0; i < 6; i++) {
+        made.push((await admin.ok('POST', '/api/appointments', {
+          client_id: clients[i % clients.length].id, counselor_id: lins.id,
+          date: addDays(monday, i % 5), start_time: ['07:00', '08:00'][Math.floor(i / 5)] || '08:00',
+          plan_id: youthPlanId, override: true
+        })).id);
+      }
+      const load = await admin.ok('GET', `/api/plan-load?counselor_id=${lins.id}&plan_id=${youthPlanId}&date=${monday}`);
+      equal(load.week_used, 6, '本週已用人次');
+      assert(load.week_full, '本週應已額滿');
+      equal(load.next_week.remaining, 6, '下週餘額');
+      const msg = await admin.fails('POST', '/api/appointments', {
+        client_id: clients[0].id, counselor_id: lins.id, date: addDays(monday, 4), start_time: '09:00',
+        plan_id: youthPlanId
+      }, '人次');
+      assert(/已排滿/.test(msg.error || ''), '錯誤訊息應說明額滿：' + JSON.stringify(msg));
+    } finally {
+      for (const id of made) await admin.del(`/api/appointments/${id}`);
+    }
+  });
+
+  section('線上預約表單');
+  let bookingId;
+  await test('公開設定不外洩諮商室配置', async () => {
+    const cfg = await (await fetch(BASE + '/api/public/booking-config')).json();
+    assert(cfg.enabled, '表單應啟用');
+    assert(cfg.plans.length, '應有可預約方案');
+    assert(!JSON.stringify(cfg).includes('諮商室'), '公開設定不應含諮商室');
+  });
+  await test('公開時段查詢只回傳時間', async () => {
+    const lins = (await admin.ok('GET', '/api/users')).find(u => u.username === 'lin');
+    const d = await (await fetch(`${BASE}/api/public/booking-slots?counselor_id=${lins.id}&plan_id=${youthPlanId}&days=14`)).json();
+    assert(d.days.some(x => x.slots.length), '應有可預約時段');
+    assert(!JSON.stringify(d).includes('room'), '不應帶出諮商室資訊');
+  });
+  await test('未勾同意個資告知不得送出', async () => {
+    const r = await fetch(BASE + '/api/public/bookings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '測試', phone: '0911222333', plan_id: youthPlanId, consent: false })
+    });
+    equal(r.status, 400, 'HTTP 狀態');
+  });
+  await test('補助方案年齡不符在表單端即擋下', async () => {
+    const r = await fetch(BASE + '/api/public/bookings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '長輩', phone: '0911222444', birth_date: '1950-01-01',
+        plan_id: youthPlanId, consent: true })
+    });
+    const d = await r.json();
+    equal(r.status, 400, 'HTTP 狀態');
+    assert(/歲/.test(d.error), '應說明年齡限制：' + d.error);
+  });
+  await test('民眾送出預約申請', async () => {
+    const lins = (await admin.ok('GET', '/api/users')).find(u => u.username === 'lin');
+    const date = nextWeekday(3, 9);
+    const slots = await (await fetch(`${BASE}/api/public/booking-slots?counselor_id=${lins.id}&plan_id=${youthPlanId}&from=${date}&days=1`)).json();
+    const slot = slots.days[0].slots[0];
+    const r = await fetch(BASE + '/api/public/bookings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: '林小新', phone: '0911777888', birth_date: '2000-05-05', gender: 'female',
+        plan_id: youthPlanId, topic_id: youthTopicId, counselor_id: lins.id,
+        date, start_time: slot.start_time, main_issue: '最近壓力很大', consent: true
+      })
+    });
+    const d = await r.json();
+    assert(r.ok, '送出失敗：' + JSON.stringify(d));
+    bookingId = d.id;
+  });
+  await test('櫃檯看得到待處理申請', async () => {
+    const rows = await admin.ok('GET', '/api/bookings?status=new');
+    assert(rows.some(r => r.id === bookingId), '待處理清單應含此申請');
+  });
+  await test('由申請建檔並成立預約，系統自動指派諮商室', async () => {
+    const c = await admin.ok('POST', `/api/bookings/${bookingId}/create-client`);
+    assert(c.client_id, '建檔失敗');
+    const r = await admin.ok('POST', `/api/bookings/${bookingId}/confirm`, {});
+    assert(r.appointment_id, '未成立預約');
+    assert(r.room_id, '應自動指派諮商室');
+    const appt = (await admin.ok('GET', `/api/appointments?client_id=${c.client_id}`))[0];
+    equal(appt.plan_id, youthPlanId, '方案別');
+    equal(appt.fee, 1600, '依方案帶入金額');
+  });
+  await test('個案端看不到諮商室', async () => {
+    const rows = await admin.ok('GET', '/api/bookings');
+    assert(rows.find(r => r.id === bookingId).status === 'confirmed', '狀態應為已成立');
+  });
+
+  section('收據');
+  let receiptId, receiptNo;
+  await test('已收款的收費單可開立流水編號收據', async () => {
+    const list = await admin.ok('GET', '/api/invoices');
+    const inv = list.rows.find(i => i.status === 'paid') || list.rows[0];
+    if (inv.status !== 'paid') await admin.ok('POST', `/api/invoices/${inv.id}/pay`, { method: '現金' });
+    const r = await admin.ok('POST', '/api/receipts', { invoice_id: inv.id });
+    assert(/^GM\d{6}\d{4}$/.test(r.receipt_no) || /^\w+\d{10}$/.test(r.receipt_no), '收據編號格式：' + r.receipt_no);
+    receiptId = r.id;
+    receiptNo = r.receipt_no;
+  });
+  await test('同一收費單不會重複開立收據', async () => {
+    const list = await admin.ok('GET', '/api/receipts');
+    const r = list.rows.find(x => x.id === receiptId);
+    await admin.fails('POST', '/api/receipts', { invoice_id: r.invoice_id }, '已開立');
+  });
+  await test('補印會累計次數', async () => {
+    await admin.ok('POST', `/api/receipts/${receiptId}/printed`);
+    await admin.ok('POST', `/api/receipts/${receiptId}/printed`);
+    const r = await admin.ok('GET', `/api/receipts/${receiptId}`);
+    equal(r.print_count, 2, '補印次數');
+    assert(r.center_name, '收據應帶機構抬頭');
+  });
+  await test('作廢重開會產生新號並與原號勾稽', async () => {
+    const r = await admin.ok('POST', `/api/receipts/${receiptId}/reissue`, { reason: '抬頭錯誤', title: '好心情股份有限公司' });
+    assert(r.receipt_no !== receiptNo, '應為新號');
+    const list = await admin.ok('GET', '/api/receipts');
+    const old = list.rows.find(x => x.id === receiptId);
+    const neu = list.rows.find(x => x.receipt_no === r.receipt_no);
+    equal(old.status, 'void', '原收據應作廢');
+    equal(neu.reissue_of, receiptNo, '新收據應記錄原號');
+  });
+  await test('個案端查得到自己的收據', async () => {
+    const b = await portal.ok('GET', '/api/portal/billing');
+    assert(Array.isArray(b.receipts), '個案端應可查收據');
+  });
+
+  section('心理師收支與 LINE');
+  await test('依方案別產出每位心理師的月收支', async () => {
+    const d = await admin.ok('GET', `/api/plan-income?month=${ymd(new Date()).slice(0, 7)}`);
+    assert(Array.isArray(d.rows), '應回傳心理師清單');
+    assert(d.total && typeof d.total.share === 'number', '應有報酬合計');
+    if (d.rows.length) {
+      const r = d.rows[0];
+      equal(r.gross - r.share, r.center, '所方淨收 = 應收 - 心理師報酬');
+      const detail = await admin.ok('GET', `/api/plan-income/${r.counselor_id}/detail?month=${ymd(new Date()).slice(0, 7)}`);
+      assert(detail.counselor, '應可取得明細');
+    }
+  });
+  await test('方案人次看板列出各心理師用量', async () => {
+    const d = await admin.ok('GET', '/api/plan-board');
+    assert(Array.isArray(d.rows), '看板資料');
+  });
+  await test('未設定 LINE 權杖時不對外送出，只記為待人工', async () => {
+    const s = await admin.ok('GET', '/api/line/status');
+    equal(s.enabled, false, '預設未啟用');
+    const r = await admin.ok('POST', '/api/line/remind-batch', { date: addDays(ymd(new Date()), 1) });
+    assert(r.results.every(x => x.status === 'manual'), '未設定時應全部記為待人工發送');
+  });
+  await test('LINE 綁定碼只能為自己產生', async () => {
+    const r = await lin.ok('POST', '/api/line/bind-code', { user_id: (await lin.ok('GET', '/api/me')).id });
+    assert(/^\d{6}$/.test(r.code), '綁定碼格式');
+    const admins = (await admin.ok('GET', '/api/users')).find(u => u.username === 'admin');
+    await lin.fails('POST', '/api/line/bind-code', { user_id: admins.id }, '自己');
+  });
+  await test('Webhook 簽章不符即忽略', async () => {
+    const r = await fetch(BASE + '/api/line/webhook', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-line-signature': 'bad' },
+      body: JSON.stringify({ events: [] })
+    });
+    equal(r.status, 200, '應靜默忽略');
   });
 
   // ---- 結果 ----

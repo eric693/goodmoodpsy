@@ -1,0 +1,285 @@
+// LINE 官方帳號（Messaging API）推播：預約通知、晤談提醒、心理師行程。
+//
+// 一律以 Flex Message 送出——手機上看得清楚，且按鈕可直接打電話或開個案專區。
+// 未設定 Channel access token 時完全不對外連線，只把訊息內容記進 notifications
+// 表供人工發送，行為與原本的 webhook 通道一致（不把個資送到未設定的外部服務）。
+//
+// 推播對象靠 clients.line_user_id / users.line_user_id；綁定流程見 routes/line.js。
+
+const crypto = require('crypto');
+const { db, getSetting, nowStamp } = require('./db');
+
+const PUSH_URL = 'https://api.line.me/v2/bot/message/push';
+const REPLY_URL = 'https://api.line.me/v2/bot/message/reply';
+
+function lineEnabled() { return !!getSetting('line_channel_token', '').trim(); }
+function brandColor() {
+  const c = getSetting('line_flex_color', '#0e7c7b').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(c) ? c : '#0e7c7b';
+}
+function centerInfo() {
+  return {
+    name: getSetting('center_name', '好心情心理諮商所'),
+    phone: getSetting('center_phone', ''),
+    address: getSetting('center_address', '')
+  };
+}
+const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
+function weekdayOf(date) {
+  const d = new Date(date + 'T00:00:00');
+  return isNaN(d) ? '' : WEEKDAY[d.getDay()];
+}
+
+// ---- Flex 版型元件 ----------------------------------------------------------
+// 只用 LINE 原生元件，不放圖片外連，避免圖床失效或洩漏來源。
+
+function kv(label, value) {
+  return {
+    type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+      { type: 'text', text: label, color: '#8b97a2', size: 'sm', flex: 2 },
+      { type: 'text', text: String(value || '-'), wrap: true, color: '#3b4a55', size: 'sm', flex: 5 }
+    ]
+  };
+}
+function sep() { return { type: 'separator', margin: 'md' }; }
+function noteBox(text) {
+  return {
+    type: 'box', layout: 'vertical', margin: 'lg', backgroundColor: '#f4f7f8',
+    paddingAll: '10px', cornerRadius: '6px',
+    contents: [{ type: 'text', text: String(text), wrap: true, size: 'xs', color: '#6b7a85' }]
+  };
+}
+function actionButton(label, action, style = 'primary') {
+  return { type: 'button', style, height: 'sm', color: style === 'primary' ? brandColor() : undefined, action };
+}
+
+// 卡片外框：標題列用主色，內容自行帶入
+function card({ title, subtitle, body, footer, altText }) {
+  return {
+    type: 'flex',
+    altText: altText || title,
+    contents: {
+      type: 'bubble',
+      header: {
+        type: 'box', layout: 'vertical', backgroundColor: brandColor(), paddingAll: '14px',
+        contents: [
+          { type: 'text', text: title, color: '#ffffff', weight: 'bold', size: 'md' },
+          ...(subtitle ? [{ type: 'text', text: subtitle, color: '#e6f2f2', size: 'xs', margin: 'xs', wrap: true }] : [])
+        ]
+      },
+      body: { type: 'box', layout: 'vertical', spacing: 'sm', contents: body },
+      ...(footer && footer.length
+        ? { footer: { type: 'box', layout: 'vertical', spacing: 'sm', contents: footer } }
+        : {})
+    }
+  };
+}
+
+// ---- 各種訊息 --------------------------------------------------------------
+
+// 預約申請已收到（尚未成立，等櫃檯確認）
+function bookingReceivedFlex(b) {
+  const c = centerInfo();
+  return card({
+    title: '已收到您的預約申請',
+    subtitle: `${c.name}`,
+    altText: `已收到預約申請：${b.date || '未指定日期'} ${b.start_time || ''}`,
+    body: [
+      { type: 'text', text: '我們將盡快與您確認，確認後會再以此通知您。', size: 'sm', color: '#3b4a55', wrap: true },
+      sep(),
+      kv('姓名', b.name),
+      kv('方案', b.plan_name),
+      ...(b.topic_name ? [kv('主題', b.topic_name)] : []),
+      ...(b.counselor_name ? [kv('心理師', b.counselor_name)] : []),
+      kv('希望時段', b.date ? `${b.date}（${weekdayOf(b.date)}）${b.start_time || ''}` : (b.alt_note || '由所方安排')),
+      ...(b.fee ? [kv('費用', `NT$ ${Number(b.fee).toLocaleString('zh-TW')}`)] : []),
+      noteBox('此為預約申請，尚未成立。若急需協助請直接來電；如遇立即危機請撥 1925 或 119。')
+    ],
+    footer: c.phone ? [actionButton('打電話給諮商所', { type: 'uri', label: '打電話給諮商所', uri: `tel:${c.phone}` })] : []
+  });
+}
+
+// 預約成立
+function bookingConfirmedFlex(a) {
+  const c = centerInfo();
+  const footer = [];
+  if (a.meeting_url) footer.push(actionButton('進入視訊晤談', { type: 'uri', label: '進入視訊晤談', uri: a.meeting_url }));
+  if (a.portal_url) footer.push(actionButton('個案專區', { type: 'uri', label: '個案專區', uri: a.portal_url }, 'secondary'));
+  if (c.phone) footer.push(actionButton('改期或取消請來電', { type: 'uri', label: '改期或取消請來電', uri: `tel:${c.phone}` }, 'secondary'));
+  return card({
+    title: '預約已成立',
+    subtitle: c.name,
+    altText: `預約已成立：${a.date}（${weekdayOf(a.date)}）${a.start_time}`,
+    body: [
+      { type: 'text', text: `${a.date}（${weekdayOf(a.date)}）${a.start_time}-${a.end_time}`,
+        weight: 'bold', size: 'lg', color: '#3b4a55', wrap: true },
+      sep(),
+      kv('心理師', a.counselor_name),
+      ...(a.plan_name ? [kv('方案', a.plan_name)] : []),
+      ...(a.topic_name ? [kv('主題', a.topic_name)] : []),
+      kv('形式', a.mode === 'online' ? '線上視訊' : '到所晤談'),
+      ...(a.mode === 'online' ? [] : [kv('地點', c.address || c.name)]),
+      ...(a.fee ? [kv('費用', `NT$ ${Number(a.fee).toLocaleString('zh-TW')}${a.self_pay !== undefined && a.self_pay !== a.fee ? `（自付 ${a.self_pay}）` : ''}`)] : []),
+      noteBox(a.notice || `請提前 10 分鐘到所。如需改期或取消，請提前 ${getSetting('cancel_hours', '24')} 小時來電告知。`)
+    ],
+    footer
+  });
+}
+
+// 晤談提醒（個案）
+function reminderFlex(a) {
+  const c = centerInfo();
+  const footer = [];
+  if (a.meeting_url) footer.push(actionButton('進入視訊晤談', { type: 'uri', label: '進入視訊晤談', uri: a.meeting_url }));
+  if (c.phone) footer.push(actionButton('聯絡諮商所', { type: 'uri', label: '聯絡諮商所', uri: `tel:${c.phone}` }, 'secondary'));
+  return card({
+    title: '晤談提醒',
+    subtitle: c.name,
+    altText: `晤談提醒：${a.date}（${weekdayOf(a.date)}）${a.start_time}`,
+    body: [
+      { type: 'text', text: `${a.date}（${weekdayOf(a.date)}）${a.start_time}-${a.end_time}`,
+        weight: 'bold', size: 'lg', color: '#3b4a55', wrap: true },
+      sep(),
+      kv('心理師', a.counselor_name),
+      ...(a.plan_name ? [kv('方案', a.plan_name)] : []),
+      kv('形式', a.mode === 'online' ? '線上視訊' : '到所晤談'),
+      ...(a.mode === 'online' ? [] : [kv('地點', c.address || c.name)]),
+      noteBox(`如需改期或取消，請提前 ${getSetting('cancel_hours', '24')} 小時來電；未於期限前告知者，本所得依公告收取部分費用。`)
+    ],
+    footer
+  });
+}
+
+// 心理師的每日行程（隔日）
+function counselorScheduleFlex({ counselor_name, date, rows, title = '明日晤談行程' }) {
+  const c = centerInfo();
+  const lines = rows.length ? rows.map(r => ({
+    type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+      { type: 'text', text: `${r.start_time}`, size: 'sm', color: brandColor(), flex: 2, weight: 'bold' },
+      { type: 'text', text: `${r.client_name}（${r.client_code}）${r.plan_name ? '｜' + r.plan_name : ''}${r.mode === 'online' ? '｜視訊' : ''}`,
+        size: 'sm', color: '#3b4a55', flex: 6, wrap: true }
+    ]
+  })) : [{ type: 'text', text: '這天沒有排定的晤談。', size: 'sm', color: '#8b97a2' }];
+  return card({
+    title,
+    subtitle: `${date}（${weekdayOf(date)}）${counselor_name} 心理師`,
+    altText: `${title}：${date} 共 ${rows.length} 場`,
+    body: [
+      { type: 'text', text: `共 ${rows.length} 場`, size: 'sm', color: '#8b97a2' },
+      sep(),
+      ...lines,
+      ...(rows.some(r => r.risk_level === 'high')
+        ? [noteBox('名單中有高風險個案，請留意安全計畫與危機資源。')] : [])
+    ],
+    footer: c.phone ? [] : []
+  });
+}
+
+// 心理師收到新的預約申請／新排入的個案
+function counselorBookingFlex({ counselor_name, b, kind = '新的預約申請' }) {
+  return card({
+    title: kind,
+    subtitle: `${counselor_name} 心理師`,
+    altText: `${kind}：${b.name} ${b.date || ''} ${b.start_time || ''}`,
+    body: [
+      kv('個案', b.name),
+      kv('方案', b.plan_name),
+      ...(b.topic_name ? [kv('主題', b.topic_name)] : []),
+      kv('希望時段', b.date ? `${b.date}（${weekdayOf(b.date)}）${b.start_time || ''}` : (b.alt_note || '未指定')),
+      ...(b.main_issue ? [kv('主訴', String(b.main_issue).slice(0, 60))] : []),
+      ...(b.quota_note ? [noteBox(b.quota_note)] : [])
+    ],
+    footer: b.admin_url ? [actionButton('開啟後台處理', { type: 'uri', label: '開啟後台處理', uri: b.admin_url })] : []
+  });
+}
+
+// 收據開立通知
+function receiptFlex(r) {
+  const c = centerInfo();
+  return card({
+    title: '收據已開立',
+    subtitle: c.name,
+    altText: `收據 ${r.receipt_no}　NT$ ${r.amount}`,
+    body: [
+      kv('收據編號', r.receipt_no),
+      kv('日期', r.date),
+      kv('項目', r.item),
+      kv('金額', `NT$ ${Number(r.amount).toLocaleString('zh-TW')}`),
+      ...(r.title ? [kv('抬頭', r.title)] : []),
+      noteBox('如需紙本收據或補印，請於下次晤談時或來電告知。')
+    ]
+  });
+}
+
+function textMessage(text) { return { type: 'text', text: String(text).slice(0, 4900) }; }
+
+// ---- 送出 ------------------------------------------------------------------
+
+function logNotification({ kind, client_id, appointment_id, channel, target, content, status, error, user }) {
+  db.prepare(`INSERT INTO notifications (kind, client_id, appointment_id, channel, target, content, status, error, sent_by)
+    VALUES (?,?,?,?,?,?,?,?,?)`).run(kind, client_id || null, appointment_id || null, channel,
+    target || '', content || '', status, error || '', user ? user.id : null);
+}
+
+async function callLine(url, body) {
+  const token = getSetting('line_channel_token', '').trim();
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal: ctl.signal
+    });
+    if (!resp.ok) {
+      const t = (await resp.text().catch(() => '')).slice(0, 200);
+      return { ok: false, error: `LINE HTTP ${resp.status} ${t}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e.name === 'AbortError' ? 'LINE 連線逾時' : String(e.message || e).slice(0, 200) };
+  } finally { clearTimeout(timer); }
+}
+
+// 推播一則 Flex 給某個 LINE 使用者。
+// to 為空（未綁定）或未設定 token 時不對外連線，只記為待人工發送。
+async function pushFlex({ to, flex, kind = 'line', client_id = null, appointment_id = null, user = null, summary = '' }) {
+  const content = summary || (flex && flex.altText) || '';
+  if (!lineEnabled()) {
+    logNotification({ kind, client_id, appointment_id, channel: 'manual', target: to, content, status: 'manual' });
+    return { status: 'manual', message: '尚未設定 LINE official 帳號，已記錄為待人工通知' };
+  }
+  if (!to) {
+    logNotification({ kind, client_id, appointment_id, channel: 'line', target: '', content,
+      status: 'failed', error: '尚未綁定 LINE' });
+    return { status: 'failed', message: '對方尚未綁定 LINE 官方帳號' };
+  }
+  const r = await callLine(PUSH_URL, { to, messages: [flex] });
+  logNotification({ kind, client_id, appointment_id, channel: 'line', target: to, content,
+    status: r.ok ? 'sent' : 'failed', error: r.error, user });
+  return r.ok ? { status: 'sent', message: '已以 LINE 推播' } : { status: 'failed', message: r.error };
+}
+
+async function replyMessages(replyToken, messages) {
+  if (!lineEnabled() || !replyToken) return { ok: false };
+  return callLine(REPLY_URL, { replyToken, messages });
+}
+
+// Webhook 簽章驗證：LINE 以 channel secret 對 raw body 做 HMAC-SHA256。
+// 驗不過就當作不是 LINE 送來的，直接丟掉。
+function verifySignature(rawBody, signature) {
+  const secret = getSetting('line_channel_secret', '').trim();
+  if (!secret || !signature) return false;
+  const mac = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
+  const a = Buffer.from(mac), b = Buffer.from(String(signature));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+module.exports = {
+  lineEnabled, weekdayOf, centerInfo,
+  card, kv, noteBox, actionButton, textMessage,
+  bookingReceivedFlex, bookingConfirmedFlex, reminderFlex,
+  counselorScheduleFlex, counselorBookingFlex, receiptFlex,
+  pushFlex, replyMessages, verifySignature, logNotification
+};

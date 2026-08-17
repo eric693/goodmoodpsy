@@ -203,10 +203,10 @@ CREATE INDEX IF NOT EXISTS idx_intakeform_status ON intake_forms(status, created
 
 // 前台可編輯文字（系統設定頁維護；清空即隱藏該區塊）
 const UI_TEXT_DEFAULTS = {
-  ui_staff_login_title: 'MindCare 心理諮商所',
+  ui_staff_login_title: '好心情心理諮商所',
   ui_staff_login_sub: '諮商所管理系統',
   ui_demo_staff: '展示用測試帳號\n管理者：admin / mindcare123\n諮商師：lin / 123456',
-  ui_portal_title: 'MindCare 個案專區',
+  ui_portal_title: '好心情個案專區',
   ui_portal_login_sub: '預約、量表填寫與費用查詢',
   ui_portal_login_hint: '首次登入密碼為手機末 6 碼；忘記密碼請來電諮商所。',
   ui_demo_portal: '展示用測試帳號\n個案：0912345678 / 345678',
@@ -218,9 +218,9 @@ const UI_TEXT_KEYS = Object.keys(UI_TEXT_DEFAULTS);
 {
   const SETTING_DEFAULTS = {
     ...UI_TEXT_DEFAULTS,
-    center_name: 'MindCare 心理諮商所',
-    center_phone: '',
-    center_address: '',
+    center_name: '好心情心理諮商所',
+    center_phone: '0909334443',
+    center_address: '708 臺南市安平區建平七街453巷75號2樓之2',
     // 機構登記資料：收據／報表抬頭與核銷文件需載明
     center_license_no: '',              // 諮商所開業執照字號
     center_director: '',                // 負責心理師
@@ -522,6 +522,273 @@ db.exec(`CREATE TABLE IF NOT EXISTS refunds (
   created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
 );
 CREATE INDEX IF NOT EXISTS idx_refund_client ON refunds(client_id, date);`);
+
+// ---------------------------------------------------------------------------
+// 方案別（衛福部社會局補助方案／自費方案／合作單位方案）
+//
+// 一個「方案」= 一組收費與給付規則：誰付錢（自費／補助／單位）、一次多少錢、
+// 心理師抽成怎麼算、有沒有資格限制（年齡、每年次數）、每位心理師一週能排幾人次。
+// 方案下再分「主題」（如伴侶溝通、親職教養），主題可各自覆寫金額；
+// 再往下是「心理師 × 方案（×主題）」的個別費率，覆寫方案預設。
+// 取價與抽成的優先序：心理師費率 > 主題 > 方案預設（見 src/plans.js resolveFee）。
+db.exec(`CREATE TABLE IF NOT EXISTS service_plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'self',           -- self 自費 / subsidy 政府補助方案 / partner 合作單位
+  appt_type TEXT NOT NULL DEFAULT 'individual',-- 對應預約類型（individual/couple/family/group/intake/assessment）
+  fee_mode TEXT NOT NULL DEFAULT 'fixed',      -- fixed 固定金額 / choice 由預約時挑選（伴侶諮商常見）
+  fee INTEGER NOT NULL DEFAULT 0,              -- 固定金額，或 choice 模式下的預設值
+  fee_options TEXT NOT NULL DEFAULT '',        -- choice 模式可選金額（逗號分隔，如 2400,3000,3600）
+  subsidy_amount INTEGER NOT NULL DEFAULT 0,   -- 由方案／補助款支付的金額，其餘為個案自付
+  subsidy_program TEXT NOT NULL DEFAULT '',    -- 核銷用方案名稱（帶入收費單 subsidy_program）
+  session_minutes INTEGER NOT NULL DEFAULT 0,  -- 0 表示沿用系統設定
+  age_min INTEGER NOT NULL DEFAULT 0,          -- 資格年齡下限（0 為不限）
+  age_max INTEGER NOT NULL DEFAULT 0,          -- 資格年齡上限（0 為不限）
+  quota_per_year INTEGER NOT NULL DEFAULT 0,   -- 每位個案每年可用次數（0 為不限）
+  counselor_week_limit INTEGER NOT NULL DEFAULT 0,  -- 每位心理師每週可排人次（0 為不限）
+  counselor_month_limit INTEGER NOT NULL DEFAULT 0, -- 每位心理師每月可排人次（0 為不限）
+  share_mode TEXT NOT NULL DEFAULT 'percent',  -- percent 抽成比例 / fixed 固定鐘點費
+  share_percent REAL NOT NULL DEFAULT 0.6,     -- 心理師分得比例
+  share_fixed INTEGER NOT NULL DEFAULT 0,      -- 心理師固定鐘點費
+  portal_visible INTEGER NOT NULL DEFAULT 1,   -- 是否出現在線上預約表單
+  require_review INTEGER NOT NULL DEFAULT 1,   -- 線上預約是否須櫃檯確認才成立
+  note TEXT NOT NULL DEFAULT '',
+  intro TEXT NOT NULL DEFAULT '',              -- 顯示在預約表單的說明
+  sort INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS plan_topics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id INTEGER NOT NULL REFERENCES service_plans(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  fee INTEGER NOT NULL DEFAULT 0,              -- 0 表示沿用方案金額
+  fee_options TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  sort INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_plan_topic ON plan_topics(plan_id, active);
+
+-- 心理師 × 方案（可再指定主題）的個別費率與人次上限；未設定者沿用方案預設。
+CREATE TABLE IF NOT EXISTS plan_counselors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id INTEGER NOT NULL REFERENCES service_plans(id) ON DELETE CASCADE,
+  counselor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  topic_id INTEGER REFERENCES plan_topics(id) ON DELETE CASCADE,
+  fee INTEGER NOT NULL DEFAULT 0,              -- 0 沿用上層
+  share_mode TEXT NOT NULL DEFAULT '',         -- 空字串沿用方案
+  share_percent REAL NOT NULL DEFAULT 0,
+  share_fixed INTEGER NOT NULL DEFAULT 0,
+  week_limit INTEGER NOT NULL DEFAULT -1,      -- -1 沿用方案，0 不限，>0 個別上限
+  month_limit INTEGER NOT NULL DEFAULT -1,
+  bookable INTEGER NOT NULL DEFAULT 1,         -- 是否開放此方案的線上預約
+  active INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_plan_counselor ON plan_counselors(plan_id, counselor_id);
+
+-- 個案在某方案的已用次數調整：如在他所已使用過的次數，或人工註記補正。
+-- 實際已用次數 = 本系統該年度有效預約數 + used_offset。
+CREATE TABLE IF NOT EXISTS plan_usage_adjustments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  plan_id INTEGER NOT NULL REFERENCES service_plans(id) ON DELETE CASCADE,
+  year TEXT NOT NULL,
+  used_offset INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  updated_by INTEGER REFERENCES users(id),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  UNIQUE(client_id, plan_id, year)
+);`);
+
+// 收據：與收費單分離。收費單是「這筆帳」，收據是「開給個案的憑證」，
+// 個案當下不要、事後要補，或原本開錯要重開，都不該動到帳。
+// 因此收據自成流水號（前綴＋年月＋序號），可補開、可作廢重開，並保留開立與補印紀錄。
+db.exec(`CREATE TABLE IF NOT EXISTS receipts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  receipt_no TEXT NOT NULL UNIQUE,             -- 流水編號，如 GM2026080001
+  invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  date TEXT NOT NULL,                          -- 收據日期（通常為收款日）
+  title TEXT NOT NULL DEFAULT '',              -- 抬頭（預設個案姓名，可填公司或家長）
+  tax_id TEXT NOT NULL DEFAULT '',             -- 統一編號（報帳用）
+  item TEXT NOT NULL DEFAULT '',
+  amount INTEGER NOT NULL DEFAULT 0,
+  method TEXT NOT NULL DEFAULT '',
+  plan_name TEXT NOT NULL DEFAULT '',
+  counselor_name TEXT NOT NULL DEFAULT '',
+  service_date TEXT NOT NULL DEFAULT '',       -- 服務（晤談）日期
+  note TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'valid',        -- valid 有效 / void 已作廢
+  void_reason TEXT NOT NULL DEFAULT '',
+  reissue_of TEXT NOT NULL DEFAULT '',         -- 重開時記錄原收據號
+  print_count INTEGER NOT NULL DEFAULT 0,      -- 補印次數
+  last_printed_at TEXT NOT NULL DEFAULT '',
+  issued_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_receipt_client ON receipts(client_id, date);
+CREATE INDEX IF NOT EXISTS idx_receipt_no ON receipts(receipt_no);`);
+
+// 線上預約申請：個案從公開表單（或 LINE）送出的預約需求。
+// 個案看不到諮商室配置，只選方案、主題、心理師與時段；諮商室由櫃檯／系統指派。
+db.exec(`CREATE TABLE IF NOT EXISTS booking_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  email TEXT NOT NULL DEFAULT '',
+  gender TEXT NOT NULL DEFAULT '',
+  birth_date TEXT NOT NULL DEFAULT '',
+  is_new INTEGER NOT NULL DEFAULT 1,           -- 是否初次預約
+  client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+  plan_id INTEGER REFERENCES service_plans(id) ON DELETE SET NULL,
+  topic_id INTEGER REFERENCES plan_topics(id) ON DELETE SET NULL,
+  counselor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  date TEXT NOT NULL DEFAULT '',
+  start_time TEXT NOT NULL DEFAULT '',
+  alt_note TEXT NOT NULL DEFAULT '',           -- 其他可配合時段
+  mode TEXT NOT NULL DEFAULT 'onsite',
+  fee_choice INTEGER NOT NULL DEFAULT 0,       -- 可選金額方案（如伴侶諮商）所選金額
+  partner_name TEXT NOT NULL DEFAULT '',       -- 伴侶／家族諮商的同行者
+  main_issue TEXT NOT NULL DEFAULT '',
+  expectation TEXT NOT NULL DEFAULT '',
+  source TEXT NOT NULL DEFAULT 'web',          -- web 表單 / line
+  line_user_id TEXT NOT NULL DEFAULT '',
+  consent INTEGER NOT NULL DEFAULT 0,          -- 已閱讀並同意個資告知
+  status TEXT NOT NULL DEFAULT 'new',          -- new 待處理 / confirmed 已成立 / rejected 未成立 / cancelled 已取消
+  appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+  reply_note TEXT NOT NULL DEFAULT '',
+  handled_by INTEGER REFERENCES users(id),
+  handled_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_booking_status ON booking_requests(status, created_at);
+
+-- LINE 綁定驗證碼：個案在官方帳號輸入驗證碼即完成綁定，不必由櫃檯查 userId
+CREATE TABLE IF NOT EXISTS line_bindings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL UNIQUE,
+  client_id INTEGER REFERENCES clients(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  line_user_id TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',      -- pending 待綁定 / done 已綁定 / expired 已失效
+  expires_at TEXT NOT NULL DEFAULT '',
+  bound_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);`);
+
+ensureColumns('appointments', {
+  plan_id: 'INTEGER REFERENCES service_plans(id)',   // 方案別（收費與抽成依此計算）
+  topic_id: 'INTEGER REFERENCES plan_topics(id)',    // 方案下的主題
+  counselor_share: 'INTEGER NOT NULL DEFAULT 0',     // 此次晤談的心理師報酬（結算當下鎖定）
+  booking_request_id: 'INTEGER REFERENCES booking_requests(id)'
+});
+ensureColumns('clients', {
+  line_user_id: "TEXT NOT NULL DEFAULT ''"           // LINE 官方帳號綁定（提醒推播用）
+});
+ensureColumns('users', {
+  line_user_id: "TEXT NOT NULL DEFAULT ''"           // 心理師的 LINE 綁定（行程提醒推播）
+});
+ensureColumns('invoices', {
+  plan_id: 'INTEGER REFERENCES service_plans(id)',
+  topic_id: 'INTEGER REFERENCES plan_topics(id)'
+});
+
+{
+  const EXT_SETTING_DEFAULTS = {
+    // ---- LINE 官方帳號（Messaging API）----
+    // 填入 Channel access token 後，預約成立、晤談提醒、心理師行程皆以 Flex Message 推播；
+    // 未填則所有推播只產生文字與紀錄，不對外送出任何個資。
+    line_channel_token: '',
+    line_channel_secret: '',
+    line_official_name: '',
+    line_add_friend_url: '',            // 加好友連結（印在預約完成頁）
+    line_reminder_hours: '24',          // 晤談前幾小時推提醒
+    line_counselor_daily_time: '20:00', // 每日推播心理師隔日行程的時間
+    line_counselor_daily_enabled: '1',
+    line_flex_color: '#0e7c7b',         // Flex 卡片主色
+    // ---- 線上預約表單 ----
+    booking_form_enabled: '1',
+    booking_lead_days: '1',             // 最快可約幾天後
+    booking_max_days: '45',             // 最遠可約幾天後
+    booking_slot_step: '30',            // 表單上時段間隔（分鐘）
+    booking_require_birth: '1',         // 是否必填生日（補助方案需驗年齡）
+    booking_notice: '送出後為「預約申請」，櫃檯確認並回覆後才算完成預約。\n'
+      + '如需取消或改期請提前來電；未於規定時間前告知者，本所得依公告收取部分費用。',
+    booking_privacy: '本表單蒐集之個人資料僅用於預約安排、聯繫與依法應為之紀錄保存，'
+      + '不作其他用途。您得隨時要求查詢、更正或刪除。',
+    // ---- 諮商室指派 ----
+    // 個案端與線上表單一律不顯示諮商室；成立預約時由系統挑一間當下沒被占用的空間。
+    room_auto_assign: '1',
+    room_hide_from_client: '1',
+    // ---- 方案人次上限的預設值（各方案可自訂覆寫）----
+    plan_default_week_limit: '6',
+    plan_default_month_limit: '0',
+    plan_quota_enforce: '1',            // 1 超額直接擋下；0 只警示
+    // ---- 收據 ----
+    // 實習心理師督導覆核：所內目前沒有實習生，預設關閉整套覆核流程；
+    // 日後收實習生時把這裡改成 1，紀錄覆核頁與相關欄位就會回來。
+    intern_review_enabled: '0',
+    receipt_footer: '本收據為心理諮商服務費用憑證，請妥善保存。',
+    receipt_title_default: '心理諮商服務費收據'
+  };
+  const has = db.prepare('SELECT 1 FROM settings WHERE key = ?');
+  const ins = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');
+  for (const [k, v] of Object.entries(EXT_SETTING_DEFAULTS)) if (!has.get(k)) ins.run(k, v);
+}
+
+// 首次啟動建立範例方案：衛福部年輕族群心理健康支持方案（15-45 歲、每年 3 次）
+// 與自費個別／伴侶諮商。所方可於「方案設定」頁自行增修，這裡只是給一組可用的起點。
+if (!db.prepare('SELECT 1 FROM service_plans LIMIT 1').get()) {
+  const insPlan = db.prepare(`INSERT INTO service_plans
+    (name, kind, appt_type, fee_mode, fee, fee_options, subsidy_amount, subsidy_program,
+     age_min, age_max, quota_per_year, counselor_week_limit, counselor_month_limit,
+     share_mode, share_percent, share_fixed, intro, sort)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+  const insTopic = db.prepare('INSERT INTO plan_topics (plan_id, name, sort) VALUES (?,?,?)');
+
+  const topicsOf = (planId, list) => list.forEach((t, i) => insTopic.run(planId, t, i + 1));
+
+  // 衛福部年輕族群心理健康支持方案：15-45 歲每人每年 3 次，
+  // 並限制每位心理師每週可排的人次（所方可於方案設定調整）
+  topicsOf(insPlan.run('年輕族群心理健康支持方案', 'subsidy', 'individual', 'fixed',
+    1600, '', 1600, '年輕族群心理健康支持方案', 15, 45, 3, 6, 0,
+    'percent', 0.7, 0,
+    '衛福部補助 15-45 歲民眾每人每年 3 次心理諮商，需符合資格並於本所核對身分。', 1).lastInsertRowid,
+  ['情緒困擾', '壓力調適', '人際關係', '家庭議題', '職涯適應', '睡眠困擾']);
+
+  topicsOf(insPlan.run('個別諮商 50 分鐘', 'self', 'individual', 'fixed',
+    2000, '', 0, '', 0, 0, 0, 0, 0, 'percent', 0.6, 0,
+    '一對一心理諮商，每次 50 分鐘。', 2).lastInsertRowid,
+  ['情緒與壓力', '人際關係', '自我探索', '創傷議題', '生涯適應']);
+
+  topicsOf(insPlan.run('個別諮商 80 分鐘', 'self', 'individual', 'fixed',
+    3000, '', 0, '', 0, 0, 0, 0, 0, 'percent', 0.6, 0,
+    '需要更長談話時間者適用，每次 80 分鐘。', 3).lastInsertRowid,
+  ['情緒與壓力', '創傷議題', '自我探索', '關係議題']);
+
+  // 伴侶／家庭諮商：實務上依人數與時長議價，故金額於預約時挑選
+  topicsOf(insPlan.run('伴侶／家庭諮商 80 分鐘', 'self', 'couple', 'choice',
+    3000, '3000,3600,4500', 0, '', 0, 0, 0, 0, 0, 'percent', 0.6, 0,
+    '兩人以上一同前來，每次 80 分鐘；可依需求選擇方案金額。', 4).lastInsertRowid,
+  ['溝通與衝突', '信任修復', '婚前準備', '親密關係', '分手／離婚調適', '家庭關係']);
+
+  topicsOf(insPlan.run('親子／家長諮詢 80 分鐘', 'self', 'family', 'choice',
+    3000, '3000,3600', 0, '', 0, 0, 0, 0, 0, 'percent', 0.6, 0,
+    '由家長單獨或與孩子一同前來，討論教養與親子關係，每次 80 分鐘。', 5).lastInsertRowid,
+  ['親職教養', '學習與拒學', '手足關係', '青少年情緒', '網路與 3C 使用']);
+
+  topicsOf(insPlan.run('大學生方案 40 分鐘', 'self', 'individual', 'fixed',
+    1200, '', 0, '', 0, 25, 3, 0, 0, 'percent', 0.6, 0,
+    '25 歲以下適用，每人限 3 次，每次 40 分鐘。', 6).lastInsertRowid,
+  ['課業與壓力', '人際關係', '感情議題', '生涯探索', '家庭議題']);
+
+  topicsOf(insPlan.run('LGBTQ+ 族群方案 40 分鐘', 'self', 'individual', 'fixed',
+    1200, '', 0, '', 0, 0, 3, 0, 0, 'percent', 0.6, 0,
+    '性別與性傾向相關議題支持方案，每人限 3 次，每次 40 分鐘。', 7).lastInsertRowid,
+  ['自我認同', '出櫃與家庭', '伴侶關係', '職場處境', '情緒支持']);
+}
 
 module.exports = {
   db, SECRET, DATA_DIR, UPLOAD_DIR, getSetting, setSetting, listSetting, audit,
