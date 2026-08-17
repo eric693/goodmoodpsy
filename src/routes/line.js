@@ -6,7 +6,7 @@
 
 const express = require('express');
 const crypto = require('crypto');
-const { db, audit, today, addDays, getSetting, nowStamp } = require('../db');
+const { db, audit, today, addDays, getSetting, setSetting, nowStamp } = require('../db');
 const { requireStaff } = require('../auth');
 const line = require('../line');
 
@@ -86,6 +86,117 @@ async function handleEvent(ev) {
     await line.replyMessages(ev.replyToken, [helpFlex()]);
   }
 }
+
+// ---- 後台：串接設定 ----
+//
+// 所方在這裡貼上 LINE Developers 後台的 Channel access token 與 Channel secret，
+// 按「驗證連線」確認打得通，再按「設定 Webhook」把回呼網址寫回 LINE，
+// 綁定與自動回覆就會生效，不必自己到 LINE 後台貼網址。
+
+const LINE_SETTING_KEYS = ['line_official_name', 'line_add_friend_url', 'line_reminder_hours',
+  'line_counselor_daily_enabled', 'line_counselor_daily_time', 'line_flex_color', 'booking_public_url'];
+const MASK = '••••••••';
+
+function maskSecret(v) {
+  const t = String(v || '').trim();
+  if (!t) return '';
+  return `${MASK}${t.slice(-4)}`;
+}
+function webhookUrl(req) {
+  const base = getSetting('booking_public_url', '').replace(/\/booking\.html.*$/, '')
+    || `${req.protocol}://${req.get('host')}`;
+  return `${base}/api/line/webhook`;
+}
+
+router.get('/line/settings', requireStaff('settings'), (req, res) => {
+  const out = { webhook_url: webhookUrl(req), enabled: line.lineEnabled() };
+  for (const k of LINE_SETTING_KEYS) out[k] = getSetting(k, '');
+  // 權杖與密鑰只回傳遮罩後的尾碼，畫面上看得出「有沒有填、是不是同一組」，但不外流內容
+  out.line_channel_token = maskSecret(getSetting('line_channel_token', ''));
+  out.line_channel_secret = maskSecret(getSetting('line_channel_secret', ''));
+  res.json(out);
+});
+
+router.put('/line/settings', requireStaff('settings'), (req, res) => {
+  const b = req.body || {};
+  for (const k of LINE_SETTING_KEYS) if (b[k] !== undefined) setSetting(k, String(b[k]));
+  // 遮罩值代表「沒改」，直接略過；要清空請送空字串
+  for (const k of ['line_channel_token', 'line_channel_secret']) {
+    if (b[k] === undefined) continue;
+    const v = String(b[k]).trim();
+    if (v.startsWith(MASK)) continue;
+    setSetting(k, v);
+  }
+  audit('staff', req.user.id, req.user.name, '修改 LINE 串接設定', '',
+    Object.keys(b).filter(k => !/token|secret/.test(k)).join(','));
+  res.json({ ok: true, enabled: line.lineEnabled() });
+});
+
+// 驗證連線：向 LINE 取官方帳號資訊，確認權杖有效
+router.post('/line/verify', requireStaff('settings'), async (req, res) => {
+  const token = getSetting('line_channel_token', '').trim();
+  if (!token) return res.status(400).json({ error: '尚未填入 Channel access token' });
+  try {
+    const r = await fetch('https://api.line.me/v2/bot/info', { headers: { Authorization: `Bearer ${token}` } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      return res.status(400).json({ error: `LINE 回覆 HTTP ${r.status}：${d.message || '權杖可能已失效'}` });
+    }
+    audit('staff', req.user.id, req.user.name, 'LINE 連線驗證', d.basicId || '');
+    res.json({ ok: true, basic_id: d.basicId, display_name: d.displayName, premium_id: d.premiumId });
+  } catch (e) {
+    res.status(400).json({ error: '無法連線至 LINE：' + String(e.message || e).slice(0, 120) });
+  }
+});
+
+// 把 Webhook 網址寫回 LINE，並請 LINE 實際打一次回來確認通得過
+router.post('/line/webhook-endpoint', requireStaff('settings'), async (req, res) => {
+  const token = getSetting('line_channel_token', '').trim();
+  if (!token) return res.status(400).json({ error: '尚未填入 Channel access token' });
+  if (!getSetting('line_channel_secret', '').trim()) {
+    return res.status(400).json({ error: '尚未填入 Channel secret，Webhook 無法驗證簽章' });
+  }
+  const url = String((req.body || {}).url || webhookUrl(req));
+  if (!/^https:\/\/\S+$/.test(url)) return res.status(400).json({ error: 'Webhook 網址必須是 https 開頭' });
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+  try {
+    const put = await fetch('https://api.line.me/v2/bot/channel/webhook/endpoint', {
+      method: 'PUT', headers, body: JSON.stringify({ endpoint: url })
+    });
+    if (!put.ok) {
+      const d = await put.json().catch(() => ({}));
+      return res.status(400).json({ error: `設定 Webhook 失敗（HTTP ${put.status}）：${d.message || ''}` });
+    }
+    const test = await fetch('https://api.line.me/v2/bot/channel/webhook/test', {
+      method: 'POST', headers, body: JSON.stringify({ endpoint: url })
+    });
+    const td = await test.json().catch(() => ({}));
+    audit('staff', req.user.id, req.user.name, '設定 LINE Webhook', url);
+    res.json({
+      ok: true, url,
+      reachable: !!(td && td.success),
+      detail: td && td.detail ? String(td.detail) : (td.success ? '連線正常' : '已設定，但 LINE 測試未通過，請確認網域可對外連線')
+    });
+  } catch (e) {
+    res.status(400).json({ error: '無法連線至 LINE：' + String(e.message || e).slice(0, 120) });
+  }
+});
+
+// 綁定情形一覽：誰綁了、誰還沒綁，直接在這裡發綁定碼或解除
+router.get('/line/bindings', requireStaff(), (req, res) => {
+  res.json({
+    staff: db.prepare(`SELECT id, name, title, role, line_user_id FROM users
+      WHERE active = 1 AND role IN ('counselor','supervisor','admin','staff') ORDER BY id`).all()
+      .map(u => ({ id: u.id, name: u.name, title: u.title, role: u.role, bound: !!u.line_user_id })),
+    clients: db.prepare(`SELECT id, code, name, phone, line_user_id FROM clients
+      WHERE active = 1 ORDER BY line_user_id = '' , id DESC LIMIT 200`).all()
+      .map(c => ({ id: c.id, code: c.code, name: c.name, phone: c.phone, bound: !!c.line_user_id })),
+    pending: db.prepare(`SELECT b.code, b.expires_at, b.created_at,
+        c.name AS client_name, u.name AS user_name
+      FROM line_bindings b LEFT JOIN clients c ON c.id = b.client_id LEFT JOIN users u ON u.id = b.user_id
+      WHERE b.status = 'pending' AND b.expires_at >= ? ORDER BY b.id DESC LIMIT 50`).all(today())
+  });
+});
 
 // ---- 後台：綁定管理 ----
 

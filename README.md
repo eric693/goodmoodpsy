@@ -294,8 +294,19 @@ pm2 restart mindcare   # 正式環境重啟（單獨重啟時建議改用 npm ru
 
 ## LINE 官方帳號（Flex Message）
 
-在系統設定填入 Channel access token 與 secret 後啟用；未填時完全不對外連線，
-訊息只記錄為「待人工發送」，不會把個資送到未設定的服務。
+**串接在「系統 → LINE 官方帳號 → 串接設定」頁完成**，不必碰程式或設定檔：
+
+1. **頻道憑證**：貼上 LINE Developers Console 的 Channel access token（long-lived）與 Channel secret
+   （已存的權杖只顯示末四碼，不改就留原樣），按「驗證連線」會向 LINE 取回官方帳號名稱與 ID 確認打得通
+2. **Webhook**：按「寫回 LINE 並測試」，系統直接把
+   `https://goodmoodpsy.crownai.ink/api/line/webhook` 設定到 LINE 頻道並請 LINE 實際回打一次；
+   同時記得到 LINE 後台關閉「自動回覆訊息」與「歡迎訊息」，改由本系統回覆
+3. **通知時間與樣式**：晤談提醒提前時數、心理師行程每日推播時間、Flex 卡片主色、
+   放在卡片按鈕上的預約表單網址
+
+同頁另有「綁定管理」（員工與個案的綁定狀態，逐一發綁定碼或解除）
+與「推播與紀錄」（手動推播、每筆推播結果與失敗原因）。
+未完成串接時系統完全不對外連線，訊息只記錄為「待人工發送」，不會把個資送到未設定的服務。
 
 | 卡片 | 對象 | 時機 |
 |---|---|---|
@@ -308,8 +319,7 @@ pm2 restart mindcare   # 正式環境重啟（單獨重啟時建議改用 npm ru
 | 收據已開立 | 個案 | 櫃檯按下「LINE 傳給個案」 |
 
 綁定不必手抄 userId：後台產生 6 碼綁定碼 → 對方在官方帳號輸入 → Webhook 完成綁定。
-Webhook 網址設為 `https://goodmoodpsy.crownai.ink/api/line/webhook`，
-簽章以 channel secret 驗證，驗不過即忽略。
+Webhook 簽章以 channel secret 驗證，驗不過即忽略。
 
 ## 目前關閉的功能
 

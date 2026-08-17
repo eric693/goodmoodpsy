@@ -139,28 +139,183 @@ App.page('bookings', {
 
 App.page('line', {
   title: 'LINE 官方帳號',
-  sub: '預約通知、晤談提醒與心理師行程都以 Flex Message 推播',
+  sub: '串接設定、綁定管理與推播；所有通知都以 Flex Message 送出',
   module: 'settings',
   async render(el) {
-    const s = await GET('/line/status');
-    el.innerHTML = `<div class="card"><h3>狀態</h3>
-        <div style="font-size:14px;line-height:2">
-          Messaging API：${s.enabled ? UI.tag('已啟用', 'ok') : UI.tag('未設定 Channel access token', 'danger')}
-          　官方帳號：${UI.esc(s.official_name || '-')}<br>
-          已綁定個案：<strong>${s.clients_bound}</strong> / ${s.clients_total}　已綁定員工：<strong>${s.staff_bound}</strong><br>
-          晤談提醒：晤談前 ${s.reminder_hours} 小時　心理師行程：${s.daily_enabled ? `每日 ${s.daily_time} 推播隔日行程` : '未啟用'}<br>
-          我的綁定：${s.me_bound ? UI.tag('已綁定', 'ok') : UI.tag('未綁定', 'warn')}
+    UI.tabs(el, [
+      { key: 'setup', label: '串接設定' },
+      { key: 'bind', label: '綁定管理' },
+      { key: 'push', label: '推播與紀錄' }
+    ], (key, body) => LINEPAGE[key](body));
+  }
+});
+
+const LINEPAGE = {
+  // ---- 串接設定：貼上權杖 → 驗證連線 → 設定 Webhook ----
+  async setup(el) {
+    const s = await GET('/line/settings');
+    el.innerHTML = `
+      <div class="card"><h3>1. 頻道憑證
+        ${s.enabled ? UI.tag('已啟用', 'ok') : UI.tag('尚未啟用', 'danger')}</h3>
+        <div style="font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:10px">
+          到 <a href="https://developers.line.biz/console/" target="_blank" rel="noopener">LINE Developers Console</a>
+          → 選擇您的 Messaging API 頻道 →
+          「Basic settings」複製 <strong>Channel secret</strong>、
+          「Messaging API」發行並複製 <strong>Channel access token（long-lived）</strong>，貼到下方。<br>
+          已存的權杖只顯示末四碼；不修改就留著原樣即可，要清空請把欄位刪成空白。
+        </div>
+        <div class="form-grid" id="cred">
+          ${UI.input('line_channel_token', 'Channel access token', { value: s.line_channel_token, full: true })}
+          ${UI.input('line_channel_secret', 'Channel secret', { value: s.line_channel_secret, full: true })}
+          ${UI.input('line_official_name', '官方帳號名稱', { value: s.line_official_name })}
+          ${UI.input('line_add_friend_url', '加好友連結', { value: s.line_add_friend_url })}
         </div>
         <div class="toolbar" style="margin-top:10px">
-          <button class="btn secondary" id="mycode">產生我的綁定碼</button>
+          <button class="btn" id="save-cred">儲存憑證</button>
+          <button class="btn secondary" id="verify">驗證連線</button>
+          <div class="spacer"></div>
+          <span id="verify-out" style="font-size:13px;color:var(--muted)"></span>
+        </div>
+      </div>
+
+      <div class="card"><h3>2. Webhook</h3>
+        <div style="font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:8px">
+          Webhook 是 LINE 把個案訊息送回系統的通道，綁定碼與自動回覆都靠它。
+          按下方按鈕會直接幫您寫回 LINE 後台並測試一次；
+          也可以自己到 LINE Developers 的「Messaging API → Webhook URL」貼上這個網址並開啟 Use webhook。
+        </div>
+        <div class="form-grid">
+          ${UI.input('webhook_url', 'Webhook 網址', { value: s.webhook_url, full: true })}
+        </div>
+        <div class="toolbar" style="margin-top:10px">
+          <button class="btn" id="hook">寫回 LINE 並測試</button>
+          <div class="spacer"></div>
+          <span id="hook-out" style="font-size:13px;color:var(--muted)"></span>
+        </div>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+          另請在 LINE Developers 的「Messaging API」把<strong>自動回覆訊息</strong>與<strong>歡迎訊息</strong>關閉，
+          改由本系統回覆綁定與預約說明，個案才不會收到兩則訊息。
+        </div>
+      </div>
+
+      <div class="card"><h3>3. 通知時間與樣式</h3>
+        <div class="form-grid" id="opts">
+          ${UI.input('line_reminder_hours', '晤談提醒提前時數', { type: 'number', value: s.line_reminder_hours })}
+          ${UI.select('line_counselor_daily_enabled', '每日推播心理師隔日行程',
+    [['1', '啟用'], ['0', '關閉']], { value: s.line_counselor_daily_enabled })}
+          ${UI.input('line_counselor_daily_time', '每日推播時間', { type: 'time', value: s.line_counselor_daily_time })}
+          ${UI.input('line_flex_color', 'Flex 卡片主色', { value: s.line_flex_color })}
+          ${UI.input('booking_public_url', '線上預約表單網址（放在 LINE 卡片按鈕）', { value: s.booking_public_url, full: true })}
+        </div>
+        <div class="toolbar" style="margin-top:10px"><div class="spacer"></div>
+          <button class="btn" id="save-opts">儲存</button></div>
+      </div>`;
+
+    const save = async (scope) => {
+      const box = el.querySelector(scope);
+      await PUT('/line/settings', UI.formData(box));
+      UI.toast('已儲存');
+      App.go('line');
+    };
+    el.querySelector('#save-cred').onclick = () => save('#cred');
+    el.querySelector('#save-opts').onclick = () => save('#opts');
+    el.querySelector('#verify').onclick = async () => {
+      const out = el.querySelector('#verify-out');
+      out.textContent = '連線中…';
+      try {
+        const r = await POST('/line/verify');
+        out.innerHTML = `<span style="color:var(--ok,#2e7d32)">✓ 已連線：${UI.esc(r.display_name || '')} ${UI.esc(r.basic_id || '')}</span>`;
+      } catch (e) { out.innerHTML = `<span style="color:var(--danger)">✕ ${UI.esc(e.message)}</span>`; }
+    };
+    el.querySelector('#hook').onclick = async () => {
+      const out = el.querySelector('#hook-out');
+      out.textContent = '設定中…';
+      try {
+        const r = await POST('/line/webhook-endpoint', { url: el.querySelector('[name=webhook_url]').value.trim() });
+        out.innerHTML = r.reachable
+          ? '<span style="color:var(--ok,#2e7d32)">✓ 已設定並測試通過</span>'
+          : `<span style="color:#b8860b">已設定，但 ${UI.esc(r.detail)}</span>`;
+      } catch (e) { out.innerHTML = `<span style="color:var(--danger)">✕ ${UI.esc(e.message)}</span>`; }
+    };
+  },
+
+  // ---- 綁定管理 ----
+  async bind(el) {
+    const d = await GET('/line/bindings');
+    const codeDialog = r => UI.modal({
+      title: 'LINE 綁定碼', hideFooter: true,
+      body: `<div style="text-align:center;font-size:32px;font-weight:700;letter-spacing:6px;margin:12px 0">${r.code}</div>
+        <div style="font-size:13.5px;line-height:1.9">
+          1. 請對方加入諮商所的 LINE 官方帳號${r.add_friend_url
+    ? `（<a href="${UI.esc(r.add_friend_url)}" target="_blank" rel="noopener">加好友連結</a>）` : ''}<br>
+          2. 在聊天室輸入這 6 碼<br>
+          3. 收到「綁定完成」卡片即完成，之後的提醒都會送到 LINE<br>
+          有效期限：${r.expires_at}</div>`
+    });
+    el.innerHTML = `
+      <div class="card"><h3>員工／心理師</h3>
+        ${UI.table(['姓名', '身分', 'LINE', ''], d.staff.map(u => `<tr>
+          <td>${UI.esc(u.name)}</td><td>${UI.esc(u.title || TW.role[u.role] || '')}</td>
+          <td>${u.bound ? UI.tag('已綁定', 'ok') : UI.tag('未綁定', 'warn')}</td>
+          <td>${u.bound ? `<button class="btn tiny danger" data-us="${u.id}">解除</button>`
+    : `<button class="btn tiny" data-cs="${u.id}">產生綁定碼</button>`}</td></tr>`))}</div>
+
+      <div class="card"><h3>個案
+          <span style="font-size:13px;font-weight:400;color:var(--muted)">未綁定者排在前面</span></h3>
+        ${UI.table(['編號', '姓名', '電話', 'LINE', ''], d.clients.map(c => `<tr>
+          <td>${UI.esc(c.code)}</td><td>${UI.esc(c.name)}</td><td>${UI.esc(c.phone || '')}</td>
+          <td>${c.bound ? UI.tag('已綁定', 'ok') : UI.tag('未綁定', '')}</td>
+          <td>${c.bound ? `<button class="btn tiny danger" data-uc="${c.id}">解除</button>`
+    : `<button class="btn tiny" data-cc="${c.id}">產生綁定碼</button>`}</td></tr>`))}</div>
+
+      <div class="card"><h3>尚未使用的綁定碼</h3>
+        ${UI.table(['綁定碼', '對象', '有效至', '產生時間'], d.pending.map(p => `<tr>
+          <td><strong>${UI.esc(p.code)}</strong></td>
+          <td>${UI.esc(p.client_name || p.user_name || '')}</td>
+          <td>${UI.esc(p.expires_at)}</td><td>${UI.esc(p.created_at.slice(0, 16))}</td></tr>`), '沒有待使用的綁定碼')}</div>`;
+
+    el.querySelectorAll('[data-cs]').forEach(b => {
+      b.onclick = async () => codeDialog(await POST('/line/bind-code', { user_id: Number(b.dataset.cs) }));
+    });
+    el.querySelectorAll('[data-cc]').forEach(b => {
+      b.onclick = async () => codeDialog(await POST('/line/bind-code', { client_id: Number(b.dataset.cc) }));
+    });
+    el.querySelectorAll('[data-us]').forEach(b => {
+      b.onclick = async () => {
+        if (!await UI.confirm('確定解除此員工的 LINE 綁定？')) return;
+        await DEL(`/line/binding?user_id=${b.dataset.us}`);
+        UI.toast('已解除');
+        App.go('line');
+      };
+    });
+    el.querySelectorAll('[data-uc]').forEach(b => {
+      b.onclick = async () => {
+        if (!await UI.confirm('確定解除此個案的 LINE 綁定？')) return;
+        await DEL(`/line/binding?client_id=${b.dataset.uc}`);
+        UI.toast('已解除');
+        App.go('line');
+      };
+    });
+  },
+
+  // ---- 推播與紀錄 ----
+  async push(el) {
+    const s = await GET('/line/status');
+    el.innerHTML = `
+      <div class="card"><h3>手動推播</h3>
+        <div style="font-size:14px;line-height:2">
+          已綁定個案 <strong>${s.clients_bound}</strong> / ${s.clients_total}　已綁定員工 <strong>${s.staff_bound}</strong><br>
+          晤談提醒：晤談前 ${s.reminder_hours} 小時　心理師行程：${s.daily_enabled ? `每日 ${s.daily_time} 推播隔日行程` : '未啟用'}
+        </div>
+        <div class="toolbar" style="margin-top:10px">
           <button class="btn secondary" id="test"${s.me_bound ? '' : ' disabled'}>推播測試（我的明日行程）</button>
           <div class="spacer"></div>
           <button class="btn secondary" id="remind">推播明日晤談提醒</button>
           <button class="btn" id="sched">推播心理師明日行程</button>
         </div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
-          未設定 Channel access token 時，系統不會對外送出任何個資，只把訊息記錄為「待人工發送」。
-          Webhook 網址請在 LINE Developers 設定為：<code>${location.origin}/api/line/webhook</code></div>
+          尚未完成串接時，系統不會對外送出任何個資，只把訊息記錄為「待人工發送」。
+        </div>
       </div>
 
       <div class="card"><h3>近期推播紀錄</h3>
@@ -169,22 +324,10 @@ App.page('line', {
           <td>${UI.esc(n.client_name || n.target || '-')}</td>
           <td style="max-width:280px">${UI.esc(n.content || '')}</td>
           <td>${n.status === 'sent' ? UI.tag('已送出', 'ok')
-      : n.status === 'manual' ? UI.tag('待人工', 'warn') : UI.tag('失敗', 'danger')}
+    : n.status === 'manual' ? UI.tag('待人工', 'warn') : UI.tag('失敗', 'danger')}
             ${n.error ? `<br><span style="font-size:12px;color:var(--muted)">${UI.esc(n.error)}</span>` : ''}</td>
         </tr>`), '尚無推播紀錄')}</div>`;
 
-    el.querySelector('#mycode').onclick = async () => {
-      const r = await POST('/line/bind-code', { user_id: App.me.id });
-      UI.modal({
-        title: 'LINE 綁定碼', hideFooter: true,
-        body: `<div style="text-align:center;font-size:30px;font-weight:700;letter-spacing:6px;margin:12px 0">${r.code}</div>
-          <div style="font-size:13.5px;line-height:1.9">
-            1. 用手機加入諮商所的 LINE 官方帳號${r.add_friend_url ? `（<a href="${UI.esc(r.add_friend_url)}" target="_blank" rel="noopener">加好友連結</a>）` : ''}<br>
-            2. 在聊天室輸入上面 6 碼綁定碼<br>
-            3. 收到「綁定完成」卡片即可接收行程與提醒<br>
-            有效期限：${r.expires_at}</div>`
-      });
-    };
     el.querySelector('#test').onclick = async () => { const o = await POST('/line/test'); UI.toast(o.message); };
     el.querySelector('#remind').onclick = async () => {
       if (!await UI.confirm('推播明日所有已預約個案的晤談提醒？')) return;
@@ -198,4 +341,4 @@ App.page('line', {
       App.go('line');
     };
   }
-});
+};

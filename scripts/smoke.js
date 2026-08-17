@@ -894,6 +894,31 @@ function startServer() {
     const admins = (await admin.ok('GET', '/api/users')).find(u => u.username === 'admin');
     await lin.fails('POST', '/api/line/bind-code', { user_id: admins.id }, '自己');
   });
+  await test('串接設定：權杖只回遮罩、遮罩值不會覆蓋原設定', async () => {
+    await admin.ok('PUT', '/api/line/settings', { line_channel_token: 'test-token-1234', line_official_name: '測試官方帳號' });
+    const s1 = await admin.ok('GET', '/api/line/settings');
+    assert(!s1.line_channel_token.includes('test-token'), '不應回傳完整權杖');
+    assert(s1.line_channel_token.endsWith('1234'), '應顯示末四碼');
+    assert(/\/api\/line\/webhook$/.test(s1.webhook_url), 'Webhook 網址');
+    // 原樣送回遮罩值代表沒改，權杖要維持不變
+    await admin.ok('PUT', '/api/line/settings', { line_channel_token: s1.line_channel_token, line_reminder_hours: 12 });
+    const s2 = await admin.ok('GET', '/api/line/settings');
+    equal(s2.line_channel_token, s1.line_channel_token, '權杖未被遮罩值覆蓋');
+    equal(s2.line_reminder_hours, '12', '其他設定有存到');
+    await admin.ok('PUT', '/api/line/settings', { line_channel_token: '' });
+    equal((await admin.ok('GET', '/api/line/settings')).line_channel_token, '', '可清空權杖');
+  });
+  await test('未填權杖時不可設定 Webhook', async () => {
+    await admin.fails('POST', '/api/line/webhook-endpoint', {}, 'Channel access token');
+  });
+  await test('綁定管理列出員工與個案的綁定狀態', async () => {
+    const d = await admin.ok('GET', '/api/line/bindings');
+    assert(d.staff.length && d.clients.length, '應列出員工與個案');
+    assert(d.staff.every(u => typeof u.bound === 'boolean'), '綁定狀態');
+  });
+  await test('一般行政不得改串接設定', async () => {
+    await office.fails('PUT', '/api/line/settings', { line_official_name: 'x' }, '權限');
+  });
   await test('Webhook 簽章不符即忽略', async () => {
     const r = await fetch(BASE + '/api/line/webhook', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'x-line-signature': 'bad' },
