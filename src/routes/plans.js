@@ -229,13 +229,49 @@ router.get('/plan-board', requireStaff('schedule'), (req, res) => {
     for (const c of counselors) {
       const load = counselorLoad(c.id, p.id, date);
       if (!load.week_limit && !load.month_limit && !load.week_used && !load.month_used) continue;
+      // 帶出這位心理師是否另有個別上限，看板上才分得出「沿用方案」與「個別調整」
+      const ov = db.prepare(`SELECT week_limit, month_limit FROM plan_counselors
+        WHERE plan_id = ? AND counselor_id = ? AND topic_id IS NULL`).get(p.id, c.id) || {};
       rows.push({
         plan_id: p.id, plan_name: p.name, counselor_id: c.id, counselor_name: c.name,
+        plan_week_limit: p.counselor_week_limit, plan_month_limit: p.counselor_month_limit,
+        override_week: ov.week_limit === undefined ? -1 : ov.week_limit,
+        override_month: ov.month_limit === undefined ? -1 : ov.month_limit,
         ...load, next_week: load.week_full ? nextWeekHint(c.id, p.id, date) : null
       });
     }
   }
   res.json({ date, rows });
+});
+
+// 直接在人次看板調整某位心理師在某方案的上限，不必繞到方案設定頁改費率。
+// -1 沿用方案設定、0 不限、>0 個別上限。
+router.put('/plan-board/limit', requireStaff('settings'), (req, res) => {
+  const b = req.body || {};
+  const planId = Number(b.plan_id) || 0;
+  const counselorId = Number(b.counselor_id) || 0;
+  if (!planId || !counselorId) return res.status(400).json({ error: '請指定方案與心理師' });
+  const plan = db.prepare('SELECT name FROM service_plans WHERE id = ?').get(planId);
+  if (!plan) return res.status(404).json({ error: '找不到此方案' });
+  const norm = v => {
+    if (v === '' || v === null || v === undefined) return -1;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : -1;
+  };
+  const week = norm(b.week_limit);
+  const month = norm(b.month_limit);
+  const row = db.prepare(`SELECT id FROM plan_counselors
+    WHERE plan_id = ? AND counselor_id = ? AND topic_id IS NULL`).get(planId, counselorId);
+  if (row) {
+    db.prepare('UPDATE plan_counselors SET week_limit = ?, month_limit = ?, active = 1 WHERE id = ?')
+      .run(week, month, row.id);
+  } else {
+    db.prepare(`INSERT INTO plan_counselors (plan_id, counselor_id, topic_id, week_limit, month_limit)
+      VALUES (?,?,NULL,?,?)`).run(planId, counselorId, week, month);
+  }
+  audit('staff', req.user.id, req.user.name, '調整方案人次上限', plan.name,
+    { counselorId, week_limit: week, month_limit: month });
+  res.json({ ok: true, week_limit: week, month_limit: month });
 });
 
 // ---- 個案的方案使用次數（標記用了幾次青壯年方案）----

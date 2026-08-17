@@ -40,9 +40,15 @@ a { color: var(--primary); text-decoration: none; }
 .sidebar .brand small { display: block; font-size: 11px; font-weight: 400; color: #9dc3c2; margin-top: 2px; }
 .nav { flex: 1; padding: 8px 0; }
 .nav a {
-  display: block; padding: 10px 18px; color: #cfe3e3; font-size: 14px;
+  display: flex; align-items: center; gap: 8px; padding: 10px 18px; color: #cfe3e3; font-size: 14px;
   border-left: 3px solid transparent;
 }
+/* 待處理筆數紅點：處理完畢筆數歸零才會消失 */
+.nav .nav-badge {
+  margin-left: auto; min-width: 20px; padding: 1px 6px; border-radius: 10px;
+  background: var(--danger); color: #fff; font-size: 12px; font-weight: 700; text-align: center;
+}
+.nav .nav-badge[hidden] { display: none; }
 .nav a:hover { background: rgba(255,255,255,0.06); }
 .nav a.active { background: rgba(255,255,255,0.1); color: #fff; border-left-color: var(--accent); }
 .nav .nav-group { padding: 12px 18px 4px; font-size: 11px; color: #7fa8a7; letter-spacing: 1px; }

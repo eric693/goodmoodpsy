@@ -217,16 +217,56 @@ App.page('plan-board', {
         <input type="date" id="d" value="${date}">
         <div class="spacer"></div></div>
       ${[...byPlan.entries()].map(([name, rows]) => `<div class="card"><h3>${UI.esc(name)}</h3>
-        ${UI.table(['心理師', `本週（${rows[0].week_start} ~ ${rows[0].week_end}）`, '本月', '狀態'], rows.map(r => `<tr>
+        ${UI.table(['心理師', `本週（${rows[0].week_start} ~ ${rows[0].week_end}）`, '本月', '狀態', ''], rows.map((r, i) => `<tr>
           <td>${UI.esc(r.counselor_name)}</td>
-          <td>${r.week_used}${r.week_limit ? ' / ' + r.week_limit : '（不限）'}</td>
-          <td>${r.month_used}${r.month_limit ? ' / ' + r.month_limit : '（不限）'}</td>
+          <td>${r.week_used}${r.week_limit ? ' / ' + r.week_limit : '（不限）'}
+            ${r.override_week >= 0 ? '<span style="font-size:12px;color:var(--muted)">　個別設定</span>' : ''}</td>
+          <td>${r.month_used}${r.month_limit ? ' / ' + r.month_limit : '（不限）'}
+            ${r.override_month >= 0 ? '<span style="font-size:12px;color:var(--muted)">　個別設定</span>' : ''}</td>
           <td>${r.week_full
       ? UI.tag('本週額滿', 'danger') + (r.next_week ? `<span style="font-size:12px;color:var(--muted)">　下週 ${r.next_week.week_start} 起尚餘 ${r.next_week.remaining ?? '不限'} 人次</span>` : '')
       : r.month_full ? UI.tag('本月額滿', 'danger')
-        : UI.tag(`尚可 ${r.week_remaining ?? '不限'} 人次`, 'ok')}</td></tr>`))}
+        : UI.tag(`尚可 ${r.week_remaining ?? '不限'} 人次`, 'ok')}</td>
+          <td style="text-align:right"><button class="btn tiny secondary"
+            data-lim="${UI.esc(name)}" data-i="${i}">調整上限</button></td></tr>`))}
       </div>`).join('') || '<div class="empty">目前沒有設定人次上限的方案</div>'}`;
     el.querySelector('#d').onchange = e => { location.hash = `plan-board/${e.target.value}`; };
+
+    // 人次上限就在這頁改：-1 沿用方案、0 不限、其他為個別上限
+    el.querySelectorAll('[data-lim]').forEach(b => {
+      b.onclick = () => {
+        const r = byPlan.get(b.dataset.lim)[Number(b.dataset.i)];
+        const field = (key, label, ov, planVal) =>
+          UI.select(`${key}_mode`, `${label}上限`, [
+            ['inherit', `沿用方案設定（${planVal > 0 ? planVal + ' 人次' : '不限'}）`],
+            ['none', '不限'],
+            ['custom', '個別上限']
+          ], { value: ov < 0 ? 'inherit' : ov === 0 ? 'none' : 'custom' })
+          + UI.input(`${key}_value`, `${label}人次`,
+            { type: 'number', min: 1, value: ov > 0 ? ov : '', placeholder: '例如 6' });
+        UI.modal({
+          title: `${r.counselor_name}　${b.dataset.lim}`,
+          body: `<div class="form-grid">
+              ${field('week', '每週', r.override_week, r.plan_week_limit)}
+              ${field('month', '每月', r.override_month, r.plan_month_limit)}
+            </div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+              只影響這位心理師在此方案的上限，其他心理師不受影響；調整會記入稽核軌跡。
+              已排入的預約不會被回頭取消。</div>`,
+          onSubmit: async bodyEl => {
+            const f = UI.formData(bodyEl);
+            const pick = key => (f[key + '_mode'] === 'inherit' ? -1
+              : f[key + '_mode'] === 'none' ? 0 : Math.max(1, Number(f[key + '_value']) || 1));
+            await PUT('/plan-board/limit', {
+              plan_id: r.plan_id, counselor_id: r.counselor_id,
+              week_limit: pick('week'), month_limit: pick('month')
+            });
+            UI.toast('已更新人次上限');
+            App.go(`plan-board/${date}`);
+          }
+        });
+      };
+    });
   }
 });
 
@@ -242,15 +282,24 @@ App.page('income', {
         <input type="month" id="m" value="${month}">
         <div class="spacer"></div></div>
       <div class="card"><h3>${month} 全所合計</h3>
-        <div class="stat-row" style="display:flex;gap:18px;flex-wrap:wrap;font-size:14px">
-          <div><div class="dg-label">完成場次</div><strong>${t.sessions}</strong>（未到 ${t.no_shows}）</div>
-          <div><div class="dg-label">服務總額</div><strong>${UI.fmtMoney(t.gross)}</strong></div>
-          <div><div class="dg-label">方案給付／個案自付</div>${UI.fmtMoney(t.subsidy)} / ${UI.fmtMoney(t.self_pay)}</div>
-          <div><div class="dg-label">其中場地費</div>${UI.fmtMoney(t.venue)}</div>
-          <div><div class="dg-label">心理師報酬</div><strong>${UI.fmtMoney(t.share)}</strong></div>
-          <div><div class="dg-label">所方淨收</div><strong>${UI.fmtMoney(t.center)}</strong></div>
-          <div><div class="dg-label">實收／未收</div>${UI.fmtMoney(t.collected)} / <span style="color:var(--danger)">${UI.fmtMoney(t.uncollected)}</span></div>
-        </div>
+        ${UI.table(['項目', '金額／數量', '說明'], [
+    `<tr><td>完成場次</td><td style="text-align:right"><strong>${t.sessions}</strong></td>
+       <td style="color:var(--muted)">未到 ${t.no_shows} 場</td></tr>`,
+    `<tr><td>服務總額</td><td style="text-align:right"><strong>${UI.fmtMoney(t.gross)}</strong></td>
+       <td style="color:var(--muted)">本月已完成晤談的應收合計</td></tr>`,
+    `<tr><td>方案給付</td><td style="text-align:right">${UI.fmtMoney(t.subsidy)}</td>
+       <td style="color:var(--muted)">補助方案由公部門支付的部分</td></tr>`,
+    `<tr><td>個案自付</td><td style="text-align:right">${UI.fmtMoney(t.self_pay)}</td>
+       <td style="color:var(--muted)">其中場地費 ${UI.fmtMoney(t.venue)}</td></tr>`,
+    `<tr><td>心理師報酬</td><td style="text-align:right"><strong>${UI.fmtMoney(t.share)}</strong></td>
+       <td style="color:var(--muted)">以「服務總額 − 場地費」為基數計算</td></tr>`,
+    `<tr><td>所方淨收</td><td style="text-align:right"><strong>${UI.fmtMoney(t.center)}</strong></td>
+       <td style="color:var(--muted)">服務總額 − 心理師報酬</td></tr>`,
+    `<tr><td>實收</td><td style="text-align:right">${UI.fmtMoney(t.collected)}</td>
+       <td style="color:var(--muted)">已收款金額</td></tr>`,
+    `<tr><td>未收</td><td style="text-align:right;color:var(--danger)">${UI.fmtMoney(t.uncollected)}</td>
+       <td style="color:var(--muted)">尚未收款，可於收費管理催收</td></tr>`
+  ])}
         ${UI.barChart(d.rows.map(r => ({ label: r.counselor_name, value: r.share, note: `${r.sessions} 場` })),
       { horizontal: true, format: v => UI.fmtMoney(v), title: '心理師報酬' })}
       </div>

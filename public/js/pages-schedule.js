@@ -339,9 +339,32 @@ App.page('today', {
   module: 'schedule',
   async render(el) {
     const date = UI.today();
-    const list = await GET(`/appointments?date=${date}`);
+    const [list, usage] = await Promise.all([
+      GET(`/appointments?date=${date}`),
+      GET(`/rooms/usage?date=${date}`).catch(() => null)
+    ]);
+    // 全所只有 2-3 間，今天哪間空著要一眼看得到（個案端不顯示這份資料）
+    const roomCard = usage && usage.rooms.length ? `<div class="card"><h3>今日空間使用
+        <span style="font-size:13px;font-weight:400;color:var(--muted)">${usage.rooms.length} 間</span></h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+          ${usage.rooms.map(r => `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
+            <div style="font-weight:700">${UI.esc(r.name)}
+              <span style="font-size:12px;font-weight:400;color:var(--muted)">
+                ${r.capacity > 1 ? `可容納 ${r.capacity} 人　` : ''}今日 ${r.bookings.length} 場</span></div>
+            ${r.bookings.length ? r.bookings.map(b => `<div style="font-size:13px;margin-top:6px">
+                <strong>${b.start_time}-${b.end_time}</strong>　${UI.esc(b.title)}
+                ${b.kind === 'group' ? UI.tag('團體', 'warn') : ''}
+                <div style="font-size:12px;color:var(--muted)">${UI.esc(b.counselor_name || '')}</div></div>`).join('')
+    : '<div style="font-size:13px;color:var(--muted);margin-top:6px">今日整天空著</div>'}
+          </div>`).join('')}
+        </div>
+        ${usage.unassigned.length ? `<div class="notice warn" style="margin-top:10px">
+          尚未指定空間的到所晤談：${usage.unassigned.map(u =>
+    `${u.start_time} ${UI.esc(u.title)}`).join('、')}　請在預約中指定諮商室。</div>` : ''}
+      </div>` : '';
     el.innerHTML = `<div class="toolbar"><strong>${date}（${UI.weekdayName(date)}）</strong>
         <div class="spacer"></div><button class="btn" id="add">新增預約</button></div>
+      ${roomCard}
       <div class="kid-grid">${list.length ? list.map(a => `
         <div class="kid-card ${a.status === 'done' ? 'in' : a.status === 'no_show' ? 'leave' : 'out'}">
           <div class="kid-head">

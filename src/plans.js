@@ -237,6 +237,10 @@ function pickRoom({ date, start_time, end_time, exclude_appointment_id }) {
       WHERE date = ? AND status IN ('booked','arrived') AND start_time < ? AND end_time > ?
         AND room_id IS NOT NULL AND id != ?`)
     .all(date, end_time, start_time, Number(exclude_appointment_id) || 0).map(r => r.room_id));
+  // 團體場次也會占用空間，只有 2-3 間時漏算就會兩組人撞在同一間
+  for (const r of db.prepare(`SELECT room_id FROM group_sessions
+      WHERE date = ? AND status != 'cancelled' AND start_time < ? AND end_time > ? AND room_id IS NOT NULL`)
+    .all(date, end_time, start_time)) busy.add(r.room_id);
   const free = rooms.find(r => !busy.has(r.id));
   return free ? free.id : null;
 }

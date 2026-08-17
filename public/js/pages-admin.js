@@ -844,8 +844,8 @@ App.page('users', {
     const users = await GET('/users');
     const modules = App.meta.modules || [];
     const form = u => `<div class="form-grid">
-        ${u ? '' : UI.input('username', '帳號', { required: true })}
-        ${UI.input('password', u ? '重設密碼（留空不改）' : '密碼', { type: 'password' })}
+        ${UI.input('username', '帳號（登入用）', { value: u ? u.username : '', required: true })}
+        ${UI.input('password', u ? '重設密碼（留空不改）' : '密碼', { type: 'text', placeholder: u ? '留空表示不變更' : '至少 6 碼' })}
         ${UI.input('name', '姓名', { value: u ? u.name : '' })}
         ${UI.select('role', '角色', App.enumOptions('role'), { value: u ? u.role : 'counselor' })}
         ${UI.input('title', '職稱', { value: u ? u.title : '' })}
@@ -866,12 +866,32 @@ App.page('users', {
     .filter(x => x.active && ['supervisor', 'admin', 'counselor'].includes(x.role) && (!u || x.id !== u.id))
     .map(x => [x.id, `${x.name}（${TW.role[x.role] || x.role}）`])), { value: u ? (u.supervisor_id || '') : '', full: true }) : ''}
         <div class="form-row full"><label>模組權限（管理者不受此限）</label>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px">
-            ${modules.map(m => `<label style="font-size:13.5px;display:flex;gap:6px;align-items:center">
-              <input type="checkbox" class="perm" value="${m.key}"${u && u.permissions.includes(m.key) ? ' checked' : ''}>
-              ${UI.esc(m.label)}</label>`).join('')}</div></div>
+          <div class="toolbar" style="margin:0 0 8px">
+            <button class="btn tiny secondary" type="button" id="permall">全選</button>
+            <button class="btn tiny secondary" type="button" id="permnone">全部取消</button>
+            <button class="btn tiny secondary" type="button" id="permrole">套用角色預設</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:4px 14px">
+            ${modules.map(m => `<label style="font-size:13.5px;display:flex;gap:8px;align-items:center;
+              padding:6px 8px;border:1px solid var(--border);border-radius:6px;cursor:pointer">
+              <input type="checkbox" class="perm" value="${m.key}"${u && u.permissions.includes(m.key) ? ' checked' : ''}
+                style="width:auto;flex:none;margin:0">
+              <span style="flex:1">${UI.esc(m.label)}</span></label>`).join('')}</div></div>
         ${u ? UI.checkbox('active', '帳號啟用中', u.active) : ''}
       </div>`;
+    // 權限勾選的快捷鍵：全選／全部取消／套用該角色預設
+    const permSetup = el2 => {
+      const boxes = [...el2.querySelectorAll('.perm')];
+      const setAll = v => boxes.forEach(c => { c.checked = v; });
+      el2.querySelector('#permall').onclick = () => setAll(true);
+      el2.querySelector('#permnone').onclick = () => setAll(false);
+      el2.querySelector('#permrole').onclick = () => {
+        const role = el2.querySelector('[name=role]').value;
+        const def = (App.meta.role_default_modules || {})[role] || [];
+        boxes.forEach(c => { c.checked = def.includes(c.value); });
+        UI.toast(`已套用${TW.role[role] || role}預設權限`);
+      };
+    };
     const submit = u => async el2 => {
       const d = UI.formData(el2);
       d.permissions = [...el2.querySelectorAll('.perm:checked')].map(c => c.value);
@@ -897,11 +917,40 @@ App.page('users', {
         <td>${UI.esc(u.supervisor_name || '')}</td>
         <td>${u.role === 'admin' ? '全部' : u.permissions.length}</td>
         <td>${u.active ? UI.tag('啟用', 'ok') : UI.tag('停用')}</td>
-        <td><button class="btn tiny secondary" data-u="${u.id}">編輯</button></td></tr>`))}</div>`;
-    el.querySelector('#add').onclick = () => UI.modal({ title: '新增帳號', wide: true, body: form(null), onSubmit: submit(null) });
+        <td style="white-space:nowrap;text-align:right">
+          <button class="btn tiny secondary" data-u="${u.id}">編輯</button>
+          <button class="btn tiny secondary" data-pw="${u.id}">重設密碼</button></td></tr>`))}</div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+        密碼在資料庫只保存加密後的雜湊值，任何人都查不回原本的密碼；忘記密碼時請用「重設密碼」產生新的並交給本人。</div>`;
+    el.querySelector('#add').onclick = () => UI.modal({
+      title: '新增帳號', wide: true, body: form(null), onOpen: permSetup, onSubmit: submit(null)
+    });
     el.querySelectorAll('[data-u]').forEach(b => {
       const u = users.find(x => x.id === Number(b.dataset.u));
-      b.onclick = () => UI.modal({ title: '編輯帳號：' + u.username, wide: true, body: form(u), onSubmit: submit(u) });
+      b.onclick = () => UI.modal({
+        title: '編輯帳號：' + u.username, wide: true, body: form(u), onOpen: permSetup, onSubmit: submit(u)
+      });
+    });
+    el.querySelectorAll('[data-pw]').forEach(b => {
+      const u = users.find(x => x.id === Number(b.dataset.pw));
+      b.onclick = () => UI.modal({
+        title: `重設密碼：${u.name}（${u.username}）`,
+        submitText: '重設並顯示',
+        body: `${UI.input('password', '新密碼（留空則自動產生 8 碼）', { type: 'text', placeholder: '至少 6 碼' })}
+          <div style="font-size:12.5px;color:var(--muted);margin-top:6px">
+            重設後舊密碼立即失效，新密碼只會顯示這一次，請當場交給本人並請他登入後自行更換。</div>`,
+        onSubmit: async el2 => {
+          const r = await POST(`/users/${u.id}/reset-password`, UI.formData(el2));
+          UI.modal({
+            title: '密碼已重設', hideFooter: true,
+            body: `<div style="font-size:14px;line-height:2">帳號：<strong>${UI.esc(r.username)}</strong></div>
+              <div style="text-align:center;font-size:28px;font-weight:700;letter-spacing:4px;margin:10px 0">
+                ${UI.esc(r.password)}</div>
+              <div style="font-size:12.5px;color:var(--muted)">
+                關閉此視窗後就查不到這組密碼了，忘記只能再重設一次。</div>`
+          });
+        }
+      });
     });
   }
 });
@@ -991,14 +1040,37 @@ App.page('settings', {
 
     const rooms = await GET('/rooms');
     const rb = el.querySelector('#rooms');
-    rb.innerHTML = UI.table(['名稱', '容納人數', '備註', '狀態'], rooms.map(r => `<tr>
+    const roomForm = r => `<div class="form-grid">
+        ${UI.input('name', '名稱', { value: r ? r.name : '' })}
+        ${UI.input('capacity', '容納人數', { type: 'number', value: r ? r.capacity : 1 })}
+        ${UI.input('note', '備註', { value: r ? r.note : '', full: true })}
+        ${r ? UI.checkbox('active', '啟用中（停用後不再被自動指派）', r.active) : ''}</div>`;
+    rb.innerHTML = UI.table(['名稱', '容納人數', '備註', '狀態', ''], rooms.map(r => `<tr>
         <td>${UI.esc(r.name)}</td><td>${r.capacity}</td><td>${UI.esc(r.note)}</td>
-        <td>${r.active ? UI.tag('啟用', 'ok') : UI.tag('停用')}</td></tr>`)) +
+        <td>${r.active ? UI.tag('啟用', 'ok') : UI.tag('停用')}</td>
+        <td style="white-space:nowrap;text-align:right">
+          <button class="btn tiny secondary" data-er="${r.id}">編輯</button>
+          <button class="btn tiny danger" data-dr="${r.id}">刪除</button></td></tr>`)) +
       '<button class="btn small" id="ar" style="margin-top:10px">新增諮商室</button>';
     rb.querySelector('#ar').onclick = () => UI.modal({
-      title: '新增諮商室',
-      body: `<div class="form-grid">${UI.input('name', '名稱')}${UI.input('capacity', '容納人數', { type: 'number', value: 1 })}${UI.input('note', '備註', { full: true })}</div>`,
-      onSubmit: async e => { await POST('/rooms', UI.formData(e)); App.go('settings'); }
+      title: '新增諮商室', body: roomForm(null),
+      onSubmit: async e => { await POST('/rooms', UI.formData(e)); UI.toast('已新增'); App.go('settings'); }
+    });
+    rb.querySelectorAll('[data-er]').forEach(b => {
+      const r = rooms.find(x => x.id === Number(b.dataset.er));
+      b.onclick = () => UI.modal({
+        title: '編輯諮商室：' + r.name, body: roomForm(r),
+        onSubmit: async e => { await PUT(`/rooms/${r.id}`, UI.formData(e)); UI.toast('已儲存'); App.go('settings'); }
+      });
+    });
+    rb.querySelectorAll('[data-dr]').forEach(b => {
+      const r = rooms.find(x => x.id === Number(b.dataset.dr));
+      b.onclick = async () => {
+        if (!await UI.confirm(`刪除諮商室「${r.name}」？曾被排過的空間會改為停用以保留歷史紀錄。`)) return;
+        const res = await DEL(`/rooms/${r.id}`);
+        UI.toast(res.deactivated ? `已停用（仍有 ${res.used} 筆歷史排程）` : '已刪除');
+        App.go('settings');
+      };
     });
 
     const templates = await GET('/consent-templates');

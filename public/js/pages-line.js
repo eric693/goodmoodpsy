@@ -241,8 +241,10 @@ const LINEPAGE = {
   },
 
   // ---- 綁定管理 ----
-  async bind(el) {
-    const d = await GET('/line/bindings');
+  async bind(el, state) {
+    const st = LINEPAGE._bindState = Object.assign({ q: '', filter: '' }, LINEPAGE._bindState, state);
+    const reload = () => LINEPAGE.bind(el);
+    const d = await GET(`/line/bindings?q=${encodeURIComponent(st.q)}&filter=${st.filter}`);
     const codeDialog = r => UI.modal({
       title: 'LINE 綁定碼', hideFooter: true,
       body: `<div style="text-align:center;font-size:32px;font-weight:700;letter-spacing:6px;margin:12px 0">${r.code}</div>
@@ -253,48 +255,98 @@ const LINEPAGE = {
           3. 收到「綁定完成」卡片即完成，之後的提醒都會送到 LINE<br>
           有效期限：${r.expires_at}</div>`
     });
+    // 已綁定者除了解除，也要能重發綁定碼（換手機、換 LINE 帳號時最常用）
+    const actions = (kind, r) => (r.bound
+      ? `<button class="btn tiny" data-re${kind}="${r.id}">重新綁定</button>
+         <button class="btn tiny danger" data-un${kind}="${r.id}">解除綁定</button>`
+      : `<button class="btn tiny" data-new${kind}="${r.id}">產生綁定碼</button>`);
+    const boundCell = r => (r.bound
+      ? UI.tag('已綁定', 'ok') + (r.bound_at
+        ? `<div style="font-size:12px;color:var(--muted)">${UI.esc(r.bound_at.slice(0, 16))}</div>` : '')
+      : UI.tag('未綁定', ''));
+
     el.innerHTML = `
       <div class="card"><h3>員工／心理師</h3>
         ${UI.table(['姓名', '身分', 'LINE', ''], d.staff.map(u => `<tr>
           <td>${UI.esc(u.name)}</td><td>${UI.esc(u.title || TW.role[u.role] || '')}</td>
-          <td>${u.bound ? UI.tag('已綁定', 'ok') : UI.tag('未綁定', 'warn')}</td>
-          <td>${u.bound ? `<button class="btn tiny danger" data-us="${u.id}">解除</button>`
-    : `<button class="btn tiny" data-cs="${u.id}">產生綁定碼</button>`}</td></tr>`))}</div>
+          <td>${boundCell(u)}</td>
+          <td style="text-align:right;white-space:nowrap">${actions('s', u)}</td></tr>`))}</div>
 
       <div class="card"><h3>個案
-          <span style="font-size:13px;font-weight:400;color:var(--muted)">未綁定者排在前面</span></h3>
+          <span style="font-size:13px;font-weight:400;color:var(--muted)">共 ${d.client_total} 位，未綁定者排在前面</span></h3>
+        <div class="toolbar" style="margin-bottom:10px">
+          <input id="bq" placeholder="搜尋姓名／編號／電話" value="${UI.esc(st.q)}" style="max-width:240px">
+          <select id="bf" style="max-width:140px">
+            <option value="">全部</option>
+            <option value="unbound"${st.filter === 'unbound' ? ' selected' : ''}>只看未綁定</option>
+            <option value="bound"${st.filter === 'bound' ? ' selected' : ''}>只看已綁定</option>
+          </select>
+          <button class="btn tiny" id="bqgo">查詢</button>
+          ${st.q || st.filter ? '<button class="btn tiny secondary" id="bqclr">清除</button>' : ''}
+        </div>
         ${UI.table(['編號', '姓名', '電話', 'LINE', ''], d.clients.map(c => `<tr>
           <td>${UI.esc(c.code)}</td><td>${UI.esc(c.name)}</td><td>${UI.esc(c.phone || '')}</td>
-          <td>${c.bound ? UI.tag('已綁定', 'ok') : UI.tag('未綁定', '')}</td>
-          <td>${c.bound ? `<button class="btn tiny danger" data-uc="${c.id}">解除</button>`
-    : `<button class="btn tiny" data-cc="${c.id}">產生綁定碼</button>`}</td></tr>`))}</div>
+          <td>${boundCell(c)}</td>
+          <td style="text-align:right;white-space:nowrap">${actions('c', c)}</td></tr>`), '沒有符合的個案')}
+        ${d.client_total > d.clients.length
+    ? '<div style="font-size:12px;color:var(--muted);margin-top:8px">僅顯示前 200 位，請用搜尋縮小範圍。</div>' : ''}</div>
 
       <div class="card"><h3>尚未使用的綁定碼</h3>
-        ${UI.table(['綁定碼', '對象', '有效至', '產生時間'], d.pending.map(p => `<tr>
+        ${UI.table(['綁定碼', '對象', '有效至', '產生時間', ''], d.pending.map(p => `<tr>
           <td><strong>${UI.esc(p.code)}</strong></td>
           <td>${UI.esc(p.client_name || p.user_name || '')}</td>
-          <td>${UI.esc(p.expires_at)}</td><td>${UI.esc(p.created_at.slice(0, 16))}</td></tr>`), '沒有待使用的綁定碼')}</div>`;
+          <td>${UI.esc(p.expires_at)}</td><td>${UI.esc(p.created_at.slice(0, 16))}</td>
+          <td style="text-align:right"><button class="btn tiny danger" data-void="${p.id}">作廢</button></td>
+          </tr>`), '沒有待使用的綁定碼')}</div>`;
 
-    el.querySelectorAll('[data-cs]').forEach(b => {
-      b.onclick = async () => codeDialog(await POST('/line/bind-code', { user_id: Number(b.dataset.cs) }));
+    const search = () => LINEPAGE.bind(el, {
+      q: el.querySelector('#bq').value.trim(),
+      filter: el.querySelector('#bf').value
     });
-    el.querySelectorAll('[data-cc]').forEach(b => {
-      b.onclick = async () => codeDialog(await POST('/line/bind-code', { client_id: Number(b.dataset.cc) }));
+    el.querySelector('#bqgo').onclick = search;
+    el.querySelector('#bq').onkeydown = e => { if (e.key === 'Enter') search(); };
+    el.querySelector('#bf').onchange = search;
+    if (el.querySelector('#bqclr')) el.querySelector('#bqclr').onclick = () => LINEPAGE.bind(el, { q: '', filter: '' });
+
+    const issue = async (body, again) => {
+      if (again && !await UI.confirm('重新產生綁定碼？對方輸入新碼後，這位的 LINE 會改綁到輸入的帳號。')) return;
+      codeDialog(await POST('/line/bind-code', body));
+      reload();
+    };
+    el.querySelectorAll('[data-news]').forEach(b => {
+      b.onclick = () => issue({ user_id: Number(b.dataset.news) });
     });
-    el.querySelectorAll('[data-us]').forEach(b => {
+    el.querySelectorAll('[data-newc]').forEach(b => {
+      b.onclick = () => issue({ client_id: Number(b.dataset.newc) });
+    });
+    el.querySelectorAll('[data-res]').forEach(b => {
+      b.onclick = () => issue({ user_id: Number(b.dataset.res) }, true);
+    });
+    el.querySelectorAll('[data-rec]').forEach(b => {
+      b.onclick = () => issue({ client_id: Number(b.dataset.rec) }, true);
+    });
+    el.querySelectorAll('[data-uns]').forEach(b => {
       b.onclick = async () => {
-        if (!await UI.confirm('確定解除此員工的 LINE 綁定？')) return;
-        await DEL(`/line/binding?user_id=${b.dataset.us}`);
-        UI.toast('已解除');
-        App.go('line');
+        if (!await UI.confirm('解除此員工的 LINE 綁定？解除後不再收到推播，可隨時再發綁定碼重綁。')) return;
+        await DEL(`/line/binding?user_id=${b.dataset.uns}`);
+        UI.toast('已解除綁定');
+        reload();
       };
     });
-    el.querySelectorAll('[data-uc]').forEach(b => {
+    el.querySelectorAll('[data-unc]').forEach(b => {
       b.onclick = async () => {
-        if (!await UI.confirm('確定解除此個案的 LINE 綁定？')) return;
-        await DEL(`/line/binding?client_id=${b.dataset.uc}`);
-        UI.toast('已解除');
-        App.go('line');
+        if (!await UI.confirm('解除此個案的 LINE 綁定？解除後不再收到提醒與收據，可隨時再發綁定碼重綁。')) return;
+        await DEL(`/line/binding?client_id=${b.dataset.unc}`);
+        UI.toast('已解除綁定');
+        reload();
+      };
+    });
+    el.querySelectorAll('[data-void]').forEach(b => {
+      b.onclick = async () => {
+        if (!await UI.confirm('作廢這組綁定碼？作廢後對方輸入此碼將無效。')) return;
+        await DEL(`/line/bind-code/${b.dataset.void}`);
+        UI.toast('已作廢');
+        reload();
       };
     });
   },

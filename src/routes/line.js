@@ -203,15 +203,38 @@ router.post('/line/webhook-endpoint', requireStaff('settings'), async (req, res)
 
 // 綁定情形一覽：誰綁了、誰還沒綁，直接在這裡發綁定碼或解除
 router.get('/line/bindings', requireStaff(), (req, res) => {
+  // 個案可能上百位，因此支援關鍵字（姓名／編號／電話）與綁定狀態篩選
+  const q = String(req.query.q || '').trim();
+  const filter = ['bound', 'unbound'].includes(req.query.filter) ? req.query.filter : '';
+  const where = ['active = 1'];
+  const args = [];
+  if (q) {
+    where.push('(name LIKE ? OR code LIKE ? OR phone LIKE ?)');
+    args.push(`%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  if (filter === 'bound') where.push("IFNULL(line_user_id,'') <> ''");
+  if (filter === 'unbound') where.push("IFNULL(line_user_id,'') = ''");
+  const clientRows = db.prepare(`SELECT id, code, name, phone, line_user_id FROM clients
+    WHERE ${where.join(' AND ')} ORDER BY IFNULL(line_user_id,'') = '' DESC, id DESC LIMIT 200`).all(...args);
+  const clientTotal = db.prepare(`SELECT COUNT(*) n FROM clients WHERE ${where.join(' AND ')}`).get(...args).n;
+  // 綁定時間取自綁定紀錄，讓櫃檯判斷這組綁定是什麼時候建立的
+  const boundAt = id => (db.prepare(`SELECT bound_at FROM line_bindings
+    WHERE status = 'done' AND ${id.client ? 'client_id' : 'user_id'} = ?
+    ORDER BY id DESC LIMIT 1`).get(id.client || id.user) || {}).bound_at || '';
   res.json({
     staff: db.prepare(`SELECT id, name, title, role, line_user_id FROM users
       WHERE active = 1 AND role IN ('counselor','supervisor','admin','staff') ORDER BY id`).all()
-      .map(u => ({ id: u.id, name: u.name, title: u.title, role: u.role, bound: !!u.line_user_id })),
-    clients: db.prepare(`SELECT id, code, name, phone, line_user_id FROM clients
-      WHERE active = 1 ORDER BY line_user_id = '' , id DESC LIMIT 200`).all()
-      .map(c => ({ id: c.id, code: c.code, name: c.name, phone: c.phone, bound: !!c.line_user_id })),
-    pending: db.prepare(`SELECT b.code, b.expires_at, b.created_at,
-        c.name AS client_name, u.name AS user_name
+      .map(u => ({
+        id: u.id, name: u.name, title: u.title, role: u.role,
+        bound: !!u.line_user_id, bound_at: u.line_user_id ? boundAt({ user: u.id }) : ''
+      })),
+    clients: clientRows.map(c => ({
+      id: c.id, code: c.code, name: c.name, phone: c.phone,
+      bound: !!c.line_user_id, bound_at: c.line_user_id ? boundAt({ client: c.id }) : ''
+    })),
+    client_total: clientTotal,
+    pending: db.prepare(`SELECT b.id, b.code, b.expires_at, b.created_at,
+        c.name AS client_name, u.name AS user_name, b.user_id
       FROM line_bindings b LEFT JOIN clients c ON c.id = b.client_id LEFT JOIN users u ON u.id = b.user_id
       WHERE b.status = 'pending' AND b.expires_at >= ? ORDER BY b.id DESC LIMIT 50`).all(today())
   });
@@ -228,11 +251,26 @@ router.post('/line/bind-code', requireStaff(), (req, res) => {
   if (userId && userId !== req.user.id && req.user.role !== 'admin') {
     return res.status(403).json({ error: '只能為自己產生綁定碼' });
   }
+  // 同一對象只留最新一組碼：舊的先作廢，免得兩組碼同時流通說不清哪組有效
+  db.prepare(`UPDATE line_bindings SET status = 'expired'
+    WHERE status = 'pending' AND ${clientId ? 'client_id' : 'user_id'} = ?`).run(clientId || userId);
   const code = String(crypto.randomInt(100000, 999999));
   db.prepare(`INSERT INTO line_bindings (code, client_id, user_id, expires_at) VALUES (?,?,?,?)`)
     .run(code, clientId, userId, addDays(today(), 1));
   audit('staff', req.user.id, req.user.name, '產生 LINE 綁定碼', String(clientId || userId));
   res.json({ code, expires_at: addDays(today(), 1), add_friend_url: getSetting('line_add_friend_url') });
+});
+
+// 作廢還沒被使用的綁定碼（發錯人、或對方說沒收到要重發）
+router.delete('/line/bind-code/:id', requireStaff(), (req, res) => {
+  const row = db.prepare("SELECT * FROM line_bindings WHERE id = ? AND status = 'pending'").get(req.params.id);
+  if (!row) return res.status(404).json({ error: '找不到待使用的綁定碼' });
+  if (row.user_id && row.user_id !== req.user.id && req.user.role !== 'admin') {
+    return res.status(403).json({ error: '只能作廢自己的綁定碼' });
+  }
+  db.prepare("UPDATE line_bindings SET status = 'expired' WHERE id = ?").run(row.id);
+  audit('staff', req.user.id, req.user.name, '作廢 LINE 綁定碼', String(row.client_id || row.user_id || ''));
+  res.json({ ok: true });
 });
 
 router.delete('/line/binding', requireStaff(), (req, res) => {
@@ -241,8 +279,14 @@ router.delete('/line/binding', requireStaff(), (req, res) => {
   if (userId && userId !== req.user.id && req.user.role !== 'admin') {
     return res.status(403).json({ error: '只能解除自己的綁定' });
   }
+  if (!clientId && !userId) return res.status(400).json({ error: '請指定個案或心理師' });
   if (clientId) db.prepare("UPDATE clients SET line_user_id = '' WHERE id = ?").run(clientId);
   if (userId) db.prepare("UPDATE users SET line_user_id = '' WHERE id = ?").run(userId);
+  // 綁定紀錄一併標為已解除，並作廢同一對象未使用的碼，狀態才不會前後矛盾
+  db.prepare(`UPDATE line_bindings SET status = 'revoked'
+    WHERE status = 'done' AND ${clientId ? 'client_id' : 'user_id'} = ?`).run(clientId || userId);
+  db.prepare(`UPDATE line_bindings SET status = 'expired'
+    WHERE status = 'pending' AND ${clientId ? 'client_id' : 'user_id'} = ?`).run(clientId || userId);
   audit('staff', req.user.id, req.user.name, '解除 LINE 綁定', String(clientId || userId));
   res.json({ ok: true });
 });

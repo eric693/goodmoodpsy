@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { db, audit, today, addDays, getSetting, setSetting, listSetting, UI_TEXT_KEYS } = require('../db');
 const { requireStaff, requireAdmin, MODULES, MODULE_KEYS, ROLE_DEFAULT_MODULES, parsePermissions } = require('../auth');
 const { SCALE_KEYS } = require('../scales');
@@ -244,10 +245,19 @@ router.get('/dashboard', requireStaff(), (req, res) => {
   });
 });
 
+// 導覽列的待辦紅點：目前只有需要櫃檯即時處理的項目，數量小、查詢輕，前端每分鐘更新一次
+router.get('/nav-badges', requireStaff(), (req, res) => {
+  res.json({
+    bookings: db.prepare("SELECT COUNT(*) n FROM booking_requests WHERE status = 'new'").get().n,
+    messages: db.prepare("SELECT COUNT(*) n FROM messages WHERE sender = 'client' AND read_at = ''").get().n
+  });
+});
+
 // ---- 共用參數與選項 ----
 router.get('/meta', requireStaff(), (req, res) => {
   const out = {
     modules: MODULES,
+    role_default_modules: ROLE_DEFAULT_MODULES,   // 帳號頁的「套用角色預設」用
     scales: SCALE_KEYS,
     counselors: db.prepare("SELECT id, name, role, license_type FROM users WHERE active = 1 AND role IN ('counselor','supervisor','admin') ORDER BY id").all(),
     rooms: db.prepare('SELECT id, name FROM rooms WHERE active = 1 ORDER BY id').all(),
@@ -345,6 +355,15 @@ router.put('/users/:id', requireStaff('users'), (req, res) => {
   if (b.supervisor_id !== undefined) b.supervisor_id = Number(b.supervisor_id) || null;
   const data = {};
   for (const f of USER_FIELDS) if (b[f] !== undefined) data[f] = b[f];
+  // 帳號名稱允許事後更正（打錯字、離職接手），但仍須唯一
+  if (b.username !== undefined && b.username !== u.username) {
+    const name = String(b.username).trim();
+    if (!name) return res.status(400).json({ error: '帳號不可空白' });
+    if (db.prepare('SELECT 1 FROM users WHERE username = ? AND id != ?').get(name, u.id)) {
+      return res.status(400).json({ error: '帳號已存在' });
+    }
+    data.username = name;
+  }
   if (b.role && ['admin', 'counselor', 'supervisor', 'staff'].includes(b.role)) data.role = b.role;
   if (b.active !== undefined) data.active = b.active ? 1 : 0;
   if (Array.isArray(b.permissions)) data.permissions = JSON.stringify(b.permissions.filter(k => MODULE_KEYS.includes(k)));
@@ -373,6 +392,23 @@ router.put('/users/:id', requireStaff('users'), (req, res) => {
     if (clients) warnings.push(`${u.name} 仍為 ${clients} 位個案的主責心理師，請重新指派`);
   }
   res.json({ ok: true, warnings });
+});
+
+// 重設密碼並回傳一次明碼，供管理者當場交給同仁。
+// 密碼在資料庫只存雜湊，任何人（含管理者）都查不回原本的密碼，只能重設。
+router.post('/users/:id/reset-password', requireStaff('users'), (req, res) => {
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  if (!u) return res.status(404).json({ error: '找不到此帳號' });
+  let pw = String((req.body || {}).password || '').trim();
+  if (!pw) {
+    // 自動產生：去掉容易看錯的 0/O/1/l
+    const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
+    pw = Array.from({ length: 8 }, () => chars[crypto.randomInt(chars.length)]).join('');
+  }
+  if (pw.length < 6) return res.status(400).json({ error: '密碼至少 6 碼' });
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(pw, 10), u.id);
+  audit('staff', req.user.id, req.user.name, '重設帳號密碼', u.username);
+  res.json({ username: u.username, password: pw });
 });
 
 router.put('/me/password', requireStaff(), (req, res) => {

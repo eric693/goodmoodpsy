@@ -98,7 +98,8 @@ const App = {
       });
       if (!items.length) return '';
       return `<div class="nav-group">${g.label}</div>` +
-        items.map(k => `<a href="#${k}" data-nav="${k}">${UI.esc(App.pages[k].title)}</a>`).join('');
+        items.map(k => `<a href="#${k}" data-nav="${k}">${UI.esc(App.pages[k].title)}
+          <span class="nav-badge" data-badge="${k}" hidden></span></a>`).join('');
     }).join('');
     document.getElementById('app').innerHTML = `
       <div class="topbar">
@@ -125,6 +126,22 @@ const App = {
     document.getElementById('menu-btn').onclick = () => { sidebar.classList.add('open'); backdrop.classList.add('show'); };
     backdrop.onclick = () => { sidebar.classList.remove('open'); backdrop.classList.remove('show'); };
     document.getElementById('nav').addEventListener('click', () => { sidebar.classList.remove('open'); backdrop.classList.remove('show'); });
+    App.refreshBadges();
+    clearInterval(App._badgeTimer);
+    App._badgeTimer = setInterval(App.refreshBadges, 60000);
+  },
+
+  // 導覽列紅點：有待處理的線上預約申請或未讀個案訊息時亮起。
+  // 數字直接來自資料庫的待處理筆數，所以只有真的處理完（或被取消）才會消失，
+  // 點過、看過都不會讓紅點消掉。
+  async refreshBadges() {
+    let d;
+    try { d = await GET('/nav-badges'); } catch (e) { return; }
+    document.querySelectorAll('[data-badge]').forEach(sp => {
+      const n = d[sp.dataset.badge] || 0;
+      sp.textContent = n > 99 ? '99+' : n;
+      sp.hidden = !n;
+    });
   },
 
   changePasswordDialog() {

@@ -155,7 +155,10 @@ router.post('/appointments', requireStaff('schedule'), (req, res) => {
     b.source || 'staff', b.note || '', meeting_url, req.user.id);
   audit('staff', req.user.id, req.user.name, '新增預約', client.code,
     { date: b.date, time: b.start_time, plan_id: b.plan_id || null, override: !!b.override });
-  res.json({ id: info.lastInsertRowid, room_id: roomId, warnings: check.warnings, usage: check.usage });
+  // 全所只有 2-3 間，排滿時要講清楚，不要靜悄悄留一筆沒有空間的預約
+  const warnings = [...check.warnings];
+  if (!roomId && b.mode !== 'online') warnings.push('此時段所有諮商室都已排滿，這筆預約尚未指定空間，請確認場地安排');
+  res.json({ id: info.lastInsertRowid, room_id: roomId, warnings, usage: check.usage });
 });
 
 router.put('/appointments/:id', requireStaff('schedule'), (req, res) => {
@@ -315,6 +318,44 @@ router.delete('/appointments/:id', requireStaff('schedule'), (req, res) => {
 router.get('/rooms', requireStaff(), (req, res) => {
   res.json(db.prepare('SELECT * FROM rooms ORDER BY active DESC, id').all());
 });
+// 空間使用狀況：全所只有 2-3 間，櫃檯要能一眼看出某天哪間還空著。
+// 晤談與團體場次都算占用；個案端與線上表單一律看不到這份資料。
+router.get('/rooms/usage', requireStaff('schedule'), (req, res) => {
+  const date = req.query.date || today();
+  const rooms = db.prepare('SELECT id, name, capacity, note FROM rooms WHERE active = 1 ORDER BY id').all();
+  const appts = db.prepare(`SELECT a.room_id, a.start_time, a.end_time, a.status, a.mode,
+      c.name AS client_name, c.code AS client_code, u.name AS counselor_name
+    FROM appointments a JOIN clients c ON c.id = a.client_id
+    LEFT JOIN users u ON u.id = a.counselor_id
+    WHERE a.date = ? AND a.status IN ('booked','arrived','done') ORDER BY a.start_time`).all(date);
+  const sessions = db.prepare(`SELECT s.room_id, s.start_time, s.end_time, g.name AS group_name,
+      u.name AS counselor_name
+    FROM group_sessions s JOIN groups g ON g.id = s.group_id
+    LEFT JOIN users u ON u.id = g.counselor_id
+    WHERE s.date = ? AND s.status != 'cancelled' ORDER BY s.start_time`).all(date);
+  res.json({
+    date,
+    rooms: rooms.map(r => ({
+      ...r,
+      bookings: [
+        ...appts.filter(a => a.room_id === r.id).map(a => ({
+          start_time: a.start_time, end_time: a.end_time, kind: 'appointment',
+          title: `${a.client_code} ${a.client_name}`, counselor_name: a.counselor_name, status: a.status
+        })),
+        ...sessions.filter(s => s.room_id === r.id).map(s => ({
+          start_time: s.start_time, end_time: s.end_time, kind: 'group',
+          title: s.group_name, counselor_name: s.counselor_name, status: 'booked'
+        }))
+      ].sort((x, y) => x.start_time.localeCompare(y.start_time))
+    })),
+    // 已排入但還沒指定空間的晤談：到所形式卻沒有房間，櫃檯要補指定
+    unassigned: appts.filter(a => !a.room_id && a.mode !== 'online').map(a => ({
+      start_time: a.start_time, end_time: a.end_time,
+      title: `${a.client_code} ${a.client_name}`, counselor_name: a.counselor_name
+    }))
+  });
+});
+
 router.post('/rooms', requireStaff('settings'), (req, res) => {
   const { name = '', capacity = 1, note = '' } = req.body || {};
   if (!name) return res.status(400).json({ error: '請填寫名稱' });
@@ -328,6 +369,22 @@ router.put('/rooms/:id', requireStaff('settings'), (req, res) => {
   db.prepare('UPDATE rooms SET name = ?, capacity = ?, note = ?, active = ? WHERE id = ?')
     .run(name, Number(capacity) || 1, note, active ? 1 : 0, r.id);
   res.json({ ok: true });
+});
+
+// 刪除諮商室：已被排過的空間不真的刪掉（歷史紀錄要留），改為停用
+router.delete('/rooms/:id', requireStaff('settings'), (req, res) => {
+  const r = db.prepare('SELECT * FROM rooms WHERE id = ?').get(req.params.id);
+  if (!r) return res.status(404).json({ error: '找不到此諮商室' });
+  const used = db.prepare('SELECT COUNT(*) n FROM appointments WHERE room_id = ?').get(r.id).n
+    + db.prepare('SELECT COUNT(*) n FROM group_sessions WHERE room_id = ?').get(r.id).n;
+  if (used) {
+    db.prepare('UPDATE rooms SET active = 0 WHERE id = ?').run(r.id);
+    audit('staff', req.user.id, req.user.name, '停用諮商室', r.name);
+    return res.json({ ok: true, deactivated: true, used });
+  }
+  db.prepare('DELETE FROM rooms WHERE id = ?').run(r.id);
+  audit('staff', req.user.id, req.user.name, '刪除諮商室', r.name);
+  res.json({ ok: true, deactivated: false });
 });
 
 // ---- 心理師可預約時段 ----
