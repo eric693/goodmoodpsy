@@ -907,6 +907,24 @@ function startServer() {
     await admin.ok('POST', `/api/appointments/${made.id}/status`, { status: 'cancelled' });
     await admin.del(`/api/appointments/${made.id}`);
   });
+  await test('方案設定：每個欄位都能改，抽成 60 與 0.6 都收得下', async () => {
+    const plan = (await admin.ok('GET', '/api/service-plans')).find(p => p.active);
+    const before = { name: plan.name, fee: plan.fee, share_percent: plan.share_percent, default_mode: plan.default_mode };
+    await admin.ok('PUT', `/api/service-plans/${plan.id}`, {
+      name: plan.name, fee: 2345, share_percent: 60, default_mode: 'online',
+      session_minutes: 80, venue_fee: 200, quota_per_year: 3
+    });
+    const after = (await admin.ok('GET', '/api/service-plans')).find(p => p.id === plan.id);
+    equal(after.fee, 2345, '金額已改');
+    equal(after.share_percent, 0.6, '抽成 60 收斂成 0.6');
+    equal(after.default_mode, 'online', '預設形式可改（原本前端沒有這個欄位）');
+    equal(after.session_minutes, 80, '時長可改');
+    equal(after.venue_fee, 200, '場地費可改');
+    equal(after.quota_per_year, 3, '年度次數可改');
+    await admin.ok('PUT', `/api/service-plans/${plan.id}`, Object.assign({}, before, {
+      session_minutes: plan.session_minutes, venue_fee: plan.venue_fee, quota_per_year: plan.quota_per_year
+    }));
+  });
   await test('方案人次看板列出各心理師用量', async () => {
     const d = await admin.ok('GET', '/api/plan-board');
     assert(Array.isArray(d.rows), '看板資料');

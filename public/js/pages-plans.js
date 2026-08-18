@@ -19,6 +19,7 @@ function planDialog(p, onDone) {
       ${UI.input('fee', '金額（預設）', { type: 'number', value: d.fee || 0 })}
       ${UI.input('fee_options', '可選金額（逗號分隔）', { value: d.fee_options || '', placeholder: '3000,3600,4500', full: true })}
       ${UI.input('session_minutes', '晤談時長（分鐘，0 沿用系統設定）', { type: 'number', value: d.session_minutes || 0 })}
+      ${UI.select('default_mode', '預設形式', [['onsite', '到所晤談'], ['online', '線上視訊']], { value: d.default_mode || 'onsite' })}
       ${UI.input('subsidy_amount', '方案給付金額（其餘為個案自付）', { type: 'number', value: d.subsidy_amount || 0 })}
       ${UI.input('venue_fee', '場地費（所方全收，不列入抽成基數）', { type: 'number', value: d.venue_fee || 0 })}
       ${UI.inputList('subsidy_program', '核銷用方案名稱', App.meta.subsidy_programs || [], { value: d.subsidy_program || '', full: true })}
@@ -117,7 +118,9 @@ App.page('plans', {
           金額：${p.fee_mode === 'choice' ? `可選 ${p.fee_option_list.join(' / ')}（預設 ${p.fee}）` : UI.fmtMoney(p.fee)}
           ${p.subsidy_amount ? `　方案給付 ${UI.fmtMoney(p.subsidy_amount)}／個案付 ${UI.fmtMoney(Math.max(0, p.fee - p.subsidy_amount))}` : ''}
           ${p.venue_fee ? `　場地費 ${UI.fmtMoney(p.venue_fee)}（所方收入）` : ''}
-          　時長：${p.session_minutes || App.meta.session_minutes} 分鐘　心理師報酬：${shareText(p)}<br>
+          　時長：${p.session_minutes || App.meta.session_minutes} 分鐘
+          　形式：${p.default_mode === 'online' ? '線上視訊' : '到所晤談'}
+          　心理師報酬：${shareText(p)}<br>
           資格：${p.age_min || p.age_max ? `${p.age_min || 0}-${p.age_max || '不限'} 歲` : '不限年齡'}
           ${p.quota_per_year ? `　每人每年 ${p.quota_per_year} 次` : ''}
           ${p.counselor_week_limit ? `　每位心理師每週 ${p.counselor_week_limit} 人次` : ''}
