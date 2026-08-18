@@ -939,6 +939,31 @@ function startServer() {
     await admin.ok('PUT', '/api/plan-board/usage',
       { plan_id: row.plan_id, counselor_id: row.counselor_id, week_used: r.week_system_used });
   });
+  await test('刪除帳號：無關聯者真的刪除，有關聯者退回停用', async () => {
+    // 全新帳號沒有任何關聯，應該真的被刪掉
+    const fresh = await admin.ok('POST', '/api/users',
+      { username: 'tmp-del-' + Date.now(), password: 'abc123', name: '待刪測試', role: 'staff' });
+    const r1 = await admin.ok('DELETE', `/api/users/${fresh.id}`);
+    equal(r1.deactivated, false, '無關聯者直接刪除');
+    // 登記過來電的帳號：intakes.taken_by 沒有 ON DELETE，外鍵會擋下刪除，
+    // 必須退回停用而不是把資料庫錯誤丟到畫面上
+    const uname = 'tmp-intake-' + Date.now();
+    const withLink = await admin.ok('POST', '/api/users',
+      { username: uname, password: 'abc123', name: '來電登記測試', role: 'staff' });
+    const tmp = session();
+    await tmp.ok('POST', '/api/login', { username: uname, password: 'abc123' });
+    await tmp.ok('POST', '/api/intakes', { name: '刪除測試來電', phone: '0900000000' });
+    const r2 = await admin.ok('DELETE', `/api/users/${withLink.id}`);
+    equal(r2.deactivated, true, '有關聯者退回停用');
+    const still = (await admin.ok("GET", "/api/users")).find(u => u.id === withLink.id);
+    assert(!still || !still.active, '帳號應為停用狀態');
+  });
+  await test('刪除諮商室：排過班的改為停用', async () => {
+    const made = await admin.ok('POST', '/api/rooms', { name: '臨時空間', capacity: 1 });
+    const r = await admin.ok('DELETE', `/api/rooms/${made.id}`);
+    equal(r.deactivated, false, '沒排過班的可直接刪除');
+    assert(!(await admin.ok('GET', '/api/rooms')).some(x => x.id === made.id), '已從清單移除');
+  });
   await test('收據可修正抬頭與項目，金額與編號不動', async () => {
     const rec = (await admin.ok('GET', '/api/receipts')).rows.find(x => x.status === 'valid');
     if (!rec) return;

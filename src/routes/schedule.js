@@ -382,7 +382,14 @@ router.delete('/rooms/:id', requireStaff('settings'), (req, res) => {
     audit('staff', req.user.id, req.user.name, '停用諮商室', r.name);
     return res.json({ ok: true, deactivated: true, used });
   }
-  db.prepare('DELETE FROM rooms WHERE id = ?').run(r.id);
+  try {
+    db.prepare('DELETE FROM rooms WHERE id = ?').run(r.id);
+  } catch (e) {
+    // 還有其他表引用這間空間時退回停用，不讓使用者看到資料庫錯誤
+    db.prepare('UPDATE rooms SET active = 0 WHERE id = ?').run(r.id);
+    audit('staff', req.user.id, req.user.name, '停用諮商室（尚有關聯資料）', r.name);
+    return res.json({ ok: true, deactivated: true, used: 0 });
+  }
   audit('staff', req.user.id, req.user.name, '刪除諮商室', r.name);
   res.json({ ok: true, deactivated: false });
 });

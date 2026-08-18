@@ -422,8 +422,16 @@ router.delete('/users/:id', requireStaff('users'), (req, res) => {
     audit('staff', req.user.id, req.user.name, '停用帳號（有歷史資料，不可刪除）', u.username, { found });
     return res.json({ ok: true, deactivated: true, links: found });
   }
-  db.prepare('DELETE FROM plan_counselors WHERE counselor_id = ?').run(u.id);
-  db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+  // 上面只列出最常見的幾種關聯；請假、督導、報酬、訊息等表也可能指向這個人。
+  // 真的刪不掉時（外鍵擋下）一律退回停用，不讓使用者看到資料庫錯誤。
+  try {
+    db.prepare('DELETE FROM plan_counselors WHERE counselor_id = ?').run(u.id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+  } catch (e) {
+    db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(u.id);
+    audit('staff', req.user.id, req.user.name, '停用帳號（尚有其他關聯資料）', u.username);
+    return res.json({ ok: true, deactivated: true, links: ['請假、督導、報酬或訊息等其他紀錄'] });
+  }
   audit('staff', req.user.id, req.user.name, '刪除帳號', u.username);
   res.json({ ok: true, deactivated: false });
 });
