@@ -285,6 +285,20 @@ pm2 restart mindcare   # 正式環境重啟（單獨重啟時建議改用 npm ru
 心理師報酬在晤談完成當下鎖定（`appointments.counselor_share`），
 事後調整方案費率不會回頭改動已結算的月份。單一心理師的當月明細可列印對帳。
 
+## 安裝成 App（PWA）
+
+員工端與個案端都可安裝到手機或電腦主畫面，不必上架商店：
+
+- 員工端 `/manifest.json`（名稱「好心情後台」，含今日看板／預約排程／線上預約申請三個捷徑）
+- 個案端 `/portal.manifest.json`（名稱「好心情」，深色圖示以便與後台區分）
+- Android／Chrome 依畫面提示或「系統設定 → 安裝成手機／電腦 App」按鈕安裝；
+  iOS 只能走 Safari 的「分享 → 加入主畫面」（頁面會自動跳一次說明）
+- **刻意不做離線**：`public/sw.js` 對 HTML、`/api`、`/uploads` 一律不快取，
+  只以「網路優先、失敗才退回快取」快取 css／js／圖示，裝置上不留個案資料與舊畫面
+- 部署新版後 App 內會提示「已有新版本」，按下即套用；`sw.js` 與 manifest 由
+  `src/server.js` 送 `Cache-Control: no-cache`，避免改版被瀏覽器快取擋住
+- 圖示在 `public/icons/`，由 `scripts/` 外的 Pillow 腳本產生（心形，員工端青綠、個案端深綠）
+
 ## 各模組的新增／編輯／刪除
 
 原則：**行政與排程資料可自由增修刪；憑證與紀錄類只能作廢或重開**，

@@ -126,6 +126,12 @@ app.post('/api/maintenance/backup', requireAdmin, async (req, res) => {
 // ---- 靜態檔 ----
 // uploads 目錄不對外開放：附件含個案敏感資料，一律經 /api/attachments/:id/download
 // 逐筆檢查權限後才回傳（個案端另有只能讀自己檔案的路由）。
+// Service Worker 與 manifest 不可被快取，否則改版後裝置會一直停在舊版外殼
+app.get(['/sw.js', '/manifest.json', '/portal.manifest.json'], (req, res, next) => {
+  res.set('Cache-Control', 'no-cache');
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h', index: 'index.html' }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: '找不到此 API' }));

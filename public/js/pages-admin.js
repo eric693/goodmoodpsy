@@ -1022,6 +1022,14 @@ App.page('settings', {
           ? UI.textarea(k, l, { value: s[k] || '' })
           : UI.input(k, l, { value: s[k] || '' })).join('')}</div></div>`).join('') +
       `<div class="card"><h3>諮商室</h3><div id="rooms"></div></div>
+       <div class="card"><h3>安裝成手機／電腦 App</h3>
+         <div style="font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:10px">
+           本系統可安裝成 App，開啟後沒有網址列，跟一般 App 一樣從主畫面進入，資料仍即時連線（非離線版）。<br>
+           <strong>Android／Chrome、Edge</strong>：按下方按鈕，或用瀏覽器選單的「安裝應用程式」。<br>
+           <strong>iPhone／iPad</strong>：用 Safari 開啟後按「分享」→「加入主畫面」。<br>
+           <strong>個案端</strong>請個案用手機開 <code>/portal.html</code> 後以同樣方式加入主畫面。</div>
+         <button class="btn secondary small" id="installapp">安裝到這台裝置</button>
+         <span id="install-hint" style="font-size:12.5px;color:var(--muted);margin-left:8px"></span></div>
        <div class="card"><h3>同意書範本</h3><div id="consents"></div></div>
        ${App.me.role === 'admin' ? `<div class="card"><h3>資料備份</h3>
          <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
@@ -1030,6 +1038,16 @@ App.page('settings', {
          <button class="btn secondary small" id="backup">立即備份並同步附件</button>
          <div id="backup-result" style="font-size:13px;margin-top:10px"></div></div>` : ''}
        <div style="margin:16px 0 40px"><button class="btn" id="save">儲存設定</button></div>`;
+    const inst = el.querySelector('#installapp');
+    if (inst) {
+      const hint = el.querySelector('#install-hint');
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+      if (standalone) { inst.disabled = true; hint.textContent = '已經是以 App 方式開啟'; }
+      inst.onclick = async () => {
+        if (window.MCInstall && await window.MCInstall.prompt()) return;
+        hint.textContent = '這個瀏覽器沒有提供安裝按鈕，請用瀏覽器選單的「安裝應用程式」或「加入主畫面」。';
+      };
+    }
     const bk = el.querySelector('#backup');
     if (bk) bk.onclick = async () => {
       const out = el.querySelector('#backup-result');

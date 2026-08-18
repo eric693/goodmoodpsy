@@ -1,27 +1,56 @@
-// KidCare 家長專區 Service Worker：接收推播、點擊開啟對應頁
-// 不做離線快取（避免舊版頁面殘留），僅為 PWA 安裝與推播用。
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+// 好心情管理系統 Service Worker
+//
+// 策略刻意保守，因為這是有個案資料的系統：
+//   - HTML 與 /api 一律不快取（避免看到舊版頁面或舊資料，也不把個案資料留在裝置上）
+//   - 只快取靜態外殼（css / js / icons），且採「網路優先、失敗才用快取」
+//   - 換版本時改 CACHE 名稱即可，舊快取會在 activate 一併清掉
+const CACHE = 'mindcare-shell-v1';
+const SHELL = [
+  '/css/style.css',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png'
+];
 
-self.addEventListener('push', e => {
-  let data = {};
-  try { data = e.data ? e.data.json() : {}; } catch { data = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(data.title || 'KidCare 托嬰中心', {
-    body: data.body || '',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    data: { url: data.url || '/family.html' },
-    tag: data.tag || 'kidcare'
-  }));
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => null));
+  self.skipWaiting();
 });
 
-self.addEventListener('notificationclick', e => {
-  e.notification.close();
-  const url = (e.notification.data && e.notification.data.url) || '/family.html';
-  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-    for (const c of list) {
-      if (c.url.includes('/family.html') && 'focus' in c) return c.focus();
+self.addEventListener('activate', e => {
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', e => {
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  // 個案資料與頁面本身永遠走網路，離線時不提供舊內容
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/')) return;
+  if (req.mode === 'navigate' || req.destination === 'document') return;
+  if (!/\.(css|js|png|svg|ico|woff2?)$/.test(url.pathname)) return;
+
+  e.respondWith((async () => {
+    try {
+      const fresh = await fetch(req);
+      if (fresh && fresh.ok) {
+        const cache = await caches.open(CACHE);
+        cache.put(req, fresh.clone());
+      }
+      return fresh;
+    } catch (err) {
+      const hit = await caches.match(req);
+      if (hit) return hit;
+      throw err;
     }
-    return clients.openWindow(url);
-  }));
+  })());
+});
+
+// 前端部署新版後可送訊息要求立即接手
+self.addEventListener('message', e => {
+  if (e.data === 'skip-waiting') self.skipWaiting();
 });

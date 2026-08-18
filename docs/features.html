@@ -141,6 +141,7 @@
     <li><a href="#receipt"><span class="tocnum">06</span>收據</a></li>
     <li><a href="#rooms"><span class="tocnum">06.5</span>空間管理</a></li>
     <li><a href="#crud"><span class="tocnum">06.6</span>哪些能改、能刪</a></li>
+    <li><a href="#pwa"><span class="tocnum">06.7</span>安裝成 App</a></li>
     <li><a href="#privacy"><span class="tocnum">07</span>保密分層</a></li>
     <li><a href="#modules"><span class="tocnum">08</span>其餘功能模組</a></li>
     <li><a href="#ops"><span class="tocnum">09</span>系統、資料與維運</a></li>
@@ -163,6 +164,7 @@
     <div class="card"><h4>個案專區（要登入）</h4><p>個案自己的手機頁面。網址 <code>/portal.html</code>，用手機號碼登入，只能看預約、費用、量表、同意書——看不到任何晤談紀錄。</p></div>
     <div class="card"><h4>線上預約表單（免登入）</h4><p>網址 <code>/booking.html</code>，任何人打開就能填，送出的是「申請」，要櫃檯確認才算數。</p></div>
   </div>
+  <p>三個入口都能<strong>安裝成手機或電腦上的 App</strong>：Android／Chrome 依畫面提示按「安裝」，iPhone 用 Safari 的「分享 → 加入主畫面」。安裝後從主畫面開啟、沒有網址列，用起來就像一般 App，資料仍是即時連線（見<a href="#pwa" style="color:var(--accent)">安裝成 App</a>）。</p>
   <p>另外還有一個不算「入口」的角色：<strong>LINE 官方帳號</strong>。它不是給人操作系統的地方，而是系統主動找個案的管道——送預約連結、發晤談提醒、傳收據。</p>
 
   <h3>一位個案從頭到尾會經過什麼</h3>
@@ -371,6 +373,26 @@
   </table>
   </div>
   <p>刪除時若該筆資料已被引用（例如諮商室排過班、心理師有主責個案、方案已被預約使用），系統一律改為<strong>停用</strong>並告訴你原因，不會把歷史紀錄變成無主資料。</p>
+</section>
+
+<section id="pwa">
+  <h2><span class="num">06.7</span>安裝成 App</h2>
+  <p class="sub">不必上架 App Store，用瀏覽器就能把系統裝到主畫面。</p>
+
+  <div class="grid">
+    <div class="card"><h4>員工端「好心情後台」</h4><p>開啟 <code>goodmoodpsy.crownai.ink</code> 後安裝。長按 App 圖示可直接跳「今日看板」「預約排程」「線上預約申請」。</p></div>
+    <div class="card"><h4>個案端「好心情」</h4><p>請個案用手機開 <code>/portal.html</code> 後加入主畫面。圖示與員工端不同色，兩個 App 不會混淆。</p></div>
+    <div class="card"><h4>Android／Chrome／Edge</h4><p>開啟後畫面下方會跳出安裝提示，按「安裝」即可；也可用瀏覽器選單的「安裝應用程式」，或系統設定頁的安裝按鈕。</p></div>
+    <div class="card"><h4>iPhone／iPad</h4><p>用 Safari 開啟 → 分享 → 加入主畫面。iOS 沒有自動安裝功能，頁面會跳一次操作說明。</p></div>
+  </div>
+
+  <div class="panel">
+    <h3>刻意不做離線</h3>
+    <p>這是<strong>連線型 App</strong>：頁面本身與所有個案資料一律不存在裝置上，只快取樣式與程式碼這類靜態檔案，而且是「網路優先、連不上才退回快取」。手機掉了、被借走，App 裡也不會留下任何個案資料或舊畫面。</p>
+    <p>代價是斷網時打得開但看不到資料——考量到裡面是晤談與個案資料，這個取捨是刻意的。</p>
+    <h3>改版會自己提醒</h3>
+    <p>系統更新後，App 內會跳出「已有新版本／更新」，按一下就換到新版，不會卡在舊畫面。</p>
+  </div>
 </section>
 
 <section id="privacy">
