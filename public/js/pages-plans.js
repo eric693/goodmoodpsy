@@ -109,6 +109,31 @@ App.page('plans', {
       : `${Math.round((p.share_percent || 0) * 100)}%`);
     el.innerHTML = `<div class="toolbar"><div class="spacer"></div>
         <button class="btn" id="add">新增方案</button></div>
+      <div class="card" style="background:var(--primary-light);border:0">
+        <h3 style="margin-bottom:6px">心理師報酬（抽成）怎麼設、怎麼算
+          <button class="btn tiny secondary" id="helptoggle" style="float:right">展開說明</button></h3>
+        <div id="planhelp" style="display:none;font-size:13.5px;line-height:2">
+          <strong>一、在哪裡設</strong><br>
+          按方案上的「編輯方案」，往下捲到報酬設定：<br>
+          ・<strong>心理師報酬方式</strong>＝抽成比例（拆帳）或固定鐘點費（不論收多少，每場給固定金額）<br>
+          ・<strong>抽成比例</strong>＝填 0.6 或 60 都可以，系統一律當成 60%<br>
+          某位心理師談好不同條件時，用「新增心理師費率」單獨設定，不必動整個方案。<br><br>
+          <strong>二、抽成基數是「應收金額 − 場地費」</strong><br>
+          場地費算所方收入，不參與拆帳。以青壯世代方案為例：<br>
+          總額 1,800（方案給付 1,600 ＋ 個案自付場地費 200），抽成 60% →
+          心理師 (1800 − 200) × 60% = <strong>960</strong>，所方 1800 − 960 = <strong>840</strong>。<br>
+          不希望場地費影響拆帳的話，把「場地費」留 0 即可。<br><br>
+          <strong>三、三層優先順序（下面蓋上面）</strong><br>
+          心理師費率 → 主題 → 方案預設。<br>
+          某位心理師在某個主題有單獨費率就用他的；沒有就看主題；再沒有才用方案預設。<br><br>
+          <strong>四、什麼時候定案</strong><br>
+          報酬在<strong>晤談按下「完成」的當下就鎖定</strong>在那筆預約上。
+          之後調整抽成只影響往後完成的晤談，不會回頭改動已結算的月份。<br><br>
+          <strong>五、去哪裡看結果</strong><br>
+          「心理師收支」頁看每月完成場次、應收、報酬與所方淨收（可列印對帳）；
+          「報酬與扣繳」頁把報酬開成給付單，試算代扣所得稅與二代健保補充保費。
+        </div>
+      </div>
       ${plans.map(p => `<div class="card"${p.active ? '' : ' style="opacity:.6"'}>
         <h3>${UI.esc(p.name)}
           ${UI.tag(PLAN_KIND[p.kind] || p.kind, p.kind === 'subsidy' ? 'warn' : 'primary')}
@@ -158,6 +183,13 @@ App.page('plans', {
       </div>`).join('')}`;
 
     const reload = () => App.go('plans');
+    // 說明預設收合，需要時才展開，不佔掉整頁版面
+    const help = el.querySelector('#planhelp'), ht = el.querySelector('#helptoggle');
+    ht.onclick = () => {
+      const open = help.style.display === 'none';
+      help.style.display = open ? '' : 'none';
+      ht.textContent = open ? '收合說明' : '展開說明';
+    };
     el.querySelector('#add').onclick = () => planDialog(null, reload);
     const find = id => plans.find(p => p.id === Number(id));
     el.querySelectorAll('[data-ep]').forEach(b => { b.onclick = () => planDialog(find(b.dataset.ep), reload); });
@@ -354,7 +386,8 @@ App.page('income', {
           <td>${UI.fmtMoney(p.venue)}</td>
           <td>${UI.fmtMoney(p.share)}</td><td>${UI.fmtMoney(p.center)}</td></tr>`))}
         <div style="font-size:12.5px;color:var(--muted);margin-top:6px">
-          心理師報酬以「服務總額 − 場地費」為基數計算（場地費全額為所方收入）。</div>
+          心理師報酬以「服務總額 − 場地費」為基數計算（場地費全額為所方收入），
+          比例或鐘點費在「系統 → 方案設定」設定；金額於晤談按下「完成」時鎖定，事後改設定不會回頭變動此表。</div>
         <div class="toolbar" style="margin-top:8px"><div class="spacer"></div>
           <button class="btn tiny secondary" data-detail="${r.counselor_id}">明細／列印</button></div>
       </div>`).join('') || '<div class="empty">本月尚無已完成的晤談</div>'}`;
