@@ -130,6 +130,26 @@ router.post('/receipts', requireStaff('billing'), (req, res) => {
   res.json({ id: info.lastInsertRowid, receipt_no: no });
 });
 
+// 修正非金額欄位：抬頭打錯、統編漏填、項目寫法要調整，不必為了這些重開新號。
+// 編號、金額與日期屬憑證要素，錯了必須走作廢＋重開，這裡一律不動。
+router.put('/receipts/:id', requireStaff('billing'), (req, res) => {
+  const r = db.prepare('SELECT * FROM receipts WHERE id = ?').get(req.params.id);
+  if (!r) return res.status(404).json({ error: '找不到此收據' });
+  if (r.status !== 'valid') return res.status(400).json({ error: '已作廢的收據不可修改' });
+  const b = req.body || {};
+  const title = String(b.title !== undefined ? b.title : r.title).trim();
+  if (!title) return res.status(400).json({ error: '抬頭不可空白' });
+  const taxId = String(b.tax_id !== undefined ? b.tax_id : r.tax_id).trim();
+  if (taxId && !/^\d{8}$/.test(taxId)) return res.status(400).json({ error: '統一編號應為 8 碼數字' });
+  const item = String(b.item !== undefined ? b.item : r.item).trim();
+  if (!item) return res.status(400).json({ error: '項目不可空白' });
+  db.prepare('UPDATE receipts SET title = ?, tax_id = ?, item = ?, note = ? WHERE id = ?')
+    .run(title, taxId, item, String(b.note !== undefined ? b.note : r.note), r.id);
+  audit('staff', req.user.id, req.user.name, '修改收據抬頭與項目', r.receipt_no,
+    { before: { title: r.title, tax_id: r.tax_id, item: r.item } });
+  res.json({ ok: true });
+});
+
 // 作廢：憑證不可塗改，錯了就作廢留痕，需要的話另開新號
 router.post('/receipts/:id/void', requireStaff('billing'), (req, res) => {
   const r = db.prepare('SELECT * FROM receipts WHERE id = ?').get(req.params.id);

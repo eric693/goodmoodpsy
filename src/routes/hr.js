@@ -46,6 +46,25 @@ router.post('/time-off', requireStaff('hr'), (req, res) => {
   res.json({ id: info.lastInsertRowid });
 });
 
+// 請假日期或事由填錯時就地修正，不必刪掉重登
+router.put('/time-off/:id', requireStaff('hr'), (req, res) => {
+  const t = db.prepare('SELECT * FROM time_off WHERE id = ?').get(req.params.id);
+  if (!t) return res.status(404).json({ error: '找不到此紀錄' });
+  if (req.user.role !== 'admin' && t.counselor_id !== req.user.id) {
+    return res.status(403).json({ error: '僅能修改自己的請假' });
+  }
+  const b = { ...t, ...req.body };
+  const end = b.end_date || b.start_date;
+  if (!b.start_date) return res.status(400).json({ error: '請填寫起始日期' });
+  if (end < b.start_date) return res.status(400).json({ error: '結束日期不可早於起始日期' });
+  const allDay = b.all_day ? 1 : 0;
+  db.prepare(`UPDATE time_off SET start_date = ?, end_date = ?, all_day = ?, start_time = ?, end_time = ?, reason = ?
+    WHERE id = ?`).run(b.start_date, end, allDay,
+    allDay ? '' : (b.start_time || ''), allDay ? '' : (b.end_time || ''), b.reason || '', t.id);
+  audit('staff', req.user.id, req.user.name, '修改請假', String(t.counselor_id), { from: b.start_date, to: end });
+  res.json({ ok: true });
+});
+
 router.delete('/time-off/:id', requireStaff('hr'), (req, res) => {
   const t = db.prepare('SELECT * FROM time_off WHERE id = ?').get(req.params.id);
   if (!t) return res.status(404).json({ error: '找不到此紀錄' });

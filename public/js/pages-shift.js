@@ -230,7 +230,8 @@ App.page('myshift', {
           <td>${o.start_date}${o.end_date !== o.start_date ? ' ~ ' + o.end_date : ''}</td>
           <td>${o.all_day ? '全天' : `${o.start_time}-${o.end_time}`}</td>
           <td>${UI.esc(o.reason || '')}</td>
-          <td><button class="btn tiny danger" data-off="${o.id}">刪除</button></td></tr>`), '目前沒有請假紀錄')}
+          <td style="white-space:nowrap"><button class="btn tiny secondary" data-offe="${o.id}">編輯</button>
+            <button class="btn tiny danger" data-off="${o.id}">刪除</button></td></tr>`), '目前沒有請假紀錄')}
         <button class="btn small secondary" id="add-off" style="margin-top:10px">登錄請假</button>`;
       box.querySelector('#add-off').onclick = () => UI.modal({
         title: '登錄請假／不可預約',
@@ -246,6 +247,26 @@ App.page('myshift', {
           await POST('/time-off', { ...UI.formData(form), counselor_id: cid });
           App.go('myshift/' + cid);
         }
+      });
+      // 日期或事由填錯就地改，不必刪掉重登
+      box.querySelectorAll('[data-offe]').forEach(b => {
+        const o = offs.find(x => x.id === Number(b.dataset.offe));
+        b.onclick = () => UI.modal({
+          title: '編輯請假／不可預約',
+          body: `<div class="form-grid">
+            ${UI.input('start_date', '起始日', { type: 'date', value: o.start_date })}
+            ${UI.input('end_date', '結束日', { type: 'date', value: o.end_date })}
+            ${UI.checkbox('all_day', '全天不可預約', !!o.all_day)}
+            ${UI.input('start_time', '開始時間', { type: 'time', value: o.start_time || '' })}
+            ${UI.input('end_time', '結束時間', { type: 'time', value: o.end_time || '' })}
+            ${UI.inputList('reason', '事由', App.meta.time_off_reasons || [], { value: o.reason || '', full: true })}
+          </div>`,
+          onSubmit: async form => {
+            await PUT(`/time-off/${o.id}`, UI.formData(form));
+            UI.toast('已更新');
+            App.go('myshift/' + cid);
+          }
+        });
       });
       box.querySelectorAll('[data-off]').forEach(b => {
         b.onclick = async () => {

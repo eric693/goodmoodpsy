@@ -244,13 +244,47 @@ router.get('/plan-board', requireStaff('schedule'), (req, res) => {
   res.json({ date, rows });
 });
 
+// 已用人次可以人工填成實際數字（他所已接的案、系統外排的場次）。
+// 存的是差額，之後系統內新增預約仍會照常累加。
+router.put('/plan-board/usage', requireStaff('schedule'), (req, res) => {
+  const b = req.body || {};
+  const planId = Number(b.plan_id) || 0;
+  const counselorId = Number(b.counselor_id) || 0;
+  const date = b.date || today();
+  if (!planId || !counselorId) return res.status(400).json({ error: '請指定方案與心理師' });
+  const canEditOthers = req.user.role === 'admin' || req.userModules.includes('settings');
+  if (!canEditOthers && counselorId !== req.user.id) {
+    return res.status(403).json({ error: '只能調整自己的已用人次' });
+  }
+  const load = counselorLoad(counselorId, planId, date);
+  const save = (type, key, systemUsed, wanted) => {
+    if (wanted === undefined || wanted === null || wanted === '') return;
+    const offset = Math.max(0, Math.floor(Number(wanted) || 0)) - systemUsed;
+    db.prepare(`INSERT INTO plan_counselor_usage_adj (plan_id, counselor_id, period_type, period_key, used_offset, note, updated_at)
+      VALUES (?,?,?,?,?,?,datetime('now','localtime'))
+      ON CONFLICT (plan_id, counselor_id, period_type, period_key)
+      DO UPDATE SET used_offset = excluded.used_offset, note = excluded.note, updated_at = excluded.updated_at`)
+      .run(planId, counselorId, type, key, offset, String(b.note || ''));
+  };
+  save('week', load.week_start, load.week_system_used, b.week_used);
+  save('month', load.month, load.month_system_used, b.month_used);
+  audit('staff', req.user.id, req.user.name, '調整方案已用人次', String(planId),
+    { counselorId, week_used: b.week_used, month_used: b.month_used });
+  res.json({ ok: true, ...counselorLoad(counselorId, planId, date) });
+});
+
 // 直接在人次看板調整某位心理師在某方案的上限，不必繞到方案設定頁改費率。
 // -1 沿用方案設定、0 不限、>0 個別上限。
-router.put('/plan-board/limit', requireStaff('settings'), (req, res) => {
+// 心理師可以調整「自己」的上限（自己接多少自己最清楚）；要改別人的則需 settings 權限。
+router.put('/plan-board/limit', requireStaff('schedule'), (req, res) => {
   const b = req.body || {};
   const planId = Number(b.plan_id) || 0;
   const counselorId = Number(b.counselor_id) || 0;
   if (!planId || !counselorId) return res.status(400).json({ error: '請指定方案與心理師' });
+  const canEditOthers = req.user.role === 'admin' || req.userModules.includes('settings');
+  if (!canEditOthers && counselorId !== req.user.id) {
+    return res.status(403).json({ error: '只能調整自己的人次上限' });
+  }
   const plan = db.prepare('SELECT name FROM service_plans WHERE id = ?').get(planId);
   if (!plan) return res.status(404).json({ error: '找不到此方案' });
   const norm = v => {

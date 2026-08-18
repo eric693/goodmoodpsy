@@ -120,19 +120,54 @@ App.page('bookings', {
         <td>${r.date ? `${r.date}<br>${r.start_time}` : UI.esc(r.alt_note || '未指定')}</td>
         <td>${UI.esc(r.counselor_name || '由諮商所安排')}</td>
         <td>${r.usage ? `${r.usage.used}/${r.usage.quota}${r.usage.over ? ' ' + UI.tag('已用完', 'danger') : ''}` : '-'}</td>
-        <td><button class="btn tiny" data-b="${r.id}">處理</button></td></tr>`), '目前沒有待處理的申請')}</div>
+        <td style="white-space:nowrap"><button class="btn tiny" data-b="${r.id}">處理</button>
+          <button class="btn tiny secondary" data-be="${r.id}">編輯</button>
+          <button class="btn tiny danger" data-bd="${r.id}">刪除</button></td></tr>`), '目前沒有待處理的申請')}</div>
 
       <div class="card"><h3>歷史申請</h3>
-      ${UI.table(['送出時間', '姓名', '方案', '時段', '狀態', '處理'], rows.filter(r => r.status !== 'new').slice(0, 100)
+      ${UI.table(['送出時間', '姓名', '方案', '時段', '狀態', '處理', ''], rows.filter(r => r.status !== 'new').slice(0, 100)
       .map(r => `<tr>
         <td>${UI.esc(r.created_at.slice(0, 16))}</td><td>${UI.esc(r.name)}</td>
         <td>${UI.esc(r.plan_name || '-')}</td>
         <td>${r.date ? r.date + ' ' + r.start_time : '-'}</td>
         <td>${UI.tag(BOOKING_STATUS[r.status] || r.status, r.status === 'confirmed' ? 'ok' : '')}</td>
         <td>${UI.esc((r.handled_at || '').slice(0, 16))}${r.reply_note ? '<br><span style="font-size:12px;color:var(--muted)">' + UI.esc(r.reply_note) + '</span>' : ''}</td>
+        <td style="white-space:nowrap">${r.status === 'confirmed' ? ''
+    : `<button class="btn tiny danger" data-bd="${r.id}">刪除</button>`}</td>
         </tr>`), '尚無紀錄')}</div>`;
     el.querySelectorAll('[data-b]').forEach(b => {
       b.onclick = () => bookingDialog(b.dataset.b, () => App.go('bookings'));
+    });
+    // 申請內容打錯可以先改再成立；重複送出或亂填的可以直接刪掉
+    el.querySelectorAll('[data-be]').forEach(b => {
+      const r = rows.find(x => x.id === Number(b.dataset.be));
+      b.onclick = () => UI.modal({
+        title: `編輯申請：${r.name}`, wide: true,
+        body: `<div class="form-grid">
+            ${UI.input('name', '姓名', { value: r.name })}
+            ${UI.input('phone', '聯絡電話', { value: r.phone || '' })}
+            ${UI.input('email', 'Email', { value: r.email || '' })}
+            ${UI.input('birth_date', '出生日期', { type: 'date', value: r.birth_date || '' })}
+            ${UI.select('plan_id', '方案', [['', '未指定']].concat((App.meta.plans || []).map(p => [p.id, p.name])), { value: r.plan_id || '' })}
+            ${UI.select('counselor_id', '指定心理師', [['', '由諮商所安排']].concat(App.counselorOptions()), { value: r.counselor_id || '' })}
+            ${UI.input('date', '希望日期', { type: 'date', value: r.date || '' })}
+            ${UI.input('start_time', '希望時間', { type: 'time', value: r.start_time || '' })}
+            ${UI.input('alt_note', '其他可配合時段', { value: r.alt_note || '', full: true })}
+            ${UI.textarea('main_issue', '主訴', { value: r.main_issue || '', rows: 3 })}
+          </div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+            修改只影響這筆申請，成立預約時以這裡的內容為準；修改會記入稽核軌跡。</div>`,
+        onSubmit: async e => { await PUT(`/bookings/${r.id}`, UI.formData(e)); UI.toast('已更新'); App.go('bookings'); }
+      });
+    });
+    el.querySelectorAll('[data-bd]').forEach(b => {
+      const r = rows.find(x => x.id === Number(b.dataset.bd));
+      b.onclick = async () => {
+        if (!await UI.confirm(`刪除 ${r.name} 的預約申請？此動作無法復原（已成立的申請不會出現此按鈕）。`)) return;
+        await DEL(`/bookings/${r.id}`);
+        UI.toast('已刪除');
+        App.go('bookings');
+      };
     });
   }
 });
@@ -375,7 +410,7 @@ const LINEPAGE = {
         ${UI.table(['時間', '類型', '對象', '內容', '結果'], (s.recent || []).map(n => `<tr>
           <td>${UI.esc(n.created_at.slice(5, 16))}</td><td>${UI.esc(n.kind)}</td>
           <td>${UI.esc(n.client_name || n.target || '-')}</td>
-          <td style="max-width:280px">${UI.esc(n.content || '')}</td>
+          <td><div title="${UI.esc(n.content || '')}" class="ellipsis" style="max-width:280px;">${UI.esc(n.content || '')}</div></td>
           <td>${n.status === 'sent' ? UI.tag('已送出', 'ok')
     : n.status === 'manual' ? UI.tag('待人工', 'warn') : UI.tag('失敗', 'danger')}
             ${n.error ? `<br><span style="font-size:12px;color:var(--muted)">${UI.esc(n.error)}</span>` : ''}</td>

@@ -144,7 +144,9 @@ App.page('follow-ups', {
           <td>${UI.esc(r.counselor_name || '')}</td>
           <td>${UI.esc(r.kind)}</td>
           <td>${UI.esc(r.client_phone || '')}</td>
-          <td><button class="btn tiny" data-f="${r.id}">完成追蹤</button></td></tr>`),
+          <td style="white-space:nowrap"><button class="btn tiny" data-f="${r.id}">完成追蹤</button>
+            <button class="btn tiny secondary" data-fe="${r.id}">編輯</button>
+            <button class="btn tiny danger" data-fd="${r.id}">刪除</button></td></tr>`),
     '目前沒有待處理的追蹤')}
         <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
           只列出已到期或七日內到期者。追蹤結果會留在個案頁的「轉介與追蹤」分頁。</div>
@@ -154,6 +156,23 @@ App.page('follow-ups', {
         const row = d.rows.find(r => r.id === Number(b.dataset.f));
         followUpDialog(row.client_id, row, App.meta.follow_up_channels || ['電話', '簡訊', 'LINE', '面談'],
           () => App.go('follow-ups'));
+      };
+    });
+    // 追蹤日排錯、類型要改：直接編輯，不必先標完成
+    el.querySelectorAll('[data-fe]').forEach(b => {
+      b.onclick = () => {
+        const row = d.rows.find(r => r.id === Number(b.dataset.fe));
+        followUpDialog(row.client_id, row, App.meta.follow_up_channels || ['電話', '簡訊', 'LINE', '面談'],
+          () => App.go('follow-ups'));
+      };
+    });
+    el.querySelectorAll('[data-fd]').forEach(b => {
+      b.onclick = async () => {
+        const row = d.rows.find(r => r.id === Number(b.dataset.fd));
+        if (!await UI.confirm(`刪除 ${row.client_name} 於 ${row.due_date} 的追蹤點？`)) return;
+        await DEL(`/follow-ups/${row.id}`);
+        UI.toast('已刪除');
+        App.go('follow-ups');
       };
     });
   }

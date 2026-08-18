@@ -216,7 +216,9 @@ App.page('plan-board', {
     el.innerHTML = `<div class="toolbar">
         <input type="date" id="d" value="${date}">
         <div class="spacer"></div></div>
-      ${[...byPlan.entries()].map(([name, rows]) => `<div class="card"><h3>${UI.esc(name)}</h3>
+      ${[...byPlan.entries()].map(([name, rows]) => `<div class="card"><h3>${UI.esc(name)}
+        ${App.can('settings') ? `<button class="btn tiny danger" data-delplan="${rows[0].plan_id}"
+          style="float:right">刪除方案</button>` : ''}</h3>
         ${UI.table(['心理師', `本週（${rows[0].week_start} ~ ${rows[0].week_end}）`, '本月', '狀態', ''], rows.map((r, i) => `<tr>
           <td>${UI.esc(r.counselor_name)}</td>
           <td>${r.week_used}${r.week_limit ? ' / ' + r.week_limit : '（不限）'}
@@ -227,11 +229,45 @@ App.page('plan-board', {
       ? UI.tag('本週額滿', 'danger') + (r.next_week ? `<span style="font-size:12px;color:var(--muted)">　下週 ${r.next_week.week_start} 起尚餘 ${r.next_week.remaining ?? '不限'} 人次</span>` : '')
       : r.month_full ? UI.tag('本月額滿', 'danger')
         : UI.tag(`尚可 ${r.week_remaining ?? '不限'} 人次`, 'ok')}</td>
-          <td style="text-align:right"><button class="btn tiny secondary"
-            data-lim="${UI.esc(name)}" data-i="${i}">調整上限</button></td></tr>`))}
+          <td style="text-align:right;white-space:nowrap">${App.can('settings') || r.counselor_id === App.me.id
+      ? `<button class="btn tiny secondary" data-lim="${UI.esc(name)}" data-i="${i}">調整上限</button>
+         <button class="btn tiny secondary" data-use="${UI.esc(name)}" data-i="${i}">填已用人次</button>` : ''}</td></tr>`))}
       </div>`).join('') || '<div class="empty">目前沒有設定人次上限的方案</div>'}`;
     el.querySelector('#d').onchange = e => { location.hash = `plan-board/${e.target.value}`; };
 
+    // 已用人次可以直接填實際數字：他所已接的案、系統外排的場次都算進去
+    el.querySelectorAll('[data-use]').forEach(b => {
+      b.onclick = () => {
+        const r = byPlan.get(b.dataset.use)[Number(b.dataset.i)];
+        UI.modal({
+          title: `${r.counselor_name}　已用人次`,
+          body: `<div class="form-grid">
+              ${UI.input('week_used', `本週已用（${r.week_start} ~ ${r.week_end}）`, { type: 'number', min: 0, value: r.week_used })}
+              ${UI.input('month_used', `本月已用（${r.month}）`, { type: 'number', min: 0, value: r.month_used })}
+              ${UI.input('note', '調整說明', { value: '', full: true, placeholder: '例如：他所已接 2 位' })}
+            </div>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+              系統內已排 本週 ${r.week_system_used}、本月 ${r.month_system_used} 人次；
+              填入的數字與系統統計的差額會存成人工調整，之後系統內新增預約仍會照常累加。
+              調整記入稽核軌跡。</div>`,
+          onSubmit: async bodyEl => {
+            await PUT('/plan-board/usage', Object.assign({
+              plan_id: r.plan_id, counselor_id: r.counselor_id, date
+            }, UI.formData(bodyEl)));
+            UI.toast('已更新已用人次');
+            App.go(`plan-board/${date}`);
+          }
+        });
+      };
+    });
+    el.querySelectorAll('[data-delplan]').forEach(b => {
+      b.onclick = async () => {
+        if (!await UI.confirm('刪除整個方案？已有預約使用過的方案會改為停用以保留歷史紀錄。')) return;
+        const r = await DEL(`/service-plans/${b.dataset.delplan}`);
+        UI.toast(r.message || '已刪除');
+        App.go(`plan-board/${date}`);
+      };
+    });
     // 人次上限就在這頁改：-1 沿用方案、0 不限、其他為個別上限
     el.querySelectorAll('[data-lim]').forEach(b => {
       b.onclick = () => {
@@ -252,7 +288,8 @@ App.page('plan-board', {
             </div>
             <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
               只影響這位心理師在此方案的上限，其他心理師不受影響；調整會記入稽核軌跡。
-              已排入的預約不會被回頭取消。</div>`,
+              已排入的預約不會被回頭取消。
+              ${App.can('settings') ? '' : '心理師僅能調整自己的上限。'}</div>`,
           onSubmit: async bodyEl => {
             const f = UI.formData(bodyEl);
             const pick = key => (f[key + '_mode'] === 'inherit' ? -1

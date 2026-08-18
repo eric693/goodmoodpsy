@@ -670,6 +670,20 @@ db.exec(`CREATE TABLE IF NOT EXISTS booking_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_booking_status ON booking_requests(status, created_at);
 
+-- 心理師在某方案的已用人次人工調整：他所已接的案、系統外排的場次，
+-- 讓櫃檯把實際已用人次填成正確數字。實際已用 = 系統內有效預約 + used_offset。
+CREATE TABLE IF NOT EXISTS plan_counselor_usage_adj (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id INTEGER NOT NULL REFERENCES service_plans(id) ON DELETE CASCADE,
+  counselor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  period_type TEXT NOT NULL,                   -- week（以週一為 key）/ month（YYYY-MM）
+  period_key TEXT NOT NULL,
+  used_offset INTEGER NOT NULL DEFAULT 0,
+  note TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+  UNIQUE (plan_id, counselor_id, period_type, period_key)
+);
+
 -- LINE 綁定驗證碼：個案在官方帳號輸入驗證碼即完成綁定，不必由櫃檯查 userId
 CREATE TABLE IF NOT EXISTS line_bindings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

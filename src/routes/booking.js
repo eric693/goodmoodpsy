@@ -266,6 +266,48 @@ router.get('/bookings/:id', requireStaff('schedule'), (req, res) => {
     topic_display: b.topic_name || b.topic_other || '' });
 });
 
+// 修正申請內容：電話打錯、方案選錯、主訴要補，成立預約前先改好再確認。
+// 已成立的申請不再開放修改，該改的是排程上的那筆晤談。
+const BOOKING_EDIT_FIELDS = ['name', 'phone', 'email', 'gender', 'birth_date', 'plan_id', 'topic_id',
+  'counselor_id', 'date', 'start_time', 'alt_note', 'mode', 'fee_choice', 'partner_name',
+  'main_issue', 'expectation', 'reply_note'];
+router.put('/bookings/:id', requireStaff('schedule'), (req, res) => {
+  const b = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(req.params.id);
+  if (!b) return res.status(404).json({ error: '找不到此預約申請' });
+  if (b.status === 'confirmed') {
+    return res.status(400).json({ error: '已成立的申請請直接修改排程上的晤談' });
+  }
+  const body = req.body || {};
+  const data = {};
+  for (const f of BOOKING_EDIT_FIELDS) {
+    if (body[f] === undefined) continue;
+    data[f] = ['plan_id', 'topic_id', 'counselor_id'].includes(f)
+      ? (Number(body[f]) || null)
+      : (f === 'fee_choice' ? Math.max(0, Number(body[f]) || 0) : String(body[f]));
+  }
+  if (data.name !== undefined && !String(data.name).trim()) {
+    return res.status(400).json({ error: '姓名不可空白' });
+  }
+  if (!Object.keys(data).length) return res.json({ ok: true });
+  db.prepare(`UPDATE booking_requests SET ${Object.keys(data).map(k => `${k} = ?`).join(', ')} WHERE id = ?`)
+    .run(...Object.values(data), b.id);
+  audit('staff', req.user.id, req.user.name, '修改預約申請', b.name, { id: b.id });
+  res.json({ ok: true });
+});
+
+// 刪除申請：測試資料、重複送出或明顯亂填的可以直接移除。
+// 已成立的申請保留，才能追溯這筆晤談是怎麼來的。
+router.delete('/bookings/:id', requireStaff('schedule'), (req, res) => {
+  const b = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(req.params.id);
+  if (!b) return res.status(404).json({ error: '找不到此預約申請' });
+  if (b.status === 'confirmed') {
+    return res.status(400).json({ error: '已成立的申請不可刪除，請改為取消該筆晤談' });
+  }
+  db.prepare('DELETE FROM booking_requests WHERE id = ?').run(b.id);
+  audit('staff', req.user.id, req.user.name, '刪除預約申請', b.name, { id: b.id, status: b.status });
+  res.json({ ok: true });
+});
+
 // 未建檔者一鍵建檔：把表單資料帶進個案基本資料，省去重打一次
 router.post('/bookings/:id/create-client', requireStaff('clients'), (req, res) => {
   const b = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(req.params.id);

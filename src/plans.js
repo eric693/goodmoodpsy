@@ -155,6 +155,13 @@ function counselorLoad(counselorId, planId, dateStr, excludeApptId) {
       WHERE counselor_id = ? AND plan_id = ? AND substr(date,1,7) = ? AND status IN ${COUNTED_SQL} AND id != ?`)
     .get(Number(counselorId), Number(planId), month, ex).n;
 
+  // 人工調整的已用人次（他所已接、系統外排的場次），加在系統統計之上
+  const adj = (type, key) => (db.prepare(`SELECT used_offset FROM plan_counselor_usage_adj
+    WHERE plan_id = ? AND counselor_id = ? AND period_type = ? AND period_key = ?`)
+    .get(Number(planId), Number(counselorId), type, key) || {}).used_offset || 0;
+  const weekOffset = adj('week', wk.start);
+  const monthOffset = adj('month', month);
+
   // -1 表示沿用方案設定；方案為 0 則再退回系統預設值
   const pick = (rateVal, planVal, settingKey) => {
     if (rateVal !== undefined && rateVal !== null && rateVal >= 0) return rateVal;
@@ -164,14 +171,18 @@ function counselorLoad(counselorId, planId, dateStr, excludeApptId) {
   const weekLimit = pick(rate ? rate.week_limit : -1, plan ? plan.counselor_week_limit : 0, 'plan_default_week_limit');
   const monthLimit = pick(rate ? rate.month_limit : -1, plan ? plan.counselor_month_limit : 0, 'plan_default_month_limit');
 
+  const weekTotal = weekUsed + weekOffset;
+  const monthTotal = monthUsed + monthOffset;
   return {
     week_start: wk.start, week_end: wk.end, month,
-    week_used: weekUsed, week_limit: weekLimit,
-    week_remaining: weekLimit ? Math.max(0, weekLimit - weekUsed) : null,
-    month_used: monthUsed, month_limit: monthLimit,
-    month_remaining: monthLimit ? Math.max(0, monthLimit - monthUsed) : null,
-    week_full: !!(weekLimit && weekUsed >= weekLimit),
-    month_full: !!(monthLimit && monthUsed >= monthLimit)
+    week_used: weekTotal, week_limit: weekLimit,
+    week_system_used: weekUsed, week_offset: weekOffset,
+    week_remaining: weekLimit ? Math.max(0, weekLimit - weekTotal) : null,
+    month_used: monthTotal, month_limit: monthLimit,
+    month_system_used: monthUsed, month_offset: monthOffset,
+    month_remaining: monthLimit ? Math.max(0, monthLimit - monthTotal) : null,
+    week_full: !!(weekLimit && weekTotal >= weekLimit),
+    month_full: !!(monthLimit && monthTotal >= monthLimit)
   };
 }
 

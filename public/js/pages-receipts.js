@@ -123,12 +123,29 @@ App.page('receipts', {
           <td>${UI.fmtMoney(r.amount)}</td>
           <td>${r.status === 'valid' ? UI.tag('有效', 'ok') : UI.tag('已作廢', 'danger')}
             ${r.print_count ? `<br><span style="font-size:12px;color:var(--muted)">已印 ${r.print_count} 次</span>` : ''}</td>
-          <td><button class="btn tiny secondary" data-v="${r.id}">檢視／列印</button>
-            ${r.status === 'valid' ? `<button class="btn tiny secondary" data-re="${r.id}">重開</button>
+          <td style="white-space:nowrap"><button class="btn tiny secondary" data-v="${r.id}">檢視／列印</button>
+            ${r.status === 'valid' ? `<button class="btn tiny secondary" data-ed="${r.id}">編輯</button>
+              <button class="btn tiny secondary" data-re="${r.id}">重開</button>
               <button class="btn tiny danger" data-void="${r.id}">作廢</button>` : ''}</td></tr>`), '尚無收據')}</div>`;
 
     const reload = () => App.go('receipts');
     el.querySelector('#add').onclick = () => issueDialog(null, reload);
+    // 抬頭、統編、項目與備註可直接修正；編號、金額與日期屬憑證要素，要改就得作廢重開
+    el.querySelectorAll('[data-ed]').forEach(b => {
+      const r = data.rows.find(x => x.id === Number(b.dataset.ed));
+      b.onclick = () => UI.modal({
+        title: `編輯收據 ${r.receipt_no}`,
+        body: `<div class="form-grid">
+            ${UI.input('title', '抬頭', { value: r.title, full: true })}
+            ${UI.input('tax_id', '統一編號（8 碼，可留空）', { value: r.tax_id || '' })}
+            ${UI.input('item', '項目', { value: r.item })}
+            ${UI.textarea('note', '備註', { value: r.note || '' })}</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+            金額 ${UI.fmtMoney(r.amount)}、日期 ${r.date} 與收據編號屬憑證要素，不可修改；
+            這些要更正請用「重開」另立新號。修改內容會記入稽核軌跡。</div>`,
+        onSubmit: async e => { await PUT(`/receipts/${r.id}`, UI.formData(e)); UI.toast('已更新'); reload(); }
+      });
+    });
     el.querySelector('#search').onclick = async () => {
       const q = new URLSearchParams({
         q: el.querySelector('#q').value.trim(),

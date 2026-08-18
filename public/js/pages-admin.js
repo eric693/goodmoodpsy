@@ -628,7 +628,7 @@ App.page('overdue', {
           <td>${UI.esc(n.target || '-')}</td>
           <td>${n.status === 'sent' ? UI.tag('已送出', 'ok') : n.status === 'failed' ? UI.tag('失敗', 'danger') : UI.tag('人工發送')}
             ${n.error ? '<br><span style="font-size:12px;color:var(--danger)">' + UI.esc(n.error) + '</span>' : ''}</td>
-          <td style="max-width:280px;font-size:12.5px;color:var(--muted)">${UI.esc((n.content || '').slice(0, 60))}</td>
+          <td><div title="${UI.esc(n.content || '')}" class="ellipsis" style="max-width:280px;font-size:12.5px;color:var(--muted);">${UI.esc(n.content || '')}</div></td>
         </tr>`), '尚無催繳紀錄')
       });
     };
@@ -919,7 +919,8 @@ App.page('users', {
         <td>${u.active ? UI.tag('啟用', 'ok') : UI.tag('停用')}</td>
         <td style="white-space:nowrap;text-align:right">
           <button class="btn tiny secondary" data-u="${u.id}">編輯</button>
-          <button class="btn tiny secondary" data-pw="${u.id}">重設密碼</button></td></tr>`))}</div>
+          <button class="btn tiny secondary" data-pw="${u.id}">重設密碼</button>
+          <button class="btn tiny danger" data-du="${u.id}">刪除</button></td></tr>`))}</div>
       <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
         密碼在資料庫只保存加密後的雜湊值，任何人都查不回原本的密碼；忘記密碼時請用「重設密碼」產生新的並交給本人。</div>`;
     el.querySelector('#add').onclick = () => UI.modal({
@@ -930,6 +931,16 @@ App.page('users', {
       b.onclick = () => UI.modal({
         title: '編輯帳號：' + u.username, wide: true, body: form(u), onOpen: permSetup, onSubmit: submit(u)
       });
+    });
+    el.querySelectorAll('[data-du]').forEach(b => {
+      const u = users.find(x => x.id === Number(b.dataset.du));
+      b.onclick = async () => {
+        if (!await UI.confirm(`刪除帳號「${u.name}（${u.username}）」？
+若已有預約、主責個案或晤談紀錄，會改為停用以保留歷史資料。`)) return;
+        const r = await DEL(`/users/${u.id}`);
+        UI.toast(r.deactivated ? `已停用（仍有 ${r.links.join('、')}）` : '已刪除');
+        App.go('users');
+      };
     });
     el.querySelectorAll('[data-pw]').forEach(b => {
       const u = users.find(x => x.id === Number(b.dataset.pw));

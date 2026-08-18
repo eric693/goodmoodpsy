@@ -345,12 +345,14 @@ App.page('today', {
     ]);
     // 全所只有 2-3 間，今天哪間空著要一眼看得到（個案端不顯示這份資料）
     const roomCard = usage && usage.rooms.length ? `<div class="card"><h3>今日空間使用
-        <span style="font-size:13px;font-weight:400;color:var(--muted)">${usage.rooms.length} 間</span></h3>
+        <span style="font-size:13px;font-weight:400;color:var(--muted)">${usage.rooms.length} 間</span>
+        ${App.can('settings') ? '<button class="btn tiny secondary" id="editrooms" style="float:right">管理空間</button>' : ''}</h3>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
           ${usage.rooms.map(r => `<div style="border:1px solid var(--border);border-radius:8px;padding:12px">
             <div style="font-weight:700">${UI.esc(r.name)}
               <span style="font-size:12px;font-weight:400;color:var(--muted)">
-                ${r.capacity > 1 ? `可容納 ${r.capacity} 人　` : ''}今日 ${r.bookings.length} 場</span></div>
+                ${r.capacity > 1 ? `可容納 ${r.capacity} 人　` : ''}今日 ${r.bookings.length} 場</span>
+              ${App.can('settings') ? `<button class="btn tiny secondary" data-room="${r.id}" style="float:right">編輯</button>` : ''}</div>
             ${r.bookings.length ? r.bookings.map(b => `<div style="font-size:13px;margin-top:6px">
                 <strong>${b.start_time}-${b.end_time}</strong>　${UI.esc(b.title)}
                 ${b.kind === 'group' ? UI.tag('團體', 'warn') : ''}
@@ -384,6 +386,20 @@ App.page('today', {
           </div>
         </div>`).join('') : '<div class="empty">今日沒有排定的晤談</div>'}</div>`;
     el.querySelector('#add').onclick = () => apptDialog(null, () => App.go('today'));
+    // 空間就地編輯：名稱、容納人數、備註與啟用狀態，改完立刻反映在這張卡片
+    if (el.querySelector('#editrooms')) el.querySelector('#editrooms').onclick = () => { location.hash = 'settings'; };
+    el.querySelectorAll('[data-room]').forEach(b => {
+      const r = usage.rooms.find(x => x.id === Number(b.dataset.room));
+      b.onclick = () => UI.modal({
+        title: '編輯空間：' + r.name,
+        body: `<div class="form-grid">
+            ${UI.input('name', '名稱', { value: r.name })}
+            ${UI.input('capacity', '容納人數', { type: 'number', value: r.capacity })}
+            ${UI.input('note', '備註', { value: r.note || '', full: true })}
+            ${UI.checkbox('active', '啟用中（停用後不再被自動指派）', true)}</div>`,
+        onSubmit: async e => { await PUT(`/rooms/${r.id}`, UI.formData(e)); UI.toast('已儲存'); App.go('today'); }
+      });
+    });
     el.querySelectorAll('[data-st]').forEach(b => {
       b.onclick = () => apptStatusDialog(list.find(x => x.id === Number(b.dataset.st)), () => App.go('today'));
     });

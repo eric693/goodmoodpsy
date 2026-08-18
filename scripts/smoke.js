@@ -911,6 +911,45 @@ function startServer() {
     const d = await admin.ok('GET', '/api/plan-board');
     assert(Array.isArray(d.rows), '看板資料');
   });
+  await test('人次上限可個別調整，心理師只能改自己的', async () => {
+    const row = (await admin.ok('GET', '/api/plan-board')).rows[0];
+    assert(row, '至少要有一列限量方案');
+    const r = await admin.ok('PUT', '/api/plan-board/limit',
+      { plan_id: row.plan_id, counselor_id: row.counselor_id, week_limit: 3, month_limit: -1 });
+    equal(r.week_limit, 3, '已寫入個別週上限');
+    const after = (await admin.ok('GET', '/api/plan-board')).rows
+      .find(x => x.plan_id === row.plan_id && x.counselor_id === row.counselor_id);
+    equal(after.week_limit, 3, '看板反映新上限');
+    const me = await lin.ok('GET', '/api/me');
+    if (row.counselor_id !== me.id) {
+      await lin.fails('PUT', '/api/plan-board/limit',
+        { plan_id: row.plan_id, counselor_id: row.counselor_id, week_limit: 1 }, '自己');
+    }
+    await lin.ok('PUT', '/api/plan-board/limit',
+      { plan_id: row.plan_id, counselor_id: me.id, week_limit: -1, month_limit: -1 });
+    await admin.ok('PUT', '/api/plan-board/limit',
+      { plan_id: row.plan_id, counselor_id: row.counselor_id, week_limit: -1, month_limit: -1 });
+  });
+  await test('已用人次可人工填成實際數字', async () => {
+    const row = (await admin.ok('GET', '/api/plan-board')).rows[0];
+    const r = await admin.ok('PUT', '/api/plan-board/usage',
+      { plan_id: row.plan_id, counselor_id: row.counselor_id, week_used: 4, note: '他所已接' });
+    equal(r.week_used, 4, '已用人次填成 4');
+    assert(r.week_offset === 4 - r.week_system_used, '存的是與系統統計的差額');
+    await admin.ok('PUT', '/api/plan-board/usage',
+      { plan_id: row.plan_id, counselor_id: row.counselor_id, week_used: r.week_system_used });
+  });
+  await test('收據可修正抬頭與項目，金額與編號不動', async () => {
+    const rec = (await admin.ok('GET', '/api/receipts')).rows.find(x => x.status === 'valid');
+    if (!rec) return;
+    await admin.ok('PUT', `/api/receipts/${rec.id}`, { title: '測試抬頭', item: rec.item, tax_id: '' });
+    const after = (await admin.ok('GET', '/api/receipts')).rows.find(x => x.id === rec.id);
+    equal(after.title, '測試抬頭', '抬頭已更新');
+    equal(after.amount, rec.amount, '金額不變');
+    equal(after.receipt_no, rec.receipt_no, '編號不變');
+    await admin.fails('PUT', `/api/receipts/${rec.id}`, { tax_id: '123' }, '8 碼');
+    await admin.ok('PUT', `/api/receipts/${rec.id}`, { title: rec.title, tax_id: rec.tax_id || '' });
+  });
   await test('未設定 LINE 權杖時不對外送出，只記為待人工', async () => {
     const s = await admin.ok('GET', '/api/line/status');
     equal(s.enabled, false, '預設未啟用');

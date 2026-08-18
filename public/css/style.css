@@ -99,6 +99,11 @@ a { color: var(--primary); text-decoration: none; }
 table.list { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--card); border-radius: var(--radius); }
 table.list th, table.list td { padding: 9px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
 table.list td.wrap { white-space: normal; min-width: 160px; }
+/* 長文字欄位（主訴、備註、訊息內容）：限寬並以刪節號收尾，避免壓到隔壁欄位。
+   完整內容在 title 提示與詳情視窗中可看。 */
+table.list td > .ellipsis {
+  display: block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 table.list th { background: #f0f4f6; color: var(--muted); font-weight: 600; font-size: 12.5px; position: sticky; top: 0; }
 table.list tr:hover td { background: #f8fbfb; }
 

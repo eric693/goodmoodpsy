@@ -394,6 +394,40 @@ router.put('/users/:id', requireStaff('users'), (req, res) => {
   res.json({ ok: true, warnings });
 });
 
+// 刪除帳號（含心理師）：沒有任何關聯資料才真的刪除；
+// 已有排程、個案、紀錄等歷史資料者改為停用，避免歷史紀錄變成無主資料。
+router.delete('/users/:id', requireStaff('users'), (req, res) => {
+  const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  if (!u) return res.status(404).json({ error: '找不到此帳號' });
+  if (u.id === req.user.id) return res.status(400).json({ error: '不能刪除自己的帳號' });
+  if (u.role === 'admin') {
+    const admins = db.prepare("SELECT COUNT(*) n FROM users WHERE role = 'admin' AND active = 1").get().n;
+    if (admins <= 1) return res.status(400).json({ error: '系統需保留至少一位啟用中的管理者' });
+  }
+  const links = [
+    ['appointments', 'counselor_id', '晤談預約'],
+    ['clients', 'counselor_id', '主責個案'],
+    ['notes', 'counselor_id', '晤談紀錄'],
+    ['groups', 'counselor_id', '團體'],
+    ['availability', 'counselor_id', '可預約時段']
+  ];
+  const found = [];
+  for (const [table, col, label] of links) {
+    let n = 0;
+    try { n = db.prepare(`SELECT COUNT(*) n FROM ${table} WHERE ${col} = ?`).get(u.id).n; } catch { n = 0; }
+    if (n) found.push(`${label} ${n} 筆`);
+  }
+  if (found.length) {
+    db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(u.id);
+    audit('staff', req.user.id, req.user.name, '停用帳號（有歷史資料，不可刪除）', u.username, { found });
+    return res.json({ ok: true, deactivated: true, links: found });
+  }
+  db.prepare('DELETE FROM plan_counselors WHERE counselor_id = ?').run(u.id);
+  db.prepare('DELETE FROM users WHERE id = ?').run(u.id);
+  audit('staff', req.user.id, req.user.name, '刪除帳號', u.username);
+  res.json({ ok: true, deactivated: false });
+});
+
 // 重設密碼並回傳一次明碼，供管理者當場交給同仁。
 // 密碼在資料庫只存雜湊，任何人（含管理者）都查不回原本的密碼，只能重設。
 router.post('/users/:id/reset-password', requireStaff('users'), (req, res) => {

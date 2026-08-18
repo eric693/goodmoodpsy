@@ -93,9 +93,17 @@ App.page('clients', {
         <td>${stateTag('risk_level', c.risk_level)}</td>
         <td>${c.last_session || '-'}</td>
         <td>${c.next_session || '-'}</td>
-        <td>${UI.esc(c.phone || '')}</td></tr>`);
+        <td>${UI.esc(c.phone || '')}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="btn tiny secondary" data-ed="${c.id}">編輯</button>
+          <a class="btn tiny secondary" href="#client/${c.id}">詳情</a></td></tr>`);
       el.querySelector('#list').innerHTML = UI.table(
-        ['編號', '姓名', '年齡／性別', '主責心理師', '狀態', '風險', '最近晤談', '下次預約', '聯絡電話'], rows, '沒有符合條件的個案');
+        ['編號', '姓名', '年齡／性別', '主責心理師', '狀態', '風險', '最近晤談', '下次預約', '聯絡電話', ''],
+        rows, '沒有符合條件的個案');
+      // 基本資料就地編輯，不必先點進個案詳情頁
+      el.querySelectorAll('[data-ed]').forEach(b => {
+        b.onclick = async () => clientDialog(await GET(`/clients/${b.dataset.ed}`), draw);
+      });
     };
     el.innerHTML = `<div class="toolbar">
         <input id="q" placeholder="搜尋姓名／編號／電話">
