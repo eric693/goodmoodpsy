@@ -44,7 +44,7 @@ function followUpDialog(clientId, row, channels, onDone) {
     title: row ? '追蹤紀錄' : '新增追蹤',
     body: `<div class="form-grid">
         ${UI.input('due_date', '預定追蹤日', { type: 'date', value: f.due_date })}
-        ${UI.inputList('kind', '追蹤類型', ['結案追蹤', '轉介追蹤', '高風險關懷', '其他'], { value: f.kind })}
+        ${UI.inputList('kind', '追蹤類型', App.meta.follow_up_kinds || ['結案追蹤', '轉介追蹤', '高風險關懷', '其他'], { value: f.kind })}
         ${row ? UI.select('status', '狀態', [['pending', '待追蹤'], ['done', '已完成'], ['skipped', '不需追蹤']], { value: f.status }) : ''}
         ${row ? UI.inputList('channel', '追蹤方式', channels || [], { value: f.channel || '' }) : ''}
         ${row ? UI.textarea('result', '追蹤結果（標記完成時必填）', { value: f.result || '', rows: 3, placeholder: '個案現況、是否需要再約、有無風險徵兆' }) : ''}

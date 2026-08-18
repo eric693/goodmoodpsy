@@ -68,6 +68,18 @@ router.post('/risk-events', requireStaff('risk'), (req, res) => {
   res.json({ id: info.lastInsertRowid, report_due_at: due });
 });
 
+// 誤建的事件可刪除；已完成法定通報者保留，通報軌跡不能消失
+router.delete('/risk-events/:id', requireStaff('risk'), (req, res) => {
+  const r = db.prepare('SELECT * FROM risk_events WHERE id = ?').get(req.params.id);
+  if (!r) return res.status(404).json({ error: '找不到此事件' });
+  if (r.reported || r.report_at || r.report_no) {
+    return res.status(400).json({ error: '已完成通報的事件不可刪除，請改為結案並註明' });
+  }
+  db.prepare('DELETE FROM risk_events WHERE id = ?').run(r.id);
+  audit('staff', req.user.id, req.user.name, '刪除危機事件', String(r.client_id), { id: r.id });
+  res.json({ ok: true });
+});
+
 router.put('/risk-events/:id', requireStaff('risk'), (req, res) => {
   const r = db.prepare('SELECT * FROM risk_events WHERE id = ?').get(req.params.id);
   if (!r) return res.status(404).json({ error: '找不到此事件' });

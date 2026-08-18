@@ -317,4 +317,17 @@ router.post('/intakes/:id/close', requireStaff('intake'), (req, res) => {
   res.json({ ok: true });
 });
 
+// 誤登記、重複或測試資料可以直接刪除；已建檔成個案者保留，
+// 否則個案的來源與等候紀錄會斷掉，改用「結束」即可。
+router.delete('/intakes/:id', requireStaff('intake'), (req, res) => {
+  const i = db.prepare('SELECT * FROM intakes WHERE id = ?').get(req.params.id);
+  if (!i) return res.status(404).json({ error: '找不到此登記' });
+  if (i.status === 'converted' || i.client_id) {
+    return res.status(400).json({ error: '已建檔的來電登記不可刪除，請改用「結束」' });
+  }
+  db.prepare('DELETE FROM intakes WHERE id = ?').run(i.id);
+  audit('staff', req.user.id, req.user.name, '刪除來電登記', i.name, { status: i.status });
+  res.json({ ok: true });
+});
+
 module.exports = router;

@@ -173,6 +173,20 @@ router.get('/consent-templates', requireStaff(), (req, res) => {
   res.json(db.prepare('SELECT * FROM consent_templates ORDER BY sort, id').all());
 });
 
+// 用不到的同意書範本：沒人簽過就刪掉，簽過的保留（簽署紀錄要對得回範本）
+router.delete('/consent-templates/:id', requireStaff('settings'), (req, res) => {
+  const t = db.prepare('SELECT * FROM consent_templates WHERE id = ?').get(req.params.id);
+  if (!t) return res.status(404).json({ error: '找不到此範本' });
+  // 簽署紀錄以 key 對應範本，簽過的不能刪，否則舊簽署會找不到出處
+  const signed = db.prepare('SELECT COUNT(*) n FROM consents WHERE key = ?').get(t.key).n;
+  if (signed) {
+    return res.status(400).json({ error: `已有 ${signed} 筆簽署紀錄，此範本不可刪除；如不再使用請改為非必要並改寫內容` });
+  }
+  db.prepare('DELETE FROM consent_templates WHERE id = ?').run(t.id);
+  audit('staff', req.user.id, req.user.name, '刪除同意書範本', t.title);
+  res.json({ ok: true, deactivated: false });
+});
+
 router.put('/consent-templates/:id', requireStaff('settings'), (req, res) => {
   const t = db.prepare('SELECT * FROM consent_templates WHERE id = ?').get(req.params.id);
   if (!t) return res.status(404).json({ error: '找不到此範本' });

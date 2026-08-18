@@ -61,12 +61,21 @@ App.page('intake', {
             <button class="btn tiny secondary" data-e="${r.id}">編輯</button>
             ${r.status !== 'converted' ? `<button class="btn tiny" data-a="${r.id}">派案</button>
               <button class="btn tiny warn" data-cv="${r.id}">建檔</button>
-              <button class="btn tiny danger" data-cl="${r.id}">結束</button>` : `<a class="btn tiny secondary" href="#client/${r.client_id}">個案</a>`}
+              <button class="btn tiny danger" data-cl="${r.id}">結束</button>
+              <button class="btn tiny danger" data-dl="${r.id}">刪除</button>` : `<a class="btn tiny secondary" href="#client/${r.client_id}">個案</a>`}
           </td></tr>`),
         '沒有待處理的來電登記');
 
       el.querySelectorAll('[data-e]').forEach(b => {
         b.onclick = () => intakeDialog(rows.find(r => r.id === Number(b.dataset.e)), draw);
+      });
+      // 誤登記或測試資料可直接刪除；已建檔者不會出現這顆按鈕
+      el.querySelectorAll('[data-dl]').forEach(b => {
+        b.onclick = async () => {
+          const r = rows.find(x => x.id === Number(b.dataset.dl));
+          if (!await UI.confirm(`刪除「${r.name}」的來電登記？此動作無法復原。`)) return;
+          try { await DEL(`/intakes/${r.id}`); UI.toast('已刪除'); draw(); } catch (e) { UI.err(e); }
+        };
       });
       el.querySelectorAll('[data-a]').forEach(b => {
         b.onclick = () => UI.modal({

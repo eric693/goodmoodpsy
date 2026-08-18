@@ -230,6 +230,22 @@ router.post('/packages', requireStaff('billing'), (req, res) => {
   res.json({ id });
 });
 
+// 買錯或測試用的預付方案：還沒扣過次數且沒有收費單勾稽時可刪，
+// 已使用過的保留（收費與扣次紀錄要對得起來）
+router.delete('/packages/:id', requireStaff('billing'), (req, res) => {
+  const p = db.prepare('SELECT * FROM packages WHERE id = ?').get(req.params.id);
+  if (!p) return res.status(404).json({ error: '找不到此方案' });
+  const used = db.prepare('SELECT COUNT(*) n FROM appointments WHERE package_id = ?').get(p.id).n;
+  if (used) return res.status(400).json({ error: `此方案已被 ${used} 筆晤談扣抵，不可刪除` });
+  try {
+    db.prepare('DELETE FROM packages WHERE id = ?').run(p.id);
+  } catch (e) {
+    return res.status(400).json({ error: '此方案已有收費紀錄勾稽，不可刪除' });
+  }
+  audit('staff', req.user.id, req.user.name, '刪除預付方案', String(p.client_id), { id: p.id });
+  res.json({ ok: true });
+});
+
 router.put('/packages/:id', requireStaff('billing'), (req, res) => {
   const p = db.prepare('SELECT * FROM packages WHERE id = ?').get(req.params.id);
   if (!p) return res.status(404).json({ error: '找不到此方案' });

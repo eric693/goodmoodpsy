@@ -292,6 +292,11 @@ const UI_TEXT_KEYS = Object.keys(UI_TEXT_DEFAULTS);
     // 結案後追蹤：結案時自動建立的追蹤點（天數，逗號分隔；留空表示不自動建立）
     follow_up_days: '30,90',
     follow_up_channels: '電話,簡訊,LINE,面談,信件',
+    // 以下四項原本寫死在前端，改成可自行增修的選項清單
+    follow_up_kinds: '結案追蹤,轉介追蹤,高風險關懷,其他',
+    refund_reasons: '方案未使用完畢終止,重複收費,所方因素取消晤談,個案結案,其他',
+    license_types: '諮商心理師,臨床心理師,實習心理師,無',
+    attachment_kinds: '轉介單,診斷證明,同意書掃描,心理衡鑑報告,身分證明,其他',
     referral_targets: '精神科／身心科門診,醫院急診,社福中心／家防中心,學校輔導室,其他諮商所／心理治療所,自殺防治中心,其他',
     // 安全計畫：預設檢視週期，以及印在計畫上的危機資源（可依縣市調整）
     safety_plan_review_days: '90',

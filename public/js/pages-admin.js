@@ -164,10 +164,18 @@ App.page('risk', {
           <td>${UI.tag(TW.event_status[r.status], r.status === 'open' ? 'warn' : '')}</td>
           <td style="white-space:nowrap"><button class="btn tiny secondary" data-e="${r.id}">編輯</button>
             <button class="btn tiny secondary" data-form="${r.id}">通報表</button>
-            ${r.status === 'open' ? `<button class="btn tiny" data-close="${r.id}">結案</button>` : ''}</td></tr>`),
+            ${r.status === 'open' ? `<button class="btn tiny" data-close="${r.id}">結案</button>` : ''}
+            ${r.reported ? '' : `<button class="btn tiny danger" data-rdel="${r.id}">刪除</button>`}</td></tr>`),
         '沒有符合條件的事件');
       el.querySelectorAll('[data-e]').forEach(b => {
         b.onclick = () => riskDialog(rows.find(r => r.id === Number(b.dataset.e)), draw);
+      });
+      // 誤建的事件可刪；已完成法定通報者不出現此按鈕，通報軌跡必須保留
+      el.querySelectorAll('[data-rdel]').forEach(b => {
+        b.onclick = async () => {
+          if (!await UI.confirm('刪除此危機事件？已完成通報的事件無法刪除。')) return;
+          try { await DEL(`/risk-events/${b.dataset.rdel}`); UI.toast('已刪除'); draw(); } catch (e) { UI.err(e); }
+        };
       });
       // 通報表套印：把個案與事件欄位帶進表格，實際通報仍走主管機關管道
       el.querySelectorAll('[data-form]').forEach(b => {
@@ -465,7 +473,7 @@ App.page('billing', {
                 ${UI.input('date', '退費日期', { type: 'date', value: UI.today() })}
                 ${UI.input('amount', '退費金額', { type: 'number', value: info.suggest, min: 1, max: info.refundable, required: true })}
                 ${UI.select('method', '退費方式', App.listOptions('pay_methods', ['現金']), { value: info.invoice.method || '' })}
-                ${UI.inputList('reason', '退費原因', ['方案未使用完畢終止', '重複收費', '所方因素取消晤談', '個案結案', '其他'], { full: true })}
+                ${UI.inputList('reason', '退費原因', App.meta.refund_reasons || ['其他'], { full: true })}
                 ${info.package ? UI.checkbox('close_package', '同時把此方案標記為已退費（停止扣次）', true) : ''}
                 ${UI.textarea('note', '備註', { rows: 2 })}
               </div>
@@ -644,12 +652,37 @@ App.page('packages', {
   async render(el) {
     const rows = await GET('/packages');
     el.innerHTML = `<div class="toolbar"><div class="spacer"></div><button class="btn" id="add">新增方案</button></div>
-      <div class="card">${UI.table(['個案', '方案', '總次數', '已用', '剩餘', '金額', '起訖', '狀態'],
+      <div class="card">${UI.table(['個案', '方案', '總次數', '已用', '剩餘', '金額', '起訖', '狀態', ''],
         rows.map(p => `<tr><td><a href="#client/${p.client_id}">${UI.esc(p.client_name)}（${p.client_code}）</a></td>
           <td>${UI.esc(p.name)}</td><td>${p.sessions_total}</td><td>${p.sessions_used}</td>
           <td><strong>${p.remaining}</strong></td><td>${UI.fmtMoney(p.amount)}</td>
           <td>${p.start_date} ~ ${p.expire_date || '不限'}</td>
-          <td>${UI.tag(TW.pkg_status[p.status] || p.status, p.status === 'active' ? 'ok' : '')}</td></tr>`), '尚無方案')}</div>`;
+          <td>${UI.tag(TW.pkg_status[p.status] || p.status, p.status === 'active' ? 'ok' : '')}</td>
+          <td style="white-space:nowrap"><button class="btn tiny secondary" data-pe="${p.id}">編輯</button>
+            <button class="btn tiny danger" data-pd="${p.id}">刪除</button></td></tr>`), '尚無方案')}</div>`;
+    // 方案名稱、次數與效期可改；已被扣抵過的方案不可刪除
+    el.querySelectorAll('[data-pe]').forEach(b => {
+      const p = rows.find(x => x.id === Number(b.dataset.pe));
+      b.onclick = () => UI.modal({
+        title: '編輯方案：' + p.name,
+        body: `<div class="form-grid">
+          ${UI.input('name', '方案名稱', { value: p.name })}
+          ${UI.input('sessions_total', '總次數', { type: 'number', value: p.sessions_total })}
+          ${UI.input('expire_date', '到期日', { type: 'date', value: p.expire_date || '' })}
+          ${UI.select('status', '狀態', [['active', '使用中'], ['done', '已用完'], ['expired', '已過期']], { value: p.status })}
+          ${UI.textarea('note', '備註', { value: p.note || '' })}</div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+            已用次數由系統依晤談自動累計，不在此修改；金額請於收費單調整。</div>`,
+        onSubmit: async e => { await PUT(`/packages/${p.id}`, UI.formData(e)); UI.toast('已儲存'); App.go('packages'); }
+      });
+    });
+    el.querySelectorAll('[data-pd]').forEach(b => {
+      const p = rows.find(x => x.id === Number(b.dataset.pd));
+      b.onclick = async () => {
+        if (!await UI.confirm(`刪除「${p.name}」？已被晤談扣抵過的方案無法刪除。`)) return;
+        try { await DEL(`/packages/${p.id}`); UI.toast('已刪除'); App.go('packages'); } catch (e) { UI.err(e); }
+      };
+    });
     el.querySelector('#add').onclick = async () => {
       const clients = await App.clientOptions(true);
       UI.modal({
@@ -715,16 +748,27 @@ App.page('announcements', {
         <td>${a.publish_date}</td><td>${a.pinned ? '📌 ' : ''}${UI.esc(a.title)}</td>
         <td>${({ all: '全部', staff: '所內', client: '個案' })[a.audience]}</td>
         <td>${UI.esc(a.author || '')}</td>
-        <td><button class="btn tiny danger" data-d="${a.id}">刪除</button></td></tr>`), '尚無公告')}</div>`;
-    el.querySelector('#add').onclick = () => UI.modal({
-      title: '新增公告',
+        <td style="white-space:nowrap"><button class="btn tiny secondary" data-e="${a.id}">編輯</button>
+          <button class="btn tiny danger" data-d="${a.id}">刪除</button></td></tr>`), '尚無公告')}</div>`;
+    // 新增與編輯共用同一張表單；有帶 a 就是編輯
+    const dialog = a => UI.modal({
+      title: a ? '編輯公告' : '新增公告',
       body: `<div class="form-grid">
-        ${UI.input('title', '標題', { full: true })}
-        ${UI.select('audience', '對象', [['all', '全部'], ['staff', '所內人員'], ['client', '個案']])}
-        ${UI.input('publish_date', '發布日', { type: 'date', value: UI.today() })}
-        ${UI.checkbox('pinned', '置頂', false)}
-        ${UI.textarea('content', '內容')}</div>`,
-      onSubmit: async e => { await POST('/announcements', UI.formData(e)); App.go('announcements'); }
+        ${UI.input('title', '標題', { value: a ? a.title : '', full: true })}
+        ${UI.select('audience', '對象', [['all', '全部'], ['staff', '所內人員'], ['client', '個案']], { value: a ? a.audience : 'all' })}
+        ${UI.input('publish_date', '發布日', { type: 'date', value: a ? a.publish_date : UI.today() })}
+        ${UI.checkbox('pinned', '置頂', a ? !!a.pinned : false)}
+        ${UI.textarea('content', '內容', { value: a ? a.content : '' })}</div>`,
+      onSubmit: async e => {
+        const data = UI.formData(e);
+        if (a) await PUT(`/announcements/${a.id}`, data); else await POST('/announcements', data);
+        UI.toast('已儲存');
+        App.go('announcements');
+      }
+    });
+    el.querySelector('#add').onclick = () => dialog(null);
+    el.querySelectorAll('[data-e]').forEach(b => {
+      b.onclick = () => dialog(rows.find(a => a.id === Number(b.dataset.e)));
     });
     el.querySelectorAll('[data-d]').forEach(b => {
       b.onclick = async () => { if (await UI.confirm('刪除此公告？')) { await DEL(`/announcements/${b.dataset.d}`); App.go('announcements'); } };
@@ -849,7 +893,7 @@ App.page('users', {
         ${UI.input('name', '姓名', { value: u ? u.name : '' })}
         ${UI.select('role', '角色', App.enumOptions('role'), { value: u ? u.role : 'counselor' })}
         ${UI.input('title', '職稱', { value: u ? u.title : '' })}
-        ${UI.inputList('license_type', '證照類別', ['諮商心理師', '臨床心理師', '實習心理師', '無'], { value: u ? u.license_type : '' })}
+        ${UI.inputList('license_type', '證照類別', App.meta.license_types || ['諮商心理師', '臨床心理師'], { value: u ? u.license_type : '' })}
         ${UI.input('license_no', '證書字號', { value: u ? u.license_no : '' })}
         ${UI.input('license_expiry', '執業執照更新日', { type: 'date', value: u ? u.license_expiry : '' })}
         ${UI.input('specialty', '專長', { value: u ? u.specialty : '', full: true })}
@@ -1107,8 +1151,16 @@ App.page('settings', {
     cb.innerHTML = UI.table(['同意書', '版本', '必要', '可不同意', '限未成年', ''], templates.map(t => `<tr>
       <td>${UI.esc(t.title)}</td><td>v${t.version}</td><td>${t.required ? '是' : '否'}</td>
       <td>${t.allow_decline ? '是' : '否'}</td><td>${t.minor_only ? '是' : '否'}</td>
-      <td><button class="btn tiny secondary" data-t="${t.id}">編輯</button></td></tr>`)) +
+      <td style="white-space:nowrap"><button class="btn tiny secondary" data-t="${t.id}">編輯</button>
+        <button class="btn tiny danger" data-td="${t.id}">刪除</button></td></tr>`)) +
       '<div style="font-size:12.5px;color:var(--muted);margin-top:8px">修改內容會使版本遞增，已簽署者需重新簽署；舊版簽署紀錄保留全文快照。</div>';
+    cb.querySelectorAll('[data-td]').forEach(b => {
+      const t = templates.find(x => x.id === Number(b.dataset.td));
+      b.onclick = async () => {
+        if (!await UI.confirm(`刪除同意書範本「${t.title}」？已有人簽署過的範本無法刪除。`)) return;
+        try { await DEL(`/consent-templates/${t.id}`); UI.toast('已刪除'); App.go('settings'); } catch (e) { UI.err(e); }
+      };
+    });
     cb.querySelectorAll('[data-t]').forEach(b => {
       const t = templates.find(x => x.id === Number(b.dataset.t));
       b.onclick = () => UI.modal({

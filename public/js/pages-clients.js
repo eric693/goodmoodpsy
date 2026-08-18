@@ -519,7 +519,7 @@ App.page('client', {
           body: `<div class="form-grid">
               <div class="form-row full"><label>檔案 *</label>
                 <input name="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.heic,.doc,.docx,.xls,.xlsx,.txt"></div>
-              ${UI.select('kind', '類別', ['轉介單', '診斷證明', '同意書掃描', '心理衡鑑報告', '身分證明', '其他'].map(k => [k, k]))}
+              ${UI.select('kind', '類別', (App.meta.attachment_kinds || ['轉介單', '診斷證明', '其他']).map(k => [k, k]))}
               ${UI.input('note', '說明', { full: true })}
               ${UI.checkbox('visible_to_client', '開放個案端下載此檔案', false)}
             </div>`,
@@ -548,7 +548,7 @@ App.page('client', {
           b.onclick = () => UI.modal({
             title: '附件資訊',
             body: `<div class="form-grid">
-                ${UI.select('kind', '類別', ['轉介單', '診斷證明', '同意書掃描', '心理衡鑑報告', '身分證明', '其他'].map(k => [k, k]), { value: f.kind })}
+                ${UI.select('kind', '類別', (App.meta.attachment_kinds || ['轉介單', '診斷證明', '其他']).map(k => [k, k]), { value: f.kind })}
                 ${UI.input('note', '說明', { value: f.note, full: true })}
                 ${UI.checkbox('visible_to_client', '開放個案端下載此檔案', f.visible_to_client)}</div>`,
             onSubmit: async el2 => {

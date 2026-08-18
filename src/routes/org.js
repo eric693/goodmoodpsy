@@ -302,7 +302,8 @@ router.get('/meta', requireStaff(), (req, res) => {
   for (const k of ['counseling_types', 'approach_options', 'source_options', 'close_reasons', 'risk_types',
     'report_channels', 'pay_methods', 'payer_types', 'partner_types', 'time_off_reasons',
     'ce_categories', 'group_topics', 'subsidy_programs', 'mandatory_report_types',
-    'follow_up_channels', 'referral_targets']) out[k] = listSetting(k);
+    'follow_up_channels', 'referral_targets',
+    'follow_up_kinds', 'refund_reasons', 'license_types', 'attachment_kinds']) out[k] = listSetting(k);
   res.json(out);
 });
 
@@ -488,6 +489,19 @@ router.post('/announcements', requireStaff('announcements'), (req, res) => {
   const info = db.prepare('INSERT INTO announcements (title, content, audience, pinned, publish_date, created_by) VALUES (?,?,?,?,?,?)')
     .run(title, content, audience, pinned ? 1 : 0, publish_date, req.user.id);
   res.json({ id: info.lastInsertRowid });
+});
+// 公告發出後常要改錯字或補內容，不必刪掉重發
+router.put('/announcements/:id', requireStaff('announcements'), (req, res) => {
+  const a = db.prepare('SELECT * FROM announcements WHERE id = ?').get(req.params.id);
+  if (!a) return res.status(404).json({ error: '找不到此公告' });
+  const b = { ...a, ...req.body };
+  if (!String(b.title || '').trim()) return res.status(400).json({ error: '請填寫標題' });
+  db.prepare(`UPDATE announcements SET title = ?, content = ?, audience = ?, pinned = ?, publish_date = ?
+    WHERE id = ?`).run(String(b.title), String(b.content || ''),
+    ['all', 'staff', 'client'].includes(b.audience) ? b.audience : a.audience,
+    b.pinned ? 1 : 0, b.publish_date || a.publish_date, a.id);
+  audit('staff', req.user.id, req.user.name, '修改公告', String(b.title));
+  res.json({ ok: true });
 });
 router.delete('/announcements/:id', requireStaff('announcements'), (req, res) => {
   db.prepare('DELETE FROM announcements WHERE id = ?').run(req.params.id);
