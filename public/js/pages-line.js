@@ -106,9 +106,37 @@ App.page('bookings', {
   sub: '個案從預約表單或 LINE 送出的申請，確認後才寫進排程',
   module: 'schedule',
   async render(el) {
-    const rows = await GET('/bookings');
+    const st = App._bookFilter = Object.assign({ q: '', status: '', plan_id: '', counselor_id: '', from: '', to: '' }, App._bookFilter);
+    const qs = new URLSearchParams(Object.entries(st).filter(([, v]) => v)).toString();
+    const rows = await GET('/bookings' + (qs ? '?' + qs : ''));
     const pending = rows.filter(r => r.status === 'new');
-    el.innerHTML = `<div class="card"><h3>待處理
+    const filtering = Object.values(st).some(v => v);
+    el.innerHTML = `<div class="toolbar">
+        <input id="bq" placeholder="搜尋姓名／電話／Email／主訴" value="${UI.esc(st.q)}" style="min-width:220px">
+        <select id="bst">
+          <option value="">全部狀態</option>
+          ${Object.entries(BOOKING_STATUS).map(([k, v]) =>
+    `<option value="${k}"${st.status === k ? ' selected' : ''}>${v}</option>`).join('')}
+        </select>
+        <select id="bpl">
+          <option value="">全部方案</option>
+          <option value="none"${st.plan_id === 'none' ? ' selected' : ''}>未指定方案</option>
+          ${(App.meta.plans || []).map(p =>
+    `<option value="${p.id}"${String(st.plan_id) === String(p.id) ? ' selected' : ''}>${UI.esc(p.name)}</option>`).join('')}
+        </select>
+        <select id="bcs">
+          <option value="">全部心理師</option>
+          <option value="none"${st.counselor_id === 'none' ? ' selected' : ''}>由諮商所安排</option>
+          ${App.counselorOptions().map(([id, name]) =>
+    `<option value="${id}"${String(st.counselor_id) === String(id) ? ' selected' : ''}>${UI.esc(name)}</option>`).join('')}
+        </select>
+        <input type="date" id="bfrom" value="${UI.esc(st.from)}" title="送出日期起">
+        <input type="date" id="bto" value="${UI.esc(st.to)}" title="送出日期迄">
+        ${filtering ? '<button class="btn tiny secondary" id="bclr">清除篩選</button>' : ''}
+        <div class="spacer"></div>
+        <span style="font-size:13px;color:var(--muted)">符合 ${rows.length} 筆</span>
+      </div>
+      <div class="card"><h3>待處理
         <span style="font-size:13px;font-weight:400;color:var(--muted)">${pending.length} 筆</span></h3>
       ${UI.table(['送出時間', '姓名／電話', '身分', '方案／主題', '希望時段', '心理師', '額度', ''],
       pending.map(r => `<tr>
@@ -135,6 +163,21 @@ App.page('bookings', {
         <td style="white-space:nowrap">${r.status === 'confirmed' ? ''
     : `<button class="btn tiny danger" data-bd="${r.id}">刪除</button>`}</td>
         </tr>`), '尚無紀錄')}</div>`;
+    // 篩選一律送回後端處理，資料上千筆時前端才不必整批載入
+    const apply = () => {
+      App._bookFilter = {
+        q: el.querySelector('#bq').value.trim(),
+        status: el.querySelector('#bst').value,
+        plan_id: el.querySelector('#bpl').value,
+        counselor_id: el.querySelector('#bcs').value,
+        from: el.querySelector('#bfrom').value,
+        to: el.querySelector('#bto').value
+      };
+      App.go('bookings');
+    };
+    el.querySelector('#bq').onkeydown = e => { if (e.key === 'Enter') apply(); };
+    ['#bst', '#bpl', '#bcs', '#bfrom', '#bto'].forEach(sel => { el.querySelector(sel).onchange = apply; });
+    if (el.querySelector('#bclr')) el.querySelector('#bclr').onclick = () => { App._bookFilter = null; App.go('bookings'); };
     el.querySelectorAll('[data-b]').forEach(b => {
       b.onclick = () => bookingDialog(b.dataset.b, () => App.go('bookings'));
     });

@@ -238,10 +238,29 @@ const BOOKING_SQL = `SELECT b.*, p.name AS plan_name, p.quota_per_year, t.name A
   LEFT JOIN users u ON u.id = b.counselor_id
   LEFT JOIN clients c ON c.id = b.client_id`;
 
+// 申請可能累積上千筆（舊表單一次匯入），因此支援關鍵字、方案、心理師、
+// 狀態與送出日期區間的篩選，全部在資料庫端過濾，不把整批資料丟給前端。
 router.get('/bookings', requireStaff('schedule'), (req, res) => {
-  const status = req.query.status || '';
-  const rows = db.prepare(`${BOOKING_SQL} ${status ? 'WHERE b.status = ?' : ''}
-    ORDER BY b.status = 'new' DESC, b.created_at DESC LIMIT 300`).all(...(status ? [status] : []));
+  const { status = '', q = '', plan_id = '', counselor_id = '', from = '', to = '', limit = '' } = req.query;
+  const where = [], args = [];
+  if (status) { where.push('b.status = ?'); args.push(status); }
+  if (q) {
+    where.push('(b.name LIKE ? OR b.phone LIKE ? OR b.email LIKE ? OR b.main_issue LIKE ? OR b.alt_note LIKE ?)');
+    const like = `%${q}%`;
+    args.push(like, like, like, like, like);
+  }
+  if (plan_id === 'none') where.push('b.plan_id IS NULL');
+  else if (plan_id) { where.push('b.plan_id = ?'); args.push(Number(plan_id)); }
+  if (counselor_id === 'none') where.push('b.counselor_id IS NULL');
+  else if (counselor_id) { where.push('b.counselor_id = ?'); args.push(Number(counselor_id)); }
+  if (from) { where.push('date(b.created_at) >= ?'); args.push(from); }
+  if (to) { where.push('date(b.created_at) <= ?'); args.push(to); }
+  const cap = Math.min(2000, Math.max(50, Number(limit) || 300));
+  const rows = db.prepare(`${BOOKING_SQL} ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    ORDER BY b.status = 'new' DESC, b.created_at DESC LIMIT ${cap}`).all(...args);
+  const total = db.prepare(`SELECT COUNT(*) n FROM booking_requests b
+    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}`).get(...args).n;
+  res.set('X-Total-Count', String(total));
   res.json(rows.map(r => ({
     ...r,
     age: ageYears(r.birth_date, r.date || today()),

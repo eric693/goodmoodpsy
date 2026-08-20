@@ -947,6 +947,18 @@ function startServer() {
     const still = (await admin.ok('GET', '/api/clients?status=')).find(c => c.id === tmp.id);
     assert(!still, '個案應已不存在');
   });
+  await test('線上預約申請可依關鍵字、狀態與日期篩選', async () => {
+    const all = await admin.ok('GET', '/api/bookings');
+    assert(Array.isArray(all), '回傳清單');
+    const one = all[0];
+    if (!one) return;
+    const byName = await admin.ok('GET', `/api/bookings?q=${encodeURIComponent(one.name.slice(0, 2))}`);
+    assert(byName.some(r => r.id === one.id), '關鍵字應找得到該筆');
+    const byStatus = await admin.ok('GET', '/api/bookings?status=new');
+    assert(byStatus.every(r => r.status === 'new'), '狀態篩選只回該狀態');
+    const future = await admin.ok('GET', `/api/bookings?from=${addDays(ymd(new Date()), 3)}`);
+    equal(future.length, 0, '未來日期區間應無資料');
+  });
   await test('方案設定：每個欄位都能改，抽成 60 與 0.6 都收得下', async () => {
     const plan = (await admin.ok('GET', '/api/service-plans')).find(p => p.active);
     const before = { name: plan.name, fee: plan.fee, share_percent: plan.share_percent, default_mode: plan.default_mode };
