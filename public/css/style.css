@@ -342,3 +342,11 @@ table.list tr:hover td { background: #f8fbfb; }
 /* ---- 兩欄卡片（總覽圖表）---- */
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 0 16px; }
 .grid-2 > .card { margin-bottom: 16px; }
+
+/* 個案／心理師標籤：畫面上常兩個名字並列，用顏色與字樣分辨，避免看錯人 */
+.who {
+  display: inline-block; padding: 0 5px; border-radius: 4px;
+  font-size: 10.5px; font-weight: 700; line-height: 16px; vertical-align: middle;
+}
+.who-client { background: var(--primary-light); color: var(--primary-dark); }
+.who-staff { background: #f1e3d3; color: #8a5a25; }

@@ -370,6 +370,54 @@ router.put('/rooms/:id', requireStaff('settings'), (req, res) => {
   res.json({ ok: true });
 });
 
+// 諮商室使用表：空間 × 星期 × 時段的週檢視，比照所內原本用的 Google 試算表。
+// 每格標明「個案」與「使用心理師」，櫃檯一眼看出哪間空著、誰在用。
+router.get('/rooms/week', requireStaff('schedule'), (req, res) => {
+  const start = req.query.start || today();
+  const end = addDays(start, 6);
+  const rooms = db.prepare('SELECT id, name, capacity, note FROM rooms WHERE active = 1 ORDER BY id').all();
+  const appts = db.prepare(`SELECT a.id, a.room_id, a.date, a.start_time, a.end_time, a.status, a.mode, a.type,
+      c.name AS client_name, c.code AS client_code, u.name AS counselor_name
+    FROM appointments a JOIN clients c ON c.id = a.client_id
+    LEFT JOIN users u ON u.id = a.counselor_id
+    WHERE a.date BETWEEN ? AND ? AND a.status IN ('booked','arrived','done')
+    ORDER BY a.date, a.start_time`).all(start, end);
+  const sessions = db.prepare(`SELECT s.id, s.room_id, s.date, s.start_time, s.end_time,
+      g.name AS group_name, u.name AS counselor_name,
+      (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id AND m.status = 'active') AS member_count
+    FROM group_sessions s JOIN groups g ON g.id = s.group_id
+    LEFT JOIN users u ON u.id = g.counselor_id
+    WHERE s.date BETWEEN ? AND ? AND s.status != 'cancelled'
+    ORDER BY s.date, s.start_time`).all(start, end);
+  res.json({
+    start, end,
+    // 表格格線沿用排班表的設定，各所作息不同
+    grid: {
+      start: getSetting('shift_start', '09:00'),
+      end: getSetting('shift_end', '21:00'),
+      step: Number(getSetting('shift_step', '30'))
+    },
+    rooms,
+    items: [
+      ...appts.map(a => ({
+        kind: 'appointment', room_id: a.room_id, date: a.date,
+        start_time: a.start_time, end_time: a.end_time, status: a.status, mode: a.mode,
+        client: `${a.client_code} ${a.client_name}`, counselor: a.counselor_name || ''
+      })),
+      ...sessions.map(s => ({
+        kind: 'group', room_id: s.room_id, date: s.date,
+        start_time: s.start_time, end_time: s.end_time, status: 'booked', mode: 'onsite',
+        client: `${s.group_name}（團體 ${s.member_count} 人）`, counselor: s.counselor_name || ''
+      }))
+    ],
+    // 到所卻沒指定空間的晤談：這張表上看不到，另外列出來提醒補指定
+    unassigned: appts.filter(a => !a.room_id && a.mode !== 'online').map(a => ({
+      date: a.date, start_time: a.start_time,
+      client: `${a.client_code} ${a.client_name}`, counselor: a.counselor_name || ''
+    }))
+  });
+});
+
 // 刪除諮商室：已被排過的空間不真的刪掉（歷史紀錄要留），改為停用
 router.delete('/rooms/:id', requireStaff('settings'), (req, res) => {
   const r = db.prepare('SELECT * FROM rooms WHERE id = ?').get(req.params.id);

@@ -222,10 +222,13 @@ App.page('schedule', {
         <strong>${g.start_time}</strong> ${UI.esc(g.group_name)}<br>
         <span style="font-size:11.5px">團體 ${g.member_count} 人／${UI.esc(g.counselor_name || '')}
         ${g.room_name ? '／' + UI.esc(g.room_name) : ''}</span></div>`).join('');
+      // 個案與心理師分行並各自加標籤，避免兩個名字擠在一起看不出誰是誰
       const apptHtml = list.map(a => `<div class="appt-chip ${a.status}" data-appt="${a.id}">
-        <strong>${a.start_time}</strong> ${UI.esc(a.client_name)}<br>
-        <span style="font-size:11.5px">${UI.esc(a.counselor_name)}${a.mode === 'online' ? '／視訊' : a.room_name ? '／' + UI.esc(a.room_name) : ''}
-        ${a.risk_level === 'high' ? '⚠' : ''}${a.cancel_requested_at ? '　🕓申請取消' : ''}</span></div>`).join('');
+        <strong>${a.start_time}</strong>
+        <span class="who who-client">個案</span> ${UI.esc(a.client_name)}
+        ${a.risk_level === 'high' ? '⚠' : ''}${a.cancel_requested_at ? '　🕓申請取消' : ''}<br>
+        <span style="font-size:11.5px"><span class="who who-staff">心理師</span> ${UI.esc(a.counselor_name)}
+        ${a.mode === 'online' ? '／視訊' : a.room_name ? '／' + UI.esc(a.room_name) : ''}</span></div>`).join('');
       const all = offHtml + groupHtml + apptHtml;
       return all || '<div style="color:var(--muted);font-size:12.5px">—</div>';
     };
@@ -354,9 +357,10 @@ App.page('today', {
                 ${r.capacity > 1 ? `可容納 ${r.capacity} 人　` : ''}今日 ${r.bookings.length} 場</span>
               ${App.can('settings') ? `<button class="btn tiny secondary" data-room="${r.id}" style="float:right">編輯</button>` : ''}</div>
             ${r.bookings.length ? r.bookings.map(b => `<div style="font-size:13px;margin-top:6px">
-                <strong>${b.start_time}-${b.end_time}</strong>　${UI.esc(b.title)}
-                ${b.kind === 'group' ? UI.tag('團體', 'warn') : ''}
-                <div style="font-size:12px;color:var(--muted)">${UI.esc(b.counselor_name || '')}</div></div>`).join('')
+                <strong>${b.start_time}-${b.end_time}</strong>
+                ${b.kind === 'group' ? UI.tag('團體', 'warn') : '<span class="who who-client">個案</span>'} ${UI.esc(b.title)}
+                <div style="font-size:12px;color:var(--muted)">
+                  <span class="who who-staff">心理師</span> ${UI.esc(b.counselor_name || '')}</div></div>`).join('')
     : '<div style="font-size:13px;color:var(--muted);margin-top:6px">今日整天空著</div>'}
           </div>`).join('')}
         </div>
@@ -375,7 +379,7 @@ App.page('today', {
               ${a.risk_level === 'high' ? UI.tag('高風險', 'danger') : ''}</div>
               <div class="kid-meta">${a.start_time}-${a.end_time}　${UI.esc(TW.appt_type[a.type] || '')}</div></div>
           </div>
-          <div class="kid-status">${UI.esc(a.counselor_name || '')}${a.room_name ? '／' + UI.esc(a.room_name) : ''}<br>
+          <div class="kid-status"><span class="who who-staff">心理師</span> ${UI.esc(a.counselor_name || '')}${a.room_name ? '／' + UI.esc(a.room_name) : ''}<br>
             ${stateTag('appt_status', a.status)} ${a.has_note ? UI.tag('已寫紀錄', 'ok') : ''}
             ${a.cancel_requested_at ? UI.tag('個案申請取消', 'warn') : ''}</div>
           <div class="kid-actions">

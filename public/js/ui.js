@@ -140,6 +140,11 @@ const UI = {
   },
   // PDF 與圖片可直接在瀏覽器開啟預覽，其餘一律下載
   isPreviewable(mime) { return /^image\//.test(mime || '') || mime === 'application/pdf'; },
+  // 該日期所屬那一週的週一（週檢視一律以週一起算，與排班、方案人次一致）
+  mondayOf(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    return UI.addDays(dateStr, -((d.getDay() + 6) % 7));
+  },
   weekdayName(dateStr) { return ['日', '一', '二', '三', '四', '五', '六'][new Date(dateStr + 'T00:00:00').getDay()]; },
 
   // 量表分數趨勢折線圖（純 SVG，不引外部套件）。

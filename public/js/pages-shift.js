@@ -514,3 +514,71 @@ App.page('waitlist', {
     });
   }
 });
+
+// ---- 諮商室使用表（空間 × 星期 × 時段）----
+// 比照所內原本用的 Google 試算表：一格一個 30 分鐘時段，
+// 標明「個案」與「使用心理師」，兩者用顏色與標籤區分，不會看混。
+App.page('room-board', {
+  title: '諮商室使用表',
+  sub: '每間空間一週的使用狀況；每格標明個案與使用心理師',
+  module: 'schedule',
+  async render(el, arg) {
+    const start = arg || UI.mondayOf(UI.today());
+    const d = await GET(`/rooms/week?start=${start}`);
+    const days = Array.from({ length: 7 }, (_, i) => UI.addDays(d.start, i));
+    const toMin = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+    const label = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    const from = toMin(d.grid.start), to = toMin(d.grid.end), step = d.grid.step || 30;
+
+    // 每格找出佔用它的那筆晤談；跨多格的晤談每格都標，看得出整段被佔用
+    const cellFor = (roomId, date, m) => d.items.find(it => it.room_id === roomId && it.date === date
+      && toMin(it.start_time) <= m && toMin(it.end_time) > m);
+
+    const table = room => {
+      const rows = [];
+      for (let m = from; m < to; m += step) {
+        rows.push(`<tr>
+          <td style="white-space:nowrap;color:var(--muted);font-size:12.5px">${label(m)}-${label(m + step)}</td>
+          ${days.map(date => {
+    const it = cellFor(room.id, date, m);
+    if (!it) return '<td></td>';
+    const head = toMin(it.start_time) === m;   // 只在第一格寫字，後續格子只上色
+    return `<td style="background:${it.kind === 'group' ? 'var(--warn-bg)' : 'var(--primary-light)'};
+        border-left:3px solid ${it.kind === 'group' ? 'var(--warn)' : 'var(--primary)'}">
+      ${head ? `<div style="font-size:12.5px;line-height:1.6">
+        <div><span class="tag" style="font-size:11px">個案</span> <strong>${UI.esc(it.client)}</strong></div>
+        <div><span class="tag ok" style="font-size:11px">心理師</span> ${UI.esc(it.counselor)}</div>
+        <div style="color:var(--muted)">${it.start_time}-${it.end_time}${it.mode === 'online' ? '／視訊' : ''}</div>
+      </div>` : ''}</td>`;
+  }).join('')}
+        </tr>`);
+      }
+      return `<div class="card"><h3>${UI.esc(room.name)}
+          <span style="font-size:13px;font-weight:400;color:var(--muted)">
+            ${room.capacity > 1 ? `可容納 ${room.capacity} 人` : ''}${room.note ? '　' + UI.esc(room.note) : ''}</span></h3>
+        <div class="table-wrap"><table class="list"><thead><tr><th>時段</th>
+          ${days.map(dt => `<th>${dt.slice(5)}（${UI.weekdayName(dt)}）${dt === UI.today() ? ' ●' : ''}</th>`).join('')}
+        </tr></thead><tbody>${rows.join('')}</tbody></table></div></div>`;
+    };
+
+    el.innerHTML = `<div class="toolbar">
+        <button class="btn secondary small" id="prev">上一週</button>
+        <button class="btn secondary small" id="this">本週</button>
+        <button class="btn secondary small" id="next">下一週</button>
+        <strong style="margin-left:6px">${d.start} ~ ${d.end}</strong>
+        <div class="spacer"></div>
+        <span style="font-size:12.5px;color:var(--muted)">
+          <span class="tag" style="font-size:11px">個案</span> 來談者　
+          <span class="tag ok" style="font-size:11px">心理師</span> 使用心理師</span>
+      </div>
+      ${d.unassigned.length ? `<div class="notice warn">
+        尚未指定空間的到所晤談：${d.unassigned.map(u =>
+    `${u.date.slice(5)} ${u.start_time} ${UI.esc(u.client)}（${UI.esc(u.counselor)}）`).join('、')}
+        　請在預約中指定諮商室，否則不會出現在這張表上。</div>` : ''}
+      ${d.rooms.length ? d.rooms.map(table).join('') : '<div class="empty">尚未建立諮商室，請至系統設定新增</div>'}`;
+
+    el.querySelector('#prev').onclick = () => App.go('room-board/' + UI.addDays(d.start, -7));
+    el.querySelector('#next').onclick = () => App.go('room-board/' + UI.addDays(d.start, 7));
+    el.querySelector('#this').onclick = () => App.go('room-board/' + UI.mondayOf(UI.today()));
+  }
+});
