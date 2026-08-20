@@ -1,0 +1,10 @@
+# 個案資料與機密：一律不進版控。
+# 這些檔案存的是正式營運資料（姓名、電話、身分證、晤談紀錄）與簽章密鑰，
+# 推上遠端等同外洩，備份請走 scripts 的每日備份與異地鏡像，不要靠 Git。
+data/
+uploads/
+
+node_modules/
+npm-debug.log*
+*.log
+.DS_Store
