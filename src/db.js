@@ -215,11 +215,13 @@ CREATE INDEX IF NOT EXISTS idx_intakeform_status ON intake_forms(status, created
 const UI_TEXT_DEFAULTS = {
   ui_staff_login_title: '好心情心理諮商所',
   ui_staff_login_sub: '諮商所管理系統',
-  ui_demo_staff: '展示用測試帳號\n管理者：admin / mindcare123\n諮商師：lin / 123456',
+  // 登入頁的提示框：正式站一律留空，不在公開頁面寫出任何帳號密碼；
+  // 要做展示時才在「系統設定 → 前台文字」填入內容
+  ui_demo_staff: '',
   ui_portal_title: '好心情個案專區',
   ui_portal_login_sub: '預約、量表填寫與費用查詢',
   ui_portal_login_hint: '首次登入密碼為手機末 6 碼；忘記密碼請來電諮商所。',
-  ui_demo_portal: '展示用測試帳號\n個案：0912345678 / 345678',
+  ui_demo_portal: '',
   ui_portal_note: '本專區僅提供預約與行政事項；晤談內容請於晤談時與心理師討論。',
   ui_crisis_note: '如遇立即危機請撥打 1925（安心專線）或 119；本系統非緊急通報管道。'
 };
