@@ -235,7 +235,10 @@ const UI_TEXT_KEYS = Object.keys(UI_TEXT_DEFAULTS);
     default_fee: '2000',
     intake_fee: '2500',
     cancel_hours: '24',                 // 免收費取消門檻（小時）
-    no_show_fee_rate: '0.5',            // 未到收費比例
+    no_show_fee_rate: '0.5',            // 未到收費比例（未填固定金額時採用）
+    // 未到固定收費：本所同意書寫明「行政規費 200 元」，填了就以固定金額為準，
+    // 留 0 才回頭用上面的比例計算
+    no_show_fee_fixed: '0',
     case_code_prefix: 'C',
     receipt_prefix: 'MC',
     counseling_types: '初談,個別諮商,伴侶諮商,家族諮商,團體諮商,心理衡鑑',

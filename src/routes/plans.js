@@ -4,7 +4,7 @@ const express = require('express');
 const { db, audit, today, getSetting, nowStamp } = require('../db');
 const { requireStaff } = require('../auth');
 const {
-  resolveFee, clientUsage, clientUsageAll, counselorLoad, nextWeekHint, checkBooking, parseOptions
+  resolveFee, clientUsage, clientUsageAll, counselorLoad, nextWeekHint, checkBooking, parseOptions, noShowCharge
 } = require('../plans');
 
 const router = express.Router();
@@ -381,7 +381,8 @@ router.get('/plan-income', requireStaff('reports'), (req, res) => {
   for (const a of appts) {
     const row = ensure(a.counselor_id, a.counselor_name);
     const q = resolveFee({ plan_id: a.plan_id, topic_id: a.topic_id, counselor_id: a.counselor_id, fee_override: a.fee });
-    const rate = a.status === 'no_show' ? Number(getSetting('no_show_fee_rate', '0.5')) : 1;
+    // 未到只收部分費用：固定規費時換算成等效比例，各項才會一致縮放
+    const rate = a.status === 'no_show' ? noShowCharge(a.fee).rate : 1;
     // 未到只收部分費用：個案自付與方案給付都按同一比例計，心理師報酬亦然
     const clientPay = Math.round((a.fee || 0) * rate);
     const subsidy = Math.round((a.subsidy_amount || 0) * rate);
@@ -454,7 +455,7 @@ router.get('/plan-income/:counselorId/detail', requireStaff('reports'), (req, re
   const detail = rows.map(r => {
     const share = r.counselor_share || resolveFee({ fee_override: r.fee }).counselor_share;
     return { ...r, counselor_share: r.status === 'no_show'
-      ? Math.round(share * Number(getSetting('no_show_fee_rate', '0.5'))) : share };
+      ? Math.round(share * noShowCharge(r.fee).rate) : share };
   });
   res.json({
     month, counselor: u, rows: detail,

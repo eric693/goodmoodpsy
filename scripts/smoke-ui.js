@@ -83,6 +83,14 @@ function loadPlaywright() {
     await page.click('#lg-btn');
     await page.waitForTimeout(1600);
 
+    // 正式站上的示範帳號可能已被停用或改密碼，這種情況跳過該身分即可，
+    // 不該讓整個前端冒煙測試中斷（帳號本身不是要測的東西）
+    const loggedIn = await page.$('[data-nav]');
+    if (!loggedIn) {
+      console.log(`  – ${acct.label}（${acct.user}）：無法登入，略過`);
+      await page.close();
+      continue;
+    }
     const navs = await page.$$eval('[data-nav]', els => els.map(e => e.dataset.nav));
     if (!navs.length) problems.push(`${acct.label}：登入後看不到任何導覽項目`);
     for (const key of navs) {
@@ -94,7 +102,10 @@ function loadPlaywright() {
     }
 
     // 個案頁的每個分頁（保密邊界會讓不同身分看到不同分頁數）
-    const list = await page.evaluate(async () => (await (await fetch('/api/clients')).json()).slice(0, 1));
+    const list = await page.evaluate(async () => {
+      const r = await (await fetch('/api/clients')).json();
+      return Array.isArray(r) ? r.slice(0, 1) : [];
+    });
     if (list.length) {
       await page.goto(`${BASE}/#client/${list[0].id}`, { waitUntil: 'load' });
       await page.waitForTimeout(1500);

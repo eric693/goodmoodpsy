@@ -60,6 +60,7 @@ router.get('/me', requireClient, (req, res) => {
     reschedule_enabled: getSetting('portal_reschedule_enabled', '1') === '1',
     cancel_hours: Number(getSetting('cancel_hours', '24')),
     no_show_fee_rate: Number(getSetting('no_show_fee_rate', '0.5')),
+    no_show_fee_fixed: Number(getSetting('no_show_fee_fixed', '0')),
     counselor: c.counselor_id ? db.prepare('SELECT name FROM users WHERE id = ?').get(c.counselor_id) : null,
     pending_consents: templates
       .filter(t => !signed.some(s => s.key === t.key && s.version === t.version))
@@ -181,7 +182,7 @@ router.post('/appointments/:id/cancel', requireClient, (req, res) => {
   if (start.getTime() < Date.now()) return res.status(400).json({ error: '此晤談時間已過，請來電與我們聯繫' });
   if (start.getTime() - Date.now() < hours * 3600 * 1000) {
     if (a.cancel_requested_at) return res.status(400).json({ error: '已收到您的取消申請，我們會盡快與您聯繫' });
-    const rate = Number(getSetting('no_show_fee_rate', '0.5'));
+    const charge = plans.noShowCharge(a.fee);
     db.prepare('UPDATE appointments SET cancel_requested_at = ?, cancel_request_reason = ? WHERE id = ?')
       .run(nowStamp(), reason || '個案申請取消', a.id);
     db.prepare("INSERT INTO messages (client_id, sender, content) VALUES (?, 'client', ?)").run(
@@ -191,7 +192,7 @@ router.post('/appointments/:id/cancel', requireClient, (req, res) => {
     return res.json({
       ok: true, pending: true,
       message: `距晤談時間已不足 ${hours} 小時，已為您送出取消申請並通知櫃檯；`
-        + `依所內規定，逾期取消可能收取原費用之 ${Math.round(rate * 100)}%。`
+        + `依所內規定，逾期取消可能收取${charge.fixed ? `行政規費 ${charge.amount} 元` : `原費用之 ${Math.round(charge.rate * 100)}%`}。`
     });
   }
   db.prepare("UPDATE appointments SET status = 'cancelled', cancel_reason = ? WHERE id = ?")

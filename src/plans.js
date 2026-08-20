@@ -141,6 +141,21 @@ function weekRange(dateStr) {
   return { start: f(start), end: f(end) };
 }
 
+// 未到（no_show）要收多少：所內同意書多半寫「行政規費 X 元」這種固定金額，
+// 但也有依比例收的做法。設定了固定金額就以它為準，否則回到比例。
+// 回傳 { amount, note, fixed }，各處共用同一套算法，畫面與帳才不會各算各的。
+function noShowCharge(fee) {
+  const fixed = Math.max(0, Math.round(Number(getSetting('no_show_fee_fixed', '0')) || 0));
+  const base = Math.max(0, Math.round(Number(fee) || 0));
+  if (fixed > 0) {
+    // 原費用低於固定規費時只收原費用，不會出現「收得比原價貴」
+    const amount = Math.min(fixed, base || fixed);
+    return { amount, fixed: true, rate: base ? amount / base : 0, note: `未到行政規費 ${amount} 元` };
+  }
+  const rate = Number(getSetting('no_show_fee_rate', '0.5')) || 0;
+  return { amount: Math.round(base * rate), fixed: false, rate, note: `原費用 ${base} 之 ${Math.round(rate * 100)}%` };
+}
+
 function counselorLoad(counselorId, planId, dateStr, excludeApptId) {
   const plan = getPlan(planId);
   const rate = getRate(planId, counselorId, null);
@@ -258,5 +273,5 @@ function pickRoom({ date, start_time, end_time, exclude_appointment_id }) {
 
 module.exports = {
   COUNTED_STATUSES, getPlan, getTopic, getRate, parseOptions, resolveFee,
-  clientUsage, clientUsageAll, counselorLoad, nextWeekHint, weekRange, checkBooking, pickRoom
+  clientUsage, clientUsageAll, counselorLoad, nextWeekHint, weekRange, checkBooking, pickRoom, noShowCharge
 };

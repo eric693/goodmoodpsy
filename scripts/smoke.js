@@ -907,6 +907,27 @@ function startServer() {
     await admin.ok('POST', `/api/appointments/${made.id}/status`, { status: 'cancelled' });
     await admin.del(`/api/appointments/${made.id}`);
   });
+  await test('未到收費：設定固定規費時以固定金額開單，設 0 才回到比例', async () => {
+    const appt = await admin.ok('POST', '/api/appointments', {
+      client_id: clientId, counselor_id: (await admin.ok('GET', '/api/me')).id,
+      date: addDays(ymd(new Date()), 1), start_time: '09:00', fee: 2000
+    });
+    await admin.ok('PUT', '/api/settings', { no_show_fee_fixed: '200' });
+    await admin.ok('POST', `/api/appointments/${appt.id}/status`, { status: 'no_show' });
+    const invoicesOf = async () => (await admin.ok('GET', `/api/invoices?client_id=${clientId}`)).rows
+      .filter(i => i.appointment_id === appt.id);
+    const inv = (await invoicesOf())[0];
+    equal(inv.amount, 200, '固定規費 200 元');
+    // 改回比例：狀態來回切換會回沖重算，不會留下兩張單
+    await admin.ok('PUT', '/api/settings', { no_show_fee_fixed: '0' });
+    await admin.ok('POST', `/api/appointments/${appt.id}/status`, { status: 'booked' });
+    await admin.ok('POST', `/api/appointments/${appt.id}/status`, { status: 'no_show' });
+    const list = await invoicesOf();
+    equal(list.length, 1, '只留一張未到收費單');
+    equal(list[0].amount, 1000, '回到比例 50%');
+    await admin.ok('POST', `/api/appointments/${appt.id}/status`, { status: 'cancelled' });
+    await admin.del(`/api/appointments/${appt.id}`);
+  });
   await test('方案設定：每個欄位都能改，抽成 60 與 0.6 都收得下', async () => {
     const plan = (await admin.ok('GET', '/api/service-plans')).find(p => p.active);
     const before = { name: plan.name, fee: plan.fee, share_percent: plan.share_percent, default_mode: plan.default_mode };

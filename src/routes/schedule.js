@@ -268,15 +268,14 @@ router.post('/appointments/:id/status', requireStaff('schedule'), (req, res) => 
       // 初談完成後個案由 intake 轉為進行中
       if (client && client.status === 'intake') db.prepare("UPDATE clients SET status = 'active' WHERE id = ?").run(client.id);
     }
-    // 未到：依設定比例收取費用
+    // 未到：依設定收取固定行政規費或原費用的比例
     if (status === 'no_show') {
-      const rate = Number(getSetting('no_show_fee_rate', '0.5'));
-      const amount = Math.round((a.fee || 0) * rate);
-      if (amount > 0) {
+      const charge = plans.noShowCharge(a.fee);
+      if (charge.amount > 0) {
         db.prepare(`INSERT INTO invoices (client_id, appointment_id, date, item, amount, status, payer, note)
                     VALUES (?,?,?,?,?, 'unpaid', ?, ?)`).run(
-          a.client_id, a.id, a.date, `${a.date} 未到收費`, amount,
-          getSetting('payer_type_default', '自費'), `原費用 ${a.fee} 之 ${Math.round(rate * 100)}%`);
+          a.client_id, a.id, a.date, `${a.date} 未到收費`, charge.amount,
+          getSetting('payer_type_default', '自費'), charge.note);
       }
     }
   };
