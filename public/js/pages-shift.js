@@ -37,11 +37,11 @@ function shiftBlocks(picked, cfg) {
   return out;
 }
 
-App.page('myshift', {
-  title: '我的排班',
-  sub: '點選格子設定每週可預約時段；存檔後櫃檯與個案端只會看到這些時段',
-  module: 'schedule',
-  async render(el, arg) {
+// 排班面板：原本的「我的排班」獨立頁，現直接掛在預約排程頁下方，時段設定只有這一處入口。
+// el 為容器；arg 為指定心理師 id（管理者切換用）；onChange 供外層在請假異動後整頁重載，
+// 讓同頁的週檢視（請假會顯示在格子裡）跟著更新，不會出現一邊改完另一邊還是舊資料。
+async function renderShiftPanel(el, arg, onChange) {
+  {
     const canPickOther = App.me.role === 'admin';
     const cid = Number(arg) || (canPickOther ? Number(localStorage.getItem('mc-shift-c')) || App.me.id : App.me.id);
     if (canPickOther) localStorage.setItem('mc-shift-c', cid);
@@ -183,7 +183,7 @@ App.page('myshift', {
         UI.toast('已加入，記得按「儲存排班」');
       }
     });
-    if (canPickOther) el.querySelector('#sc').onchange = e => App.go('myshift/' + e.target.value);
+    if (canPickOther) el.querySelector('#sc').onchange = e => renderShiftPanel(el, e.target.value, onChange);
 
     el.querySelector('#save').onclick = async () => {
       try {
@@ -245,7 +245,7 @@ App.page('myshift', {
         </div>`,
         onSubmit: async form => {
           await POST('/time-off', { ...UI.formData(form), counselor_id: cid });
-          App.go('myshift/' + cid);
+          (onChange || (() => renderShiftPanel(el, cid, onChange)))();
         }
       });
       // 日期或事由填錯就地改，不必刪掉重登
@@ -264,19 +264,19 @@ App.page('myshift', {
           onSubmit: async form => {
             await PUT(`/time-off/${o.id}`, UI.formData(form));
             UI.toast('已更新');
-            App.go('myshift/' + cid);
+            (onChange || (() => renderShiftPanel(el, cid, onChange)))();
           }
         });
       });
       box.querySelectorAll('[data-off]').forEach(b => {
         b.onclick = async () => {
           if (!await UI.confirm('刪除此請假紀錄？')) return;
-          try { await DEL(`/time-off/${b.dataset.off}`); App.go('myshift/' + cid); } catch (e) { UI.err(e); }
+          try { await DEL(`/time-off/${b.dataset.off}`); (onChange || (() => renderShiftPanel(el, cid, onChange)))(); } catch (e) { UI.err(e); }
         };
       });
     }
   }
-});
+}
 
 // ---- 行事曆（月檢視）----
 App.page('calendar', {
@@ -340,7 +340,6 @@ App.page('calendar', {
         <select id="fc">${App.counselorOptions(true).map(o =>
       `<option value="${o[0]}"${String(o[0]) === filterC ? ' selected' : ''}>${UI.esc(o[1])}</option>`).join('')}</select>
         <div class="spacer"></div>
-        <a class="btn secondary small" href="#myshift">我的排班</a>
         <button class="btn" id="add">新增預約</button>
       </div>
       <div class="table-wrap"><table class="list cal-table"><thead><tr>
@@ -565,6 +564,7 @@ App.page('room-board', {
         <button class="btn secondary small" id="prev">上一週</button>
         <button class="btn secondary small" id="this">本週</button>
         <button class="btn secondary small" id="next">下一週</button>
+        <input type="date" id="pick" value="${d.start}" style="width:auto" title="選日期跳到該日所在的一週">
         <strong style="margin-left:6px">${d.start} ~ ${d.end}</strong>
         <div class="spacer"></div>
         <span style="font-size:12.5px;color:var(--muted)">
@@ -580,5 +580,9 @@ App.page('room-board', {
     el.querySelector('#prev').onclick = () => App.go('room-board/' + UI.addDays(d.start, -7));
     el.querySelector('#next').onclick = () => App.go('room-board/' + UI.addDays(d.start, 7));
     el.querySelector('#this').onclick = () => App.go('room-board/' + UI.mondayOf(UI.today()));
+    // 選任一天都跳到該日所在的整週，不必自己算週一是幾號
+    el.querySelector('#pick').onchange = e => {
+      if (e.target.value) App.go('room-board/' + UI.mondayOf(e.target.value));
+    };
   }
 });

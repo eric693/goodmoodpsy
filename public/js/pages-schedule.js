@@ -195,7 +195,7 @@ async function apptStatusDialog(a, onDone) {
 
 App.page('schedule', {
   title: '預約排程',
-  sub: '週檢視：同一心理師或諮商室時段衝突會即時擋下',
+  sub: '週檢視：同一心理師或諮商室時段衝突會即時擋下；下方可設定每週可預約時段與請假',
   module: 'schedule',
   async render(el, arg) {
     let start = arg || localStorage.getItem('mc-week') || UI.today();
@@ -247,7 +247,8 @@ App.page('schedule', {
       <div class="table-wrap"><table class="list week-table"><thead><tr>
         ${days.map(dt => `<th>${dt.slice(5)}（${UI.weekdayName(dt)}）${dt === UI.today() ? ' ●' : ''}</th>`).join('')}
       </tr></thead><tbody><tr>${days.map(dt => `<td style="vertical-align:top;min-width:150px">${cell(dt)}</td>`).join('')}</tr></tbody></table></div>
-      <div class="card"><h3>可預約時段設定</h3><div id="avail"></div></div>`;
+      <h3 style="margin:18px 0 8px">排班設定</h3>
+      <div id="shift-panel"><div class="empty">載入中...</div></div>`;
 
     el.querySelector('#prev').onclick = () => App.go('schedule/' + UI.addDays(start, -7));
     el.querySelector('#next').onclick = () => App.go('schedule/' + UI.addDays(start, 7));
@@ -302,37 +303,8 @@ App.page('schedule', {
       };
     });
 
-    // 可預約時段
-    const av = el.querySelector('#avail');
-    const drawAvail = () => {
-      const rows = data.availability.map(v => {
-        const u = data.counselors.find(c => c.id === v.counselor_id);
-        return `<tr><td>${UI.esc(u ? u.name : v.counselor_id)}</td>
-          <td>週${['日', '一', '二', '三', '四', '五', '六'][v.weekday]}</td>
-          <td>${v.start_time} - ${v.end_time}</td>
-          <td><button class="btn tiny danger" data-av="${v.id}">刪除</button></td></tr>`;
-      });
-      av.innerHTML = `${UI.table(['心理師', '星期', '時段', ''], rows, '尚未設定可預約時段')}
-        <button class="btn small" id="add-av" style="margin-top:10px">新增時段</button>`;
-      av.querySelector('#add-av').onclick = () => UI.modal({
-        title: '新增可預約時段',
-        body: `<div class="form-grid">
-          ${UI.select('counselor_id', '心理師', App.counselorOptions(), { value: App.me.id })}
-          ${UI.select('weekday', '星期', [[1, '週一'], [2, '週二'], [3, '週三'], [4, '週四'], [5, '週五'], [6, '週六'], [0, '週日']])}
-          ${UI.input('start_time', '開始', { type: 'time', value: '14:00' })}
-          ${UI.input('end_time', '結束', { type: 'time', value: '18:00' })}
-        </div>`,
-        onSubmit: async e => { await POST('/availability', UI.formData(e)); App.go('schedule/' + start); }
-      });
-      av.querySelectorAll('[data-av]').forEach(b => {
-        b.onclick = async () => {
-          if (!await UI.confirm('刪除此時段？')) return;
-          await DEL(`/availability/${b.dataset.av}`);
-          App.go('schedule/' + start);
-        };
-      });
-    };
-    drawAvail();
+    // 排班設定（原「我的排班」獨立頁）併入同一頁，可預約時段與請假只有這一處入口
+    renderShiftPanel(el.querySelector('#shift-panel'), null, () => App.go('schedule/' + start));
   }
 });
 

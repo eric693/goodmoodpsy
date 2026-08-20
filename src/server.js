@@ -65,7 +65,7 @@ app.get('/api/me', requireStaff(), (req, res) => {
 
 // ---- 行事曆訂閱（.ics，免登入以 token 驗證）----
 // 手機日曆 App 無法帶 Cookie，故以每人一組隨機 token 的網址提供；
-// 內容不含個案姓名等識別資料，token 可於「我的排班」頁隨時重設。
+// 內容不含個案姓名等識別資料，token 可於「預約排程」頁的排班設定隨時重設。
 app.get('/calendar/:token/mindcare.ics', (req, res) => {
   const cal = buildCalendar(String(req.params.token || ''));
   if (!cal) return res.status(404).type('text/plain').send('calendar not found');
