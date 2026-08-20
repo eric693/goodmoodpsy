@@ -1062,11 +1062,32 @@ App.page('settings', {
         ['ui_portal_login_hint', '個案端 登入說明'], ['ui_demo_portal', '個案端 提示框'],
         ['ui_portal_note', '個案端 說明區塊'], ['ui_crisis_note', '危機求助提示']]]
     ];
+    // 這些設定不會在本頁顯示結果，而是被其他畫面拿去算東西，
+    // 因此逐欄註明「會出現在哪裡」，櫃檯改之前看得懂影響範圍。
+    const FIELD_HELP = {
+      session_minutes: '排約時自動算結束時間、線上預約的時段長度；方案有自己的時長時以方案為準。',
+      default_fee: '排約時沒選方案、也沒手動填金額時帶入的費用。',
+      intake_fee: '來電登記「建檔並排初談」時，那筆初談的預設費用。',
+      cancel_hours: '個案端可自行取消的分界：不足此時數只能送出取消申請等櫃檯處理；也會印在個案端提示與 LINE 的預約成立／晤談提醒卡片上。',
+      no_show_fee_fixed: '按「未到」時自動開出的收費單金額（收費單備註寫「未到行政規費 X 元」），也是個案端逾期取消的提示金額。填 0 才改用下方比例。',
+      no_show_fee_rate: '未到收原費用的幾成；只有在上方固定收費為 0 時才生效。',
+      case_code_prefix: '新建個案的編號開頭，例如 G2026002。',
+      receipt_prefix: '收據流水號開頭，例如 GM20260800001。',
+      note_lock_days: '晤談完成後幾天內要寫紀錄；逾期會在「待補紀錄與報告」與總覽以紅字警示。留空視為 7 天。'
+    };
+    const GROUP_HELP = {
+      '晤談與收費': '以下都是<strong>預設值</strong>：排約當下仍可逐筆修改，選了方案時以方案的金額與時長為準。'
+        + '改設定只影響之後產生的資料，已開立的收費單與已排的預約不會被回頭改動。'
+    };
+    const fieldHelp = k => (FIELD_HELP[k]
+      ? `<div style="grid-column:1/-1;margin:-6px 0 8px;font-size:12px;color:var(--muted);line-height:1.7">↳ ${FIELD_HELP[k]}</div>`
+      : '');
     el.innerHTML = groups.map(([label, fields]) => `<div class="card"><h3>${label}</h3>
+      ${GROUP_HELP[label] ? `<div class="notice" style="margin-bottom:12px;font-size:13px">${GROUP_HELP[label]}</div>` : ''}
       <div class="form-grid">${fields.map(([k, l]) =>
         (String(s[k] || '').length > 40 || k === 'reminder_template' || k === 'shift_quick_fills' || k === 'safety_plan_resources' || k.startsWith('ui_demo') || k === 'ui_portal_note' || k === 'ui_crisis_note' || k.endsWith('_options') || k.endsWith('_types') || k.endsWith('_methods') || k.endsWith('_reasons') || k.endsWith('_channels'))
           ? UI.textarea(k, l, { value: s[k] || '' })
-          : UI.input(k, l, { value: s[k] || '' })).join('')}</div></div>`).join('') +
+          : UI.input(k, l, { value: s[k] || '' }) + fieldHelp(k)).join('')}</div></div>`).join('') +
       `<div class="card"><h3>諮商室</h3><div id="rooms"></div></div>
        <div class="card"><h3>安裝成手機／電腦 App</h3>
          <div style="font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:10px">

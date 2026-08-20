@@ -935,6 +935,18 @@ function startServer() {
     const tw = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 13).replace('T', ' ');
     equal(stamp.slice(0, 13), tw, '稽核時間應為台北時間（比對到小時）');
   });
+  await test('永久刪除個案：連同紀錄一併移除，且僅管理者可執行', async () => {
+    const tmp = await admin.ok('POST', '/api/clients', { name: '待刪個案', phone: '0900111222' });
+    await admin.ok('POST', '/api/appointments', {
+      client_id: tmp.id, counselor_id: (await admin.ok('GET', '/api/me')).id,
+      date: addDays(ymd(new Date()), 2), start_time: '11:00', fee: 1000
+    });
+    await office.fails('DELETE', `/api/clients/${tmp.id}/purge`, undefined, '管理者');
+    const r = await admin.ok('DELETE', `/api/clients/${tmp.id}/purge`);
+    equal(r.removed.appointments, 1, '連同預約一併刪除');
+    const still = (await admin.ok('GET', '/api/clients?status=')).find(c => c.id === tmp.id);
+    assert(!still, '個案應已不存在');
+  });
   await test('方案設定：每個欄位都能改，抽成 60 與 0.6 都收得下', async () => {
     const plan = (await admin.ok('GET', '/api/service-plans')).find(p => p.active);
     const before = { name: plan.name, fee: plan.fee, share_percent: plan.share_percent, default_mode: plan.default_mode };

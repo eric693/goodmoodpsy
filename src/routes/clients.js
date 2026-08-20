@@ -1,7 +1,9 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { db, audit, today, nextClientCode, ageYears, getSetting } = require('../db');
-const { requireStaff, canViewClientNotes, clientIp } = require('../auth');
+const fs = require('fs');
+const path = require('path');
+const { db, audit, today, nextClientCode, ageYears, getSetting, UPLOAD_DIR } = require('../db');
+const { requireStaff, requireAdmin, canViewClientNotes, clientIp } = require('../auth');
 
 const { createCloseFollowUps } = require('./aftercare');
 
@@ -135,6 +137,40 @@ router.put('/clients/:id', requireStaff('clients'), (req, res) => {
 
 // 停用（軟刪除）：心理紀錄依規定需保存，不提供實體刪除。
 // 未來的預約要一併取消，否則會繼續佔用心理師時段與諮商室，排班表上出現已結案個案的幽靈預約。
+// 永久刪除個案（僅管理者，且必須明確帶 purge=1）。
+// 用途是清掉展示資料或誤建、重複的資料；正式個案請用停用（保留歷史紀錄）。
+// 相關資料多數設有 ON DELETE CASCADE，沒有的四張表在此一併清理，附件實體檔也刪掉。
+router.delete('/clients/:id/purge', requireAdmin, (req, res) => {
+  const c = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
+  if (!c) return res.status(404).json({ error: '找不到此個案' });
+  const counts = {};
+  for (const t of ['appointments', 'session_notes', 'invoices', 'receipts', 'assessments', 'attachments']) {
+    counts[t] = db.prepare(`SELECT COUNT(*) n FROM ${t} WHERE client_id = ?`).get(c.id).n;
+  }
+  // 附件實體檔：資料列會被 CASCADE 刪掉，檔案要自己清
+  const files = db.prepare('SELECT stored_name FROM attachments WHERE client_id = ?').all(c.id);
+  db.transaction(() => {
+    // 這四張表沒有 CASCADE，先解除關聯再刪個案
+    db.prepare('UPDATE supervisions SET client_id = NULL WHERE client_id = ?').run(c.id);
+    db.prepare('UPDATE intakes SET client_id = NULL WHERE client_id = ?').run(c.id);
+    db.prepare('DELETE FROM notifications WHERE client_id = ?').run(c.id);
+    // 預約與線上預約申請互相指來指去（appointments.booking_request_id、
+    // booking_requests.appointment_id），兩個外鍵都沒有 CASCADE，
+    // 因此先把雙向關聯解開，再刪申請與個案。
+    db.prepare(`UPDATE appointments SET booking_request_id = NULL
+      WHERE client_id = ?`).run(c.id);
+    db.prepare(`UPDATE booking_requests SET appointment_id = NULL
+      WHERE appointment_id IN (SELECT id FROM appointments WHERE client_id = ?)`).run(c.id);
+    db.prepare('DELETE FROM booking_requests WHERE client_id = ?').run(c.id);
+    db.prepare('DELETE FROM clients WHERE id = ?').run(c.id);
+  })();
+  for (const f of files) {
+    try { fs.unlinkSync(path.join(UPLOAD_DIR, path.basename(f.stored_name))); } catch (e) { /* 檔案已不在 */ }
+  }
+  audit('staff', req.user.id, req.user.name, '永久刪除個案', c.code, { name: c.name, ...counts });
+  res.json({ ok: true, code: c.code, name: c.name, removed: counts });
+});
+
 router.delete('/clients/:id', requireStaff('clients'), (req, res) => {
   const c = db.prepare('SELECT * FROM clients WHERE id = ?').get(req.params.id);
   if (!c) return res.status(404).json({ error: '找不到此個案' });

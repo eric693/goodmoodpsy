@@ -144,8 +144,12 @@ router.delete('/attachments/:id', requireStaff('clients'), (req, res) => {
   const a = db.prepare('SELECT * FROM attachments WHERE id = ?').get(req.params.id);
   if (!a) return res.status(404).json({ error: '找不到此附件' });
   db.prepare('DELETE FROM attachments WHERE id = ?').run(a.id);
-  // 先刪資料庫再刪檔案：即使檔案刪除失敗也不會留下讀不到檔的孤兒紀錄
-  fs.unlink(path.join(UPLOAD_DIR, path.basename(a.stored_name)), () => {});
+  // 先刪資料庫再刪檔案：即使檔案刪除失敗也不會留下讀不到檔的孤兒紀錄。
+  // 這裡刻意用同步刪除——非同步的話 API 會在檔案真正消失前就回應成功，
+  // 呼叫端（與測試）看到的狀態會與實際不一致；失敗僅忽略，孤兒檔由每日備份程序清理。
+  try {
+    fs.unlinkSync(path.join(UPLOAD_DIR, path.basename(a.stored_name)));
+  } catch (e) { /* 檔案已不在或無權限：紀錄已刪除，留待備份程序清理 */ }
   audit('staff', req.user.id, req.user.name, '刪除附件', String(a.client_id), { file: a.filename });
   res.json({ ok: true });
 });

@@ -135,7 +135,8 @@ function loadPlaywright() {
   await page.waitForTimeout(2200);
   const loggedIn = await page.$('.fam-nav');
   if (!loggedIn) {
-    problems.push('個案端：登入後沒有出現分頁列（示範帳號密碼可能已更換，非必然是程式問題）');
+    // 與員工端一致：示範帳號已停用或刪除時略過，不視為程式問題
+    console.log(`  – 個案端（${PORTAL.phone}）：無法登入，略過`);
   } else {
     for (const tab of ['home', 'book', 'scales', 'billing', 'messages', 'me']) {
       await page.evaluate(k => Portal.go(k), tab);

@@ -96,13 +96,47 @@ App.page('clients', {
         <td>${UI.esc(c.phone || '')}</td>
         <td style="text-align:right;white-space:nowrap">
           <button class="btn tiny secondary" data-ed="${c.id}">編輯</button>
-          <a class="btn tiny secondary" href="#client/${c.id}">詳情</a></td></tr>`);
+          <a class="btn tiny secondary" href="#client/${c.id}">詳情</a>
+          ${App.me.role === 'admin' ? `<button class="btn tiny danger" data-del="${c.id}">刪除</button>` : ''}</td></tr>`);
       el.querySelector('#list').innerHTML = UI.table(
         ['編號', '姓名', '年齡／性別', '主責心理師', '狀態', '風險', '最近晤談', '下次預約', '聯絡電話', ''],
         rows, '沒有符合條件的個案');
       // 基本資料就地編輯，不必先點進個案詳情頁
       el.querySelectorAll('[data-ed]').forEach(b => {
         b.onclick = async () => clientDialog(await GET(`/clients/${b.dataset.ed}`), draw);
+      });
+      // 兩種刪法：正式個案用「停用」保留歷史；展示或誤建的資料才永久刪除（僅管理者）
+      el.querySelectorAll('[data-del]').forEach(b => {
+        const c = list.find(x => x.id === Number(b.dataset.del));
+        b.onclick = () => UI.modal({
+          title: `刪除個案：${c.name}（${c.code}）`,
+          hideFooter: true,
+          body: `<div style="font-size:14px;line-height:1.9">請選擇處理方式：</div>
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:10px">
+              <button class="btn secondary" id="soft" type="button">停用（建議）</button>
+              <div style="font-size:12.5px;color:var(--muted);margin-top:-6px">
+                個案標記為結案並取消未來預約，晤談紀錄、收費與收據全部保留，日後查得到。</div>
+              <button class="btn danger" id="hard" type="button">永久刪除</button>
+              <div style="font-size:12.5px;color:var(--muted);margin-top:-6px">
+                連同預約、晤談紀錄、收費、收據、量表與附件一併移除，<strong>無法復原</strong>。
+                僅適合展示資料或重複、誤建的資料。</div>
+            </div>`,
+          onOpen: (body, close) => {
+            body.querySelector('#soft').onclick = async () => {
+              const r = await DEL(`/clients/${c.id}`);
+              UI.toast(`已停用${r.cancelled_appointments ? `，取消 ${r.cancelled_appointments} 筆未來預約` : ''}`);
+              close(); draw();
+            };
+            body.querySelector('#hard').onclick = async () => {
+              close();
+              if (!await UI.confirm(`確定永久刪除「${c.name}（${c.code}）」及其所有紀錄？此動作無法復原。`)) return;
+              const r = await DEL(`/clients/${c.id}/purge`);
+              const n = r.removed || {};
+              UI.toast(`已刪除 ${r.name}（預約 ${n.appointments || 0}、紀錄 ${n.session_notes || 0}、收費 ${n.invoices || 0}）`);
+              draw();
+            };
+          }
+        });
       });
     };
     el.innerHTML = `<div class="toolbar">
