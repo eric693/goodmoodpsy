@@ -1,3 +1,8 @@
+// 時區：SQLite 的 datetime('now','localtime') 與 JS Date 都吃行程的 TZ。
+// 主機是 UTC，若啟動時忘了帶 TZ，所有時間會少 8 小時、凌晨還會跨錯日期，
+// 因此在載入資料庫之前先補上預設值（已指定 TZ 時尊重原設定）。
+process.env.TZ = process.env.TZ || 'Asia/Taipei';
+
 const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');

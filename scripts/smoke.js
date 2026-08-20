@@ -928,6 +928,13 @@ function startServer() {
     await admin.ok('POST', `/api/appointments/${appt.id}/status`, { status: 'cancelled' });
     await admin.del(`/api/appointments/${appt.id}`);
   });
+  await test('時間戳為台北時間（主機為 UTC 時仍不會少 8 小時）', async () => {
+    const rows = await admin.ok('GET', '/api/audit-logs?limit=1');
+    const list = Array.isArray(rows) ? rows : rows.rows;
+    const stamp = list[0].created_at;
+    const tw = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 13).replace('T', ' ');
+    equal(stamp.slice(0, 13), tw, '稽核時間應為台北時間（比對到小時）');
+  });
   await test('方案設定：每個欄位都能改，抽成 60 與 0.6 都收得下', async () => {
     const plan = (await admin.ok('GET', '/api/service-plans')).find(p => p.active);
     const before = { name: plan.name, fee: plan.fee, share_percent: plan.share_percent, default_mode: plan.default_mode };
