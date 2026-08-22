@@ -51,21 +51,46 @@ function idNoWarning(idNo) {
 }
 
 // 個案清單：諮商師預設只看自己的個案，可切換全所（僅顯示基本欄位，不含晤談內容）
-router.get('/clients', requireStaff('clients'), (req, res) => {
-  const { status = '', q = '', counselor_id = '', risk = '' } = req.query;
+// 清單只回畫表格要用的欄位。個案數上千時，`SELECT c.*` 會把病史、住址、
+// 甚至個案端的密碼雜湊一起送到每個櫃檯的瀏覽器，既慢也不該給。
+const CLIENT_LIST_COLUMNS = `c.id, c.code, c.name, c.gender, c.birth_date, c.phone,
+  c.counselor_id, c.status, c.risk_level, c.is_minor, c.portal_enabled, c.created_at`;
+
+function clientListWhere(query) {
+  const { status = '', q = '', counselor_id = '', risk = '' } = query;
   const where = ['c.active = 1'], args = [];
   if (status) { where.push('c.status = ?'); args.push(status); }
   if (risk) { where.push('c.risk_level = ?'); args.push(risk); }
   if (counselor_id) { where.push('c.counselor_id = ?'); args.push(Number(counselor_id)); }
   if (q) { where.push('(c.name LIKE ? OR c.code LIKE ? OR c.phone LIKE ?)'); args.push(`%${q}%`, `%${q}%`, `%${q}%`); }
+  return { sql: where.join(' AND '), args };
+}
+
+router.get('/clients', requireStaff('clients'), (req, res) => {
+  const { sql, args } = clientListWhere(req.query);
+  // 分頁：預設一頁 100 筆。舊呼叫端沒帶 page 時行為不變（拿到第一頁與總筆數）
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const total = db.prepare(`SELECT COUNT(*) AS n FROM clients c WHERE ${sql}`).get(...args).n;
   const rows = db.prepare(`
-    SELECT c.*, u.name AS counselor_name,
+    SELECT ${CLIENT_LIST_COLUMNS}, u.name AS counselor_name,
       (SELECT COUNT(*) FROM session_notes n WHERE n.client_id = c.id) AS note_count,
       (SELECT MAX(date) FROM appointments a WHERE a.client_id = c.id AND a.status = 'done') AS last_session,
       (SELECT MIN(date) FROM appointments a WHERE a.client_id = c.id AND a.date >= date('now','localtime') AND a.status IN ('booked','arrived')) AS next_session
     FROM clients c LEFT JOIN users u ON u.id = c.counselor_id
-    WHERE ${where.join(' AND ')} ORDER BY c.status = 'closed', c.created_at DESC`).all(...args);
-  res.json(rows.map(r => ({ ...r, age: ageYears(r.birth_date) })));
+    WHERE ${sql} ORDER BY c.status = 'closed', c.created_at DESC
+    LIMIT ? OFFSET ?`).all(...args, limit, (page - 1) * limit);
+  const list = rows.map(r => ({ ...r, age: ageYears(r.birth_date) }));
+  // 帶 page 的呼叫端要分頁資訊；沒帶的（舊版前端、匯出）維持拿到陣列
+  if (req.query.page || req.query.limit) return res.json({ rows: list, total, page, limit });
+  res.json(list);
+});
+
+// 下拉選單專用：只回 id／編號／姓名，2900 筆約 100 KB，不必為了選個人載整包個案資料
+router.get('/clients/options', requireStaff('clients'), (req, res) => {
+  const { sql, args } = clientListWhere(req.query);
+  res.json(db.prepare(`SELECT c.id, c.code, c.name FROM clients c
+    WHERE ${sql} ORDER BY c.status = 'closed', c.name`).all(...args));
 });
 
 router.get('/clients/:id', requireStaff('clients'), (req, res) => {

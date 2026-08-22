@@ -37,7 +37,8 @@ const App = {
   enumOptions(kind) { return Object.entries(TW[kind]).map(([k, v]) => [k, v]); },
 
   async clientOptions(includeClosed) {
-    const list = await GET('/clients' + (includeClosed ? '' : '?status=active'));
+    // 只取 id／編號／姓名的輕量端點；載整包個案資料只為了填一個下拉太浪費
+    const list = await GET('/clients/options' + (includeClosed ? '' : '?status=active'));
     return [['', '請選擇個案']].concat(list.map(c => [c.id, `${c.name}（${c.code}）`]));
   },
 
@@ -163,9 +164,17 @@ const App = {
     document.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === k));
     if (location.hash.slice(1) !== key) history.replaceState(null, '', '#' + key);
     const el = document.getElementById('page');
+    // 每頁的「怎麼用」說明：def.help 給幾行操作步驟，收合狀態記在 localStorage
+    const helpOpen = localStorage.getItem('mc-help-' + k) !== '0';
+    const help = (def.help || []).length ? `<details class="page-help"${helpOpen ? ' open' : ''} id="page-help">
+        <summary>這頁怎麼用</summary>
+        <ul>${def.help.map(h => `<li>${h}</li>`).join('')}</ul></details>` : '';
     el.innerHTML = `<div class="page-title">${UI.esc(def.title)}</div>
       <div class="page-sub">${UI.esc(def.sub || '')}</div>
+      ${help}
       <div id="page-body"><div class="empty">載入中...</div></div>`;
+    const helpEl = document.getElementById('page-help');
+    if (helpEl) helpEl.ontoggle = () => localStorage.setItem('mc-help-' + k, helpEl.open ? '1' : '0');
     try { await def.render(document.getElementById('page-body'), arg); }
     catch (e) { document.getElementById('page-body').innerHTML = `<div class="empty">${UI.esc(e.message)}</div>`; }
   }
@@ -175,6 +184,10 @@ const App = {
 App.page('dashboard', {
   title: '總覽',
   sub: '今日排程與待辦提醒',
+  help: [
+    '今天的排程與待辦提醒；紅色的是需要優先處理的（逾期未寫紀錄、申請取消、高風險個案等）。',
+    '點任一列可直接跳到該筆資料。左側選單只會出現你有權限的模組。',
+  ],
   async render(el) {
     const d = await GET('/dashboard');
     const scopeNote = d.scope === 'mine' ? '（僅顯示您負責的個案）' : '';
@@ -275,6 +288,10 @@ App.page('dashboard', {
 App.page('my', {
   title: '我的工作台',
   sub: '個人服務量、待辦與專業資格進度',
+  help: [
+    '你個人的服務量、待辦與專業資格進度（繼續教育積分、督導時數）。',
+    '進度條顯示距離執照更新所需時數還差多少；待辦指的是你自己要補的紀錄與報告。',
+  ],
   visible: () => App.isCounselor(),
   async render(el) {
     const d = await GET('/my-dashboard');

@@ -134,11 +134,13 @@ function parseSheet(xml, shared, dateStyles) {
   while ((r = rowRe.exec(xml))) {
     const rowNo = Number(r[1]);
     const cells = [];
-    const cellRe = /<c([^>]*)>([\s\S]*?)<\/c>|<c([^>]*)\/>/g;
+    // 空白儲存格寫成自閉合的 <c .../>；必須先試自閉合，否則 <c ...> 那條會一路吃到
+    // 下一個 </c>，把後面好幾格併成一格（Google 試算表匯出的檔滿是空白格，必踩）
+    const cellRe = /<c([^>]*?)\/>|<c([^>]*)>([\s\S]*?)<\/c>/g;
     let c;
     while ((c = cellRe.exec(r[2]))) {
-      const attrs = c[1] || c[3] || '';
-      const inner = c[2] || '';
+      const attrs = c[1] !== undefined ? c[1] : (c[2] || '');
+      const inner = c[3] || '';
       const ref = /r="([A-Z]+\d+)"/.exec(attrs);
       const pos = ref ? parseRef(ref[1]) : null;
       const type = (/t="([^"]+)"/.exec(attrs) || [])[1] || 'n';
@@ -204,6 +206,30 @@ function readXlsx(buf) {
   };
 }
 
+// 讀取「所有」工作表；回傳 [{ name, rows: [{ row_no, cells }] }]，順序同 Excel 的分頁順序。
+// 諮商室使用表這類一週一張分頁的檔案要靠這個一次讀完，分頁名稱本身就是週次。
+function readSheets(buf) {
+  const files = unzip(buf);
+  const shared = parseSharedStrings(files['xl/sharedStrings.xml'] && files['xl/sharedStrings.xml'].toString('utf8'));
+  const dateStyles = parseDateStyles(files['xl/styles.xml'] && files['xl/styles.xml'].toString('utf8'));
+  const wb = files['xl/workbook.xml'] && files['xl/workbook.xml'].toString('utf8');
+  const rels = files['xl/_rels/workbook.xml.rels'] && files['xl/_rels/workbook.xml.rels'].toString('utf8');
+  if (!wb || !rels) return [{ name: '', rows: parseSheet(files['xl/worksheets/sheet1.xml'].toString('utf8'), shared, dateStyles) }];
+
+  const out = [];
+  for (const m of wb.matchAll(/<sheet[^>]*>/g)) {
+    const name = decodeXml((/name="([^"]*)"/.exec(m[0]) || [])[1] || '');
+    const rid = (/r:id="([^"]+)"/.exec(m[0]) || [])[1];
+    if (!rid) continue;
+    const rel = new RegExp(`<Relationship[^>]*Id="${rid}"[^>]*Target="([^"]+)"`).exec(rels);
+    if (!rel) continue;
+    const path = 'xl/' + rel[1].replace(/^\/?xl\//, '').replace(/^\//, '');
+    if (!files[path]) continue;
+    out.push({ name, rows: parseSheet(files[path].toString('utf8'), shared, dateStyles) });
+  }
+  return out;
+}
+
 // ---- CSV ----
 // 支援引號跳脫與欄位內換行；BOM 一併去除（Excel 另存 CSV 會加）
 function readCsv(buf) {
@@ -248,4 +274,4 @@ function readTable(buf, filename = '') {
   return readCsv(buf);
 }
 
-module.exports = { readTable, readXlsx, readCsv, serialToDate };
+module.exports = { readTable, readXlsx, readSheets, readCsv, serialToDate };

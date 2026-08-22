@@ -80,7 +80,7 @@ router.post('/notes', requireStaff('notes'), requireNoteAccess, (req, res) => {
     req.client.id, appt ? appt.id : null, req.user.id,
     b.date || (appt ? appt.date : today()),
     Number(b.session_no) || last + 1,
-    Number(b.duration_min) || Number(getSetting('session_minutes', '50')),
+    Number(b.duration_min) || require('../plans').defaultSessionMinutes(),
     b.subjective || '', b.objective || '', b.assessment || '', b.plan || '',
     b.intervention || '', b.homework || '', b.risk_flag || 'none', b.risk_note || '');
   // 紀錄中標註風險即同步拉高個案風險等級，讓總覽與個案清單看得到

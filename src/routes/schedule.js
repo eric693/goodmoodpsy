@@ -4,6 +4,7 @@ const { requireStaff } = require('../auth');
 const { sendNotification } = require('../notify');
 const { ensureToken, resetToken } = require('../ics');
 const plans = require('../plans');
+const { endTime, defaultSessionMinutes } = plans;
 
 const router = express.Router();
 
@@ -41,11 +42,6 @@ function cleanMeetingUrl(raw) {
   return url;
 }
 
-function endTime(start, minutes) {
-  const [h, m] = start.split(':').map(Number);
-  const t = h * 60 + m + Number(minutes || 50);
-  return `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
-}
 
 const LIST_SQL = `SELECT a.*, c.name AS client_name, c.code AS client_code, c.risk_level, c.phone AS client_phone,
     u.name AS counselor_name, r.name AS room_name, sp.name AS plan_name, pt.name AS topic_name,
@@ -66,8 +62,13 @@ router.get('/appointments', requireStaff('schedule'), (req, res) => {
   if (counselor_id) { where.push('a.counselor_id = ?'); args.push(Number(counselor_id)); }
   if (client_id) { where.push('a.client_id = ?'); args.push(Number(client_id)); }
   if (status) { where.push('a.status = ?'); args.push(status); }
-  const sql = `${LIST_SQL} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY a.date, a.start_time`;
-  res.json(db.prepare(sql).all(...args));
+  // 沒有任何條件時預設只回近三個月，避免一支網址就把全所的預約撈走
+  if (!where.length) {
+    where.push("a.date >= date('now','localtime','-3 months')");
+  }
+  const limit = Math.min(Math.max(Number(req.query.limit) || 2000, 1), 5000);
+  const sql = `${LIST_SQL} WHERE ${where.join(' AND ')} ORDER BY a.date, a.start_time LIMIT ?`;
+  res.json(db.prepare(sql).all(...args, limit));
 });
 
 // 週檢視：回傳七天的預約，前端排成時間表
@@ -99,7 +100,7 @@ router.post('/appointments', requireStaff('schedule'), (req, res) => {
   if (!b.date || !b.start_time) return res.status(400).json({ error: '請填寫日期與時間' });
   // 方案可有自己的時長（40／50／80 分鐘），未指定結束時間時依方案推算
   const planMinutes = b.plan_id ? plans.resolveFee({ plan_id: b.plan_id }).session_minutes : 0;
-  const end_time = b.end_time || endTime(b.start_time, planMinutes || getSetting('session_minutes', '50'));
+  const end_time = b.end_time || endTime(b.start_time, planMinutes || defaultSessionMinutes());
   const hit = conflictOf({ ...b, end_time });
   if (hit) {
     return res.status(400).json({ error: `${hit.kind}時段衝突：${hit.row.date} ${hit.row.start_time}-${hit.row.end_time} 已有預約` });
@@ -166,7 +167,7 @@ router.put('/appointments/:id', requireStaff('schedule'), (req, res) => {
   if (!a) return res.status(404).json({ error: '找不到此預約' });
   if (a.status === 'done') return res.status(400).json({ error: '已完成的晤談不可修改，請改用取消或新增紀錄' });
   const b = { ...a, ...req.body };
-  if (req.body.start_time && !req.body.end_time) b.end_time = endTime(b.start_time, getSetting('session_minutes', '50'));
+  if (req.body.start_time && !req.body.end_time) b.end_time = endTime(b.start_time, defaultSessionMinutes());
   const hit = conflictOf({ ...b, id: a.id });
   if (hit) return res.status(400).json({ error: `${hit.kind}時段衝突：${hit.row.start_time}-${hit.row.end_time} 已有預約` });
   let meeting_url;
@@ -563,7 +564,7 @@ router.get('/schedule/calendar', requireStaff('schedule'), (req, res) => {
 // 未帶則沿用系統預設的晤談長度。
 function freeSlots(counselorId, date, minutesOverride) {
   const weekday = new Date(date + 'T00:00:00').getDay();
-  const minutes = Number(minutesOverride) || Number(getSetting('session_minutes', '50'));
+  const minutes = Number(minutesOverride) || defaultSessionMinutes();
   const ranges = db.prepare('SELECT * FROM availability WHERE counselor_id = ? AND weekday = ? ORDER BY start_time')
     .all(counselorId, weekday);
   const booked = db.prepare(`SELECT start_time, end_time FROM appointments
@@ -709,7 +710,7 @@ router.get('/waitlist/matches', requireStaff('schedule'), (req, res) => {
   const { counselor_id, date, start_time, end_time } = req.query;
   if (!counselor_id || !date || !start_time) return res.status(400).json({ error: '請指定心理師、日期與時間' });
   const u = db.prepare('SELECT name FROM users WHERE id = ?').get(Number(counselor_id));
-  const end = end_time || endTime(start_time, getSetting('session_minutes', '50'));
+  const end = end_time || endTime(start_time, defaultSessionMinutes());
   res.json(matchWaitlist(Number(counselor_id), date, start_time).map(c => ({
     ...c,
     message: waitlistMessage({ name: c.name, date, start_time, end_time: end, counselor_name: u ? u.name : '' })
@@ -723,7 +724,7 @@ router.post('/waitlist/notify', requireStaff('schedule'), async (req, res) => {
   if (!intake) return res.status(404).json({ error: '找不到此候補案件' });
   if (!b.date || !b.start_time) return res.status(400).json({ error: '請指定釋出的時段' });
   const u = db.prepare('SELECT name FROM users WHERE id = ?').get(Number(b.counselor_id) || 0);
-  const end = b.end_time || endTime(b.start_time, getSetting('session_minutes', '50'));
+  const end = b.end_time || endTime(b.start_time, defaultSessionMinutes());
   const content = String(b.message || '').trim()
     || waitlistMessage({ name: intake.name, date: b.date, start_time: b.start_time, end_time: end, counselor_name: u ? u.name : '' });
   const result = await sendNotification({

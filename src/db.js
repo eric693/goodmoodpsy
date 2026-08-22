@@ -456,8 +456,12 @@ function nextClientCode() {
   const prefix = getSetting('case_code_prefix', 'C');
   const year = new Date().getFullYear();
   const like = `${prefix}${year}%`;
-  const row = db.prepare('SELECT code FROM clients WHERE code LIKE ? ORDER BY code DESC LIMIT 1').get(like);
-  const seq = row ? Number(row.code.slice(-3)) + 1 : 1;
+  // 流水號超過 999 就自然變成 4 位數，所以取號要看「年份之後的整段數字」，
+  // 排序也要先比長度（字典序會把 C2026999 排在 C20261000 前面）
+  const row = db.prepare(
+    'SELECT code FROM clients WHERE code LIKE ? ORDER BY length(code) DESC, code DESC LIMIT 1'
+  ).get(like);
+  const seq = row ? Number(row.code.slice(`${prefix}${year}`.length)) + 1 : 1;
   return `${prefix}${year}${String(seq).padStart(3, '0')}`;
 }
 
@@ -760,6 +764,20 @@ ensureColumns('invoices', {
   plan_id: 'INTEGER REFERENCES service_plans(id)',
   topic_id: 'INTEGER REFERENCES plan_topics(id)'
 });
+
+// 「線上預約申請」原本併在「預約排程」權限底下，拆成獨立模組後，
+// 既有帳號只要有排程權限就一併補上，避免升級後頁面突然不見。
+{
+  const rows = db.prepare("SELECT id, permissions FROM users WHERE role <> 'admin'").all();
+  const upd = db.prepare('UPDATE users SET permissions = ? WHERE id = ?');
+  for (const u of rows) {
+    let mods;
+    try { mods = JSON.parse(u.permissions || '[]'); } catch { continue; }
+    if (!Array.isArray(mods) || !mods.includes('schedule') || mods.includes('bookings')) continue;
+    mods.splice(mods.indexOf('schedule') + 1, 0, 'bookings');
+    upd.run(JSON.stringify(mods), u.id);
+  }
+}
 
 {
   const EXT_SETTING_DEFAULTS = {

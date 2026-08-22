@@ -12,7 +12,17 @@ async function bookingDialog(id, onDone) {
     title: `預約申請：${b.name}`,
     wide: true,
     submitText: '成立預約',
-    body: `<div class="detail-grid">
+    body: `<div class="notice${b.client_id ? '' : ' warn'}" style="margin-bottom:12px">
+        <strong>這頁怎麼用</strong>（由上往下）：
+        <br>① 先看上半部個案填的資料（方案、主題、想約的時間）。
+        <br>② ${b.client_id
+    ? `此人已建檔（${UI.esc(b.client_code || '')}），可直接往下排時間。`
+    : '<strong>此人尚未建檔</strong>，請先按下方的「由申請資料建檔」；沒建檔按「成立預約」只會出現「請先建立或指定個案」。'}
+        <br>③ 選心理師與日期後，「該心理師當日可預約時段」會列出可用時間，點一下就會自動填進開始時間；結束時間依方案時長自動算。
+        <br>④ 費用留空就沿用方案定價。「給個案的回覆」會一併通知個案。
+        <br>⑤ 談成按右下「成立預約」；約不成按「未能成立（通知個案）」。
+      </div>
+      <div class="detail-grid">
         <div><div class="dg-label">聯絡電話</div>${UI.esc(b.phone)}</div>
         <div><div class="dg-label">Email</div>${UI.esc(b.email || '-')}</div>
         <div><div class="dg-label">生日／年齡</div>${UI.esc(b.birth_date || '-')}${b.age !== null ? `（${b.age} 歲）` : ''}</div>
@@ -40,7 +50,7 @@ async function bookingDialog(id, onDone) {
       </div>
       <div style="font-size:12.5px;color:var(--muted);margin-top:6px">
         諮商室由系統自動指派，個案端不會看到空間配置。
-        ${b.client_id ? '' : '此人尚未建檔，成立預約前請先按「建檔」。'}</div>
+        ${b.client_id ? '' : '此人尚未建檔，成立預約前請先按左下「由申請資料建檔」。'}</div>
       <div class="toolbar" style="margin-top:10px">
         ${b.client_id ? '' : '<button class="btn secondary" id="mkclient" type="button">由申請資料建檔</button>'}
         <div class="spacer"></div>
@@ -104,7 +114,12 @@ async function bookingDialog(id, onDone) {
 App.page('bookings', {
   title: '線上預約申請',
   sub: '個案從預約表單或 LINE 送出的申請，確認後才寫進排程',
-  module: 'schedule',
+  help: [
+    '個案從線上表單或 LINE 送出的申請都落在這裡，<strong>先在這裡確認過才會進排程</strong>。',
+    '按「處理」打開申請明細：初次預約的人要先「由申請資料建檔」，再選心理師與時段按「成立預約」；約不成按「未能成立（通知個案）」回覆。',
+    '狀態「待處理」就是還沒處理完的；上方可用關鍵字、狀態、方案、心理師與送出日期篩選。',
+  ],
+  module: 'bookings',
   async render(el) {
     const st = App._bookFilter = Object.assign({ q: '', status: '', plan_id: '', counselor_id: '', from: '', to: '' }, App._bookFilter);
     const qs = new URLSearchParams(Object.entries(st).filter(([, v]) => v)).toString();
@@ -218,6 +233,11 @@ App.page('bookings', {
 App.page('line', {
   title: 'LINE 官方帳號',
   sub: '串接設定、綁定管理與推播；所有通知都以 Flex Message 送出',
+  help: [
+    '先在 LINE Developers 取得 Channel access token 與 secret 填進來，按「儲存憑證」再「驗證連線」。',
+    '接著按「寫回 LINE 並測試」設定 Webhook，個案才能用 LINE 綁定與收通知。',
+    '下方可管理個案／心理師的綁定，以及調整提醒時間與推播開關；未設定憑證時所有通知只會產生文字紀錄，不會對外送出任何個資。',
+  ],
   module: 'settings',
   async render(el) {
     UI.tabs(el, [
@@ -480,6 +500,11 @@ const LINEPAGE = {
 App.page('gform', {
   title: 'Google 表單同步',
   sub: '原本的 Google 預約表單填完後，自動寫入後台的線上預約申請',
+  help: [
+    '讓原本的 Google 預約表單填完後自動寫進後台的「線上預約申請」，櫃檯不用再謄一次。',
+    '步驟：按「複製程式碼」→ 貼到該 Google 表單的 Apps Script → 存檔並授權。密鑰留空表示不開放同步。',
+    '方案／主題／心理師以選項文字自動對應，對不到時仍會收單並標示「需人工指定」，資料不會掉。',
+  ],
   module: 'settings',
   async render(el) {
     const d = await GET('/integrations/google-form');

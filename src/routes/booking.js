@@ -36,7 +36,7 @@ function planPublic(p) {
   return {
     id: p.id, name: p.name, kind: p.kind, appt_type: p.appt_type,
     fee_mode: p.fee_mode, fee: p.fee, fee_options: plans.parseOptions(p.fee_options),
-    session_minutes: p.session_minutes || Number(getSetting('session_minutes', '50')),
+    session_minutes: plans.sessionMinutes(p),
     age_min: p.age_min, age_max: p.age_max, quota_per_year: p.quota_per_year,
     default_mode: p.default_mode || 'onsite',
     subsidy_amount: p.subsidy_amount,
@@ -77,7 +77,7 @@ router.get('/public/booking-slots', publicRead, (req, res) => {
   const planId = Number(req.query.plan_id) || 0;
   if (!counselorId) return res.status(400).json({ error: '請選擇心理師' });
   const plan = planId ? plans.getPlan(planId) : null;
-  const minutes = plan && plan.session_minutes ? plan.session_minutes : Number(getSetting('session_minutes', '50'));
+  const minutes = plans.sessionMinutes(plan);
   const lead = Number(getSetting('booking_lead_days', '1'));
   const max = Number(getSetting('booking_max_days', '45'));
   const from = req.query.from && req.query.from > addDays(today(), lead) ? req.query.from : addDays(today(), lead);
@@ -158,7 +158,7 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
     }
   }
   if (counselorId && date && startTime) {
-    const minutes = plan.session_minutes || Number(getSetting('session_minutes', '50'));
+    const minutes = plans.sessionMinutes(plan);
     const taken = !schedule.freeSlots(counselorId, date, minutes).some(s => s.start_time === startTime);
     if (taken) return res.status(400).json({ error: '此時段剛剛已被預約，請另選時段' });
   }
@@ -240,7 +240,7 @@ const BOOKING_SQL = `SELECT b.*, p.name AS plan_name, p.quota_per_year, t.name A
 
 // 申請可能累積上千筆（舊表單一次匯入），因此支援關鍵字、方案、心理師、
 // 狀態與送出日期區間的篩選，全部在資料庫端過濾，不把整批資料丟給前端。
-router.get('/bookings', requireStaff('schedule'), (req, res) => {
+router.get('/bookings', requireStaff('bookings'), (req, res) => {
   const { status = '', q = '', plan_id = '', counselor_id = '', from = '', to = '', limit = '' } = req.query;
   const where = [], args = [];
   if (status) { where.push('b.status = ?'); args.push(status); }
@@ -270,7 +270,7 @@ router.get('/bookings', requireStaff('schedule'), (req, res) => {
   })));
 });
 
-router.get('/bookings/:id', requireStaff('schedule'), (req, res) => {
+router.get('/bookings/:id', requireStaff('bookings'), (req, res) => {
   const b = db.prepare(`${BOOKING_SQL} WHERE b.id = ?`).get(req.params.id);
   if (!b) return res.status(404).json({ error: '找不到此預約申請' });
   const check = b.plan_id
@@ -290,7 +290,7 @@ router.get('/bookings/:id', requireStaff('schedule'), (req, res) => {
 const BOOKING_EDIT_FIELDS = ['name', 'phone', 'email', 'gender', 'birth_date', 'plan_id', 'topic_id',
   'counselor_id', 'date', 'start_time', 'alt_note', 'mode', 'fee_choice', 'partner_name',
   'main_issue', 'expectation', 'reply_note'];
-router.put('/bookings/:id', requireStaff('schedule'), (req, res) => {
+router.put('/bookings/:id', requireStaff('bookings'), (req, res) => {
   const b = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(req.params.id);
   if (!b) return res.status(404).json({ error: '找不到此預約申請' });
   if (b.status === 'confirmed') {
@@ -316,7 +316,7 @@ router.put('/bookings/:id', requireStaff('schedule'), (req, res) => {
 
 // 刪除申請：測試資料、重複送出或明顯亂填的可以直接移除。
 // 已成立的申請保留，才能追溯這筆晤談是怎麼來的。
-router.delete('/bookings/:id', requireStaff('schedule'), (req, res) => {
+router.delete('/bookings/:id', requireStaff('bookings'), (req, res) => {
   const b = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(req.params.id);
   if (!b) return res.status(404).json({ error: '找不到此預約申請' });
   if (b.status === 'confirmed') {
@@ -356,7 +356,7 @@ router.post('/bookings/:id/create-client', requireStaff('clients'), (req, res) =
 });
 
 // 成立預約：寫進排程、指派諮商室、鎖定方案金額與心理師報酬，並以 LINE 通知雙方
-router.post('/bookings/:id/confirm', requireStaff('schedule'), async (req, res) => {
+router.post('/bookings/:id/confirm', requireStaff('bookings'), async (req, res) => {
   const b = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(req.params.id);
   if (!b) return res.status(404).json({ error: '找不到此預約申請' });
   if (b.status === 'confirmed') return res.status(400).json({ error: '此申請已成立預約' });
@@ -430,7 +430,7 @@ router.post('/bookings/:id/confirm', requireStaff('schedule'), async (req, res) 
     warnings: check.warnings, notify });
 });
 
-router.post('/bookings/:id/reject', requireStaff('schedule'), async (req, res) => {
+router.post('/bookings/:id/reject', requireStaff('bookings'), async (req, res) => {
   const b = db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(req.params.id);
   if (!b) return res.status(404).json({ error: '找不到此預約申請' });
   const reason = String((req.body || {}).reply_note || '').trim();

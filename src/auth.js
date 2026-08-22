@@ -8,6 +8,7 @@ const TOKEN_TTL = '7d';
 // 模組權限清單（非 admin 帳號逐一勾選）
 const MODULES = [
   { key: 'schedule', label: '預約排程' },
+  { key: 'bookings', label: '線上預約申請' },
   { key: 'intake', label: '來電登記與派案' },
   { key: 'clients', label: '個案管理' },
   { key: 'groups', label: '團體諮商' },
@@ -31,9 +32,9 @@ const MODULE_KEYS = MODULES.map(m => m.key);
 
 // 行政人員預設不含晤談紀錄與危機事件（保密考量），建立帳號時可再調整
 const ROLE_DEFAULT_MODULES = {
-  counselor: ['schedule', 'intake', 'clients', 'groups', 'notes', 'plans', 'assessments', 'risk', 'supervision', 'consents', 'hr', 'messages', 'announcements', 'reports'],
-  supervisor: ['schedule', 'intake', 'clients', 'groups', 'notes', 'plans', 'assessments', 'risk', 'supervision', 'consents', 'hr', 'messages', 'announcements', 'reports'],
-  staff: ['schedule', 'intake', 'clients', 'groups', 'assessments', 'consents', 'billing', 'partners', 'messages', 'announcements']
+  counselor: ['schedule', 'bookings', 'intake', 'clients', 'groups', 'notes', 'plans', 'assessments', 'risk', 'supervision', 'consents', 'hr', 'messages', 'announcements', 'reports'],
+  supervisor: ['schedule', 'bookings', 'intake', 'clients', 'groups', 'notes', 'plans', 'assessments', 'risk', 'supervision', 'consents', 'hr', 'messages', 'announcements', 'reports'],
+  staff: ['schedule', 'bookings', 'intake', 'clients', 'groups', 'assessments', 'consents', 'billing', 'partners', 'messages', 'announcements']
 };
 
 // 登入暴力嘗試防護：同一帳號連續失敗 5 次鎖定 15 分鐘

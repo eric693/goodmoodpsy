@@ -338,7 +338,7 @@ const IMPORTS = [
       let end = toTime(row.end_time);
       if (end === null) errors.push(`結束時間「${trim(row.end_time)}」無法辨識`);
       if (start && !end) {
-        const mins = Number(getSetting('session_minutes', '50'));
+        const mins = require('./plans').defaultSessionMinutes();
         const [h, m] = start.split(':').map(Number);
         const t = h * 60 + m + mins;
         end = `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;

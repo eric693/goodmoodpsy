@@ -101,6 +101,11 @@ function rateDialog(plan, r, onDone) {
 App.page('plans', {
   title: '方案設定',
   sub: '方案 × 主題 × 心理師的收費、資格與人次上限，皆可自訂',
+  help: [
+    '一個「方案」＝一組收費規則：晤談時長、價格、資格限制、次數上限、心理師報酬怎麼算。排約選了方案，結束時間與費用就照它算。',
+    '方案底下可再加「主題」（不同主題不同價）與「心理師費率」（同方案不同心理師抽成不同）。',
+    '已經有預約在用的方案不要直接刪，改用「停用」，舊資料才不會對不上。',
+  ],
   module: 'settings',
   async render(el) {
     const plans = await GET('/service-plans');
@@ -239,6 +244,10 @@ App.page('plans', {
 App.page('plan-board', {
   title: '方案人次',
   sub: '各心理師在限量方案的本週／本月已排人次，額滿者顯示下週餘額',
+  help: [
+    '有人次上限的方案（多為公費補助案），各心理師本週／本月已排幾人次一目了然，額滿的會顯示下週餘額。',
+    '上限有調整時按「調整上限」；系統外已用掉的人次用「填已用人次」補登。',
+  ],
   module: 'schedule',
   async render(el) {
     const date = (location.hash.split('/')[1]) || UI.today();
@@ -345,6 +354,11 @@ App.page('plan-board', {
 App.page('income', {
   title: '心理師收支',
   sub: '依方案別結算每位心理師每月的服務量、收入、報酬與所方淨收',
+  help: [
+    '依方案別結算每位心理師每月的服務量、收入、報酬與所方淨收。',
+    '按「明細／列印」看該心理師逐筆晤談的組成，可列印給對方核對。',
+    '只計已完成的晤談。',
+  ],
   module: 'reports',
   async render(el) {
     const month = (location.hash.split('/')[1]) || UI.thisMonth();

@@ -282,6 +282,11 @@ async function renderShiftPanel(el, arg, onChange) {
 App.page('calendar', {
   title: '行事曆',
   sub: '一個月一眼看完晤談、團體、請假與可預約時段',
+  help: [
+    '一個月一眼看完晤談、團體、請假與可預約時段；點任一天可看該日明細，並直接「在這天新增預約」。',
+    '上方可切換月份、只看某位心理師。',
+    '「訂閱網址」可把行事曆掛到手機或 Google 日曆；網址內容不含個案姓名，外流時可按「重設網址」讓舊網址失效。',
+  ],
   module: 'schedule',
   async render(el, arg) {
     const month = /^\d{4}-\d{2}$/.test(arg || '') ? arg : (localStorage.getItem('mc-cal-m') || UI.thisMonth());
@@ -454,6 +459,12 @@ function waitlistCandidateModal(slot) {
 App.page('waitlist', {
   title: '候補遞補',
   sub: '取消釋出的時段，配對候補名單並直接通知',
+  help: [
+    '這裡列出<strong>被取消而空出來的時段</strong>，右邊會算出有幾位候補人選符合。',
+    '按「查看並通知」挑人發通知；對方回覆願意後，再按「直接排約」成立預約。',
+    '想從候補名單反查時間，用「查任意時段候補」。',
+    '候補名單本身是在個案或來電登記那邊登記的。',
+  ],
   module: 'schedule',
   async render(el) {
     const from = localStorage.getItem('mc-wl-from') || UI.today();
@@ -520,6 +531,10 @@ App.page('waitlist', {
 App.page('room-board', {
   title: '諮商室使用表',
   sub: '每間空間一週的使用狀況；每格標明個案與使用心理師',
+  help: [
+    '每一間諮商室一週的使用狀況，每格標明個案與使用心理師，用來確認空間有沒有撞、還有哪些時段空著。',
+    '上方可切換週次。這頁只看不改，要調整請到「預約排程」。',
+  ],
   module: 'schedule',
   async render(el, arg) {
     const start = arg || UI.mondayOf(UI.today());

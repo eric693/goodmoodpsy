@@ -60,6 +60,11 @@ async function scaleFillDialog(clientId, onDone) {
 App.page('assessments', {
   title: '心理量表',
   sub: '篩檢分數僅供臨床判讀參考，不等同診斷',
+  help: [
+    '按「填寫量表」由櫃檯或心理師代填；要請個案自己填，到個案總覽的量表頁「指派量表」產生連結。',
+    '上方列的是已指派但還沒填的，可「取消」。',
+    '分數僅供臨床判讀參考，不等同診斷；超過警戒值會標示風險提醒。',
+  ],
   module: 'assessments',
   async render(el) {
     const [rows, tasks] = await Promise.all([GET('/assessments'), GET('/assessment-tasks?pending=1')]);
@@ -146,6 +151,11 @@ function riskDialog(ev, onDone) {
 App.page('risk', {
   title: '危機事件與通報',
   sub: '自傷風險、兒少保護與家暴等應通報事件的處置與追蹤',
+  help: [
+    '按右下「登錄事件」記下自傷、兒少保護、家暴等事件；「通報表」可產生可列印的通報書。',
+    '處理完按「結案」並填處置結果；已通報的事件不能刪除，只能編輯。',
+    '法定通報有時限，逾期未通報的會標紅提醒。',
+  ],
   module: 'risk',
   async render(el) {
     const draw = async () => {
@@ -219,6 +229,10 @@ App.page('risk', {
 App.page('supervision', {
   title: '督導紀錄',
   sub: '個督／團督時數與內容，供繼續教育與實習時數佐證',
+  help: [
+    '登錄個督／團督的時數與內容，供繼續教育與實習時數佐證。',
+    '按「新增紀錄」填督導日期、形式、時數與重點；「內容」可回看全文。',
+  ],
   module: 'supervision',
   async render(el) {
     const [rows, hours] = await Promise.all([GET('/supervisions'), GET('/supervisions/hours')]);
@@ -385,6 +399,11 @@ function refundListModal(onChange) {
 App.page('billing', {
   title: '收費管理',
   sub: '晤談完成後自動產生收費單；未到依設定比例計費',
+  help: [
+    '晤談狀態改成「已完成」時會自動產生收費單，未到則依系統設定的比例計費，通常不必手動新增。',
+    '收到錢按「收款」並選付款方式；金額錯了在收款前用「編輯」改，開錯整張用「作廢」。',
+    '已收款的可開「收據」或辦「退費」；退費紀錄在右上「退費紀錄」查。',
+  ],
   module: 'billing',
   async render(el) {
     const draw = async () => {
@@ -517,6 +536,11 @@ App.page('billing', {
 App.page('overdue', {
   title: '逾期催繳',
   sub: '未收款超過設定天數的收費單，可整批產生或發送催繳訊息',
+  help: [
+    '列出超過設定天數還沒收到錢的收費單。',
+    '有 LINE／簡訊通道時按「發送催繳」由系統送出，沒有就「複製訊息」自行傳，再按「記錄已催繳」留痕。',
+    '個案當場付款可直接在這裡「收款」。',
+  ],
   module: 'billing',
   async render(el) {
     const draw = async () => {
@@ -648,6 +672,10 @@ App.page('overdue', {
 App.page('packages', {
   title: '方案管理',
   sub: '預付堂數方案；完成晤談時自動扣次',
+  help: [
+    '預付堂數方案（例如先買 10 次）。按「新增方案」設定堂數與金額後，晤談完成時自動扣一次。',
+    '這裡管的是堂數包；收費規則與時長請到「方案設定」。',
+  ],
   module: 'billing',
   async render(el) {
     const rows = await GET('/packages');
@@ -706,6 +734,10 @@ App.page('packages', {
 App.page('messages', {
   title: '個案訊息',
   sub: '行政聯繫用（改期、繳費等）；晤談內容請勿於此討論',
+  help: [
+    '與個案的行政聯繫（改期、繳費、提醒），點「開啟」進對話後送出訊息。',
+    '<strong>晤談內容請勿在此討論</strong>，訊息內容會留在系統紀錄裡。',
+  ],
   module: 'messages',
   async render(el) {
     const list = await GET('/messages');
@@ -740,6 +772,10 @@ App.page('messages', {
 // ---- 公告 ----
 App.page('announcements', {
   title: '公告',
+  help: [
+    '所內公告，全所員工登入後在總覽看得到。',
+    '按「新增公告」發布，設定有效期限後過期會自動收起。',
+  ],
   module: 'announcements',
   async render(el) {
     const rows = await GET('/announcements');
@@ -783,6 +819,10 @@ function pctText(v) { return v === null || v === undefined ? '—' : v + '%'; }
 App.page('reports', {
   title: '統計報表',
   sub: '月報：服務量、個案來源、收入與危機事件',
+  help: [
+    '月報：服務量、個案來源、收入與危機事件統計，可切換月份。',
+    '數字取自已完成的晤談與已開立的收費單，因此當月未結的部分不會計入。',
+  ],
   module: 'reports',
   async render(el) {
     const month = (el.querySelector('#m') && el.querySelector('#m').value) || UI.thisMonth();
@@ -883,6 +923,11 @@ App.page('reports', {
 App.page('users', {
   title: '帳號權限',
   sub: '行政人員預設不含晤談紀錄與危機事件模組',
+  help: [
+    '按「新增帳號」建立員工帳號，勾選這個人能看到哪些模組；未勾的模組連選單都不會出現。',
+    '行政人員預設不含晤談紀錄與危機事件（保密考量），可視需要調整。',
+    '離職請用「停用」而不是刪除，才留得住稽核軌跡。',
+  ],
   module: 'users',
   async render(el) {
     const users = await GET('/users');
@@ -1014,6 +1059,10 @@ App.page('users', {
 App.page('settings', {
   title: '系統設定',
   sub: '所別資訊、收費預設值、選項清單與同意書範本',
+  help: [
+    '所別資訊、收費預設值（如未到計費比例、紀錄補記天數）、各種下拉選項清單與同意書範本都在這裡。',
+    '改動會立即影響全所，每個欄位下方都有說明。',
+  ],
   module: 'settings',
   async render(el) {
     const s = await GET('/settings');
@@ -1202,6 +1251,10 @@ App.page('settings', {
 App.page('consents', {
   title: '同意書總覽',
   sub: '追蹤各個案的必要同意書簽署狀況',
+  help: [
+    '一覽各個案的必要同意書簽署狀況，缺哪張一目了然。',
+    '實際簽署在個案總覽的同意書頁，可現場電子簽名。',
+  ],
   module: 'consents',
   async render(el) {
     const [clients, templates] = await Promise.all([GET('/clients?status=active'), GET('/consent-templates')]);
@@ -1222,6 +1275,10 @@ App.page('consents', {
 App.page('audit', {
   title: '稽核軌跡',
   sub: '誰在何時調閱或異動了哪些紀錄（僅管理者可看）',
+  help: [
+    '誰在何時調閱或異動了哪些紀錄，僅管理者可看，用於個資稽核與爭議釐清。',
+    '可依人員、動作與日期篩選。紀錄不可刪改。',
+  ],
   module: 'settings',
   async render(el) {
     if (App.me.role !== 'admin') { el.innerHTML = '<div class="empty">僅管理者可檢視</div>'; return; }

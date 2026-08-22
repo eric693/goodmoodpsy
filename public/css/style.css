@@ -320,6 +320,23 @@ table.list tr:hover td { background: #f8fbfb; }
 .appt-chip.off { border-left-color: #90a4ae; background: #eceff1; color: var(--muted); cursor: default; }
 .appt-chip.group { border-left-color: var(--accent); background: #fdf3e0; }
 
+/* 週檢視上方的顏色圖例：同一組 .appt-chip 樣式，排成一列不換行 */
+.chip-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin: 2px 0 10px; font-size: 12.5px; color: var(--muted); }
+.chip-legend .appt-chip { margin: 0; padding: 3px 8px; cursor: default; }
+
+/* 每頁上方的「這頁怎麼用」說明，可收合 */
+.page-help { margin: 0 0 14px; padding: 8px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: #f7f9fa; font-size: 13.5px; }
+.page-help > summary { cursor: pointer; font-weight: 600; color: var(--primary); }
+.page-help ul { margin: 8px 0 2px; padding-left: 20px; line-height: 1.8; }
+.page-help li::marker { color: var(--muted); }
+.page-help strong { color: var(--text); }
+
+/* 清單分頁列 */
+.pager { display: flex; align-items: center; gap: 10px; justify-content: flex-end;
+  margin-top: 10px; font-size: 13px; color: var(--muted); }
+
 /* ---- 排班表（我的排班）---- */
 .shift-table th, .shift-table td { text-align: center; }
 .shift-table .shift-time { font-size: 11.5px; color: var(--muted); font-weight: 600; white-space: nowrap; width: 58px; }

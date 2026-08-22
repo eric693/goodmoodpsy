@@ -261,7 +261,7 @@ router.get('/meta', requireStaff(), (req, res) => {
     scales: SCALE_KEYS,
     counselors: db.prepare("SELECT id, name, role, license_type FROM users WHERE active = 1 AND role IN ('counselor','supervisor','admin') ORDER BY id").all(),
     rooms: db.prepare('SELECT id, name FROM rooms WHERE active = 1 ORDER BY id').all(),
-    session_minutes: Number(getSetting('session_minutes', '50')),
+    session_minutes: require('../plans').defaultSessionMinutes(),
     default_fee: Number(getSetting('default_fee', '2000')),
     intake_fee: Number(getSetting('intake_fee', '2500')),
     cancel_hours: Number(getSetting('cancel_hours', '24')),
@@ -290,7 +290,7 @@ router.get('/meta', requireStaff(), (req, res) => {
       id: p.id, name: p.name, kind: p.kind, appt_type: p.appt_type, fee: p.fee, fee_mode: p.fee_mode,
       fee_options: String(p.fee_options || '').split(',').map(Number).filter(Boolean),
       subsidy_amount: p.subsidy_amount, quota_per_year: p.quota_per_year,
-      session_minutes: p.session_minutes || Number(getSetting('session_minutes', '50')),
+      session_minutes: require('../plans').sessionMinutes(p),
       age_min: p.age_min, age_max: p.age_max,
       topics: db.prepare('SELECT id, name, fee FROM plan_topics WHERE plan_id = ? AND active = 1 ORDER BY sort, id').all(p.id)
     })),

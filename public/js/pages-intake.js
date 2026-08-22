@@ -34,6 +34,12 @@ function intakeDialog(row, onDone) {
 App.page('intake', {
   title: '來電登記與派案',
   sub: '來電 → 評估派案 → 初談建檔；滿檔時列入候補',
+  help: [
+    '新來電先按右上「新增來電登記」記下基本資料與主訴，之後在這一列往右走完流程。',
+    '<strong>派案</strong>：指定主責心理師；滿檔時可先列候補。<strong>建檔</strong>：轉成正式個案。<strong>結束</strong>：沒有後續（未回覆、轉介他所等）。',
+    '可先「產生問卷」請對方線上填初談問卷，填完這裡會顯示 BSRS 分數，超標會標⚠。',
+    '高風險來電標紅、等候超過 14 天會示警。',
+  ],
   module: 'intake',
   async render(el) {
     const draw = async () => {
@@ -197,6 +203,11 @@ App.page('intake', {
 App.page('reminders', {
   title: '晤談提醒',
   sub: '設定發送通道後可由系統送出；未設定時產生可複製的訊息供人工發送',
+  help: [
+    '列出接下來需要提醒的晤談。已設定 LINE 或簡訊通道時可按「發送」由系統送出，未設定則按「複製訊息」自行貼到 LINE 傳給個案，再按「標記已通知」。',
+    '「全部發送／複製全部」可一次處理整批。',
+    '提醒提前幾小時發，在系統設定裡調。',
+  ],
   module: 'schedule',
   async render(el) {
     const date = (el.querySelector('#d') && el.querySelector('#d').value) || UI.addDays(UI.today(), 1);
@@ -281,6 +292,11 @@ App.page('reminders', {
 App.page('intake-forms', {
   title: '初談問卷',
   sub: '發出、追蹤與檢視個案自填的初談問卷',
+  help: [
+    '按右上「產生新問卷」取得一組連結，用「連結／傳送」把它給個案自行填寫。',
+    '填完狀態變「已完成」，可「檢視」內容；若這人還沒登記過，可按「轉來電登記」帶進來電流程。',
+    '連結有期限，逾期要重新產生。',
+  ],
   module: 'intake',
   async render(el) {
     const draw = async () => {

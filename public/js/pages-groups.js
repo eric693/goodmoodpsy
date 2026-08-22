@@ -31,6 +31,10 @@ function groupDialog(g, onDone) {
 App.page('groups', {
   title: '團體諮商',
   sub: '團體名單、場次排程與出席；歷程紀錄僅帶領者、督導與管理者可讀',
+  help: [
+    '按「新增團體」建立團體並設定帶領者與期程，再點「管理」加成員、排場次。',
+    '團體歷程紀錄僅帶領者、督導與管理者可讀。',
+  ],
   module: 'groups',
   async render(el) {
     const draw = async () => {
@@ -67,6 +71,11 @@ App.page('groups', {
 
 App.page('group', {
   title: '團體管理',
+  help: [
+    '「加入成員」把個案放進團體，「新增場次」排定每一次的時間與空間（會出現在預約排程上）。',
+    '場次結束後在該場次登記出席，未出席的成員也一併記錄。',
+    '已完成的場次不能刪除。',
+  ],
   module: 'groups',
   async render(el, id) {
     if (!id) return App.go('groups');

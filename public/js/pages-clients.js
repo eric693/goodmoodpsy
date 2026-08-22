@@ -76,13 +76,23 @@ async function clientDialog(c, onDone) {
 App.page('clients', {
   title: '個案管理',
   sub: '個案基本資料與服務狀態；晤談紀錄僅主責心理師、督導與管理者可讀',
+  help: [
+    '個案清單，可搜尋姓名／編號／電話，並依狀態、主責心理師篩選。點「編輯」改基本資料。',
+    '點個案姓名進「個案總覽」，晤談紀錄、處遇計畫、量表、附件、同意書都在那裡。',
+    '不再服務的個案請用「停用」保留紀錄；「永久刪除」僅管理者可用，且無法復原。',
+  ],
   module: 'clients',
   async render(el) {
+    // 個案上千筆時整包送到瀏覽器會明顯拖慢，改成一次一頁
+    const PAGE_SIZE = 100;
+    let page = 1;
     const draw = async () => {
       const q = el.querySelector('#q') ? el.querySelector('#q').value.trim() : '';
       const st = el.querySelector('#st') ? el.querySelector('#st').value : '';
       const cs = el.querySelector('#cs') ? el.querySelector('#cs').value : '';
-      const list = await GET(`/clients?q=${encodeURIComponent(q)}&status=${st}&counselor_id=${cs}`);
+      const r = await GET(`/clients?q=${encodeURIComponent(q)}&status=${st}&counselor_id=${cs}&page=${page}&limit=${PAGE_SIZE}`);
+      const list = r.rows;
+      const pages = Math.max(Math.ceil(r.total / PAGE_SIZE), 1);
       const rows = list.map(c => `<tr>
         <td>${UI.esc(c.code)}</td>
         <td><a href="#client/${c.id}"><strong>${UI.esc(c.name)}</strong></a>
@@ -100,7 +110,15 @@ App.page('clients', {
           ${App.me.role === 'admin' ? `<button class="btn tiny danger" data-del="${c.id}">刪除</button>` : ''}</td></tr>`);
       el.querySelector('#list').innerHTML = UI.table(
         ['編號', '姓名', '年齡／性別', '主責心理師', '狀態', '風險', '最近晤談', '下次預約', '聯絡電話', ''],
-        rows, '沒有符合條件的個案');
+        rows, '沒有符合條件的個案')
+        + (r.total > PAGE_SIZE ? `<div class="pager">
+            <button class="btn tiny secondary" id="pprev"${page <= 1 ? ' disabled' : ''}>上一頁</button>
+            <span>第 ${page} / ${pages} 頁，共 ${r.total} 位</span>
+            <button class="btn tiny secondary" id="pnext"${page >= pages ? ' disabled' : ''}>下一頁</button>
+          </div>` : `<div class="pager"><span>共 ${r.total} 位</span></div>`);
+      const prev = el.querySelector('#pprev'), next = el.querySelector('#pnext');
+      if (prev) prev.onclick = () => { page -= 1; draw(); };
+      if (next) next.onclick = () => { page += 1; draw(); };
       // 基本資料就地編輯，不必先點進個案詳情頁
       el.querySelectorAll('[data-ed]').forEach(b => {
         b.onclick = async () => clientDialog(await GET(`/clients/${b.dataset.ed}`), draw);
@@ -146,9 +164,10 @@ App.page('clients', {
         <div class="spacer"></div><button class="btn" id="add">新增個案</button>
       </div><div id="list"></div>`;
     el.querySelector('#add').onclick = () => clientDialog(null, draw);
-    el.querySelector('#q').oninput = () => { clearTimeout(el._t); el._t = setTimeout(draw, 300); };
-    el.querySelector('#st').onchange = draw;
-    el.querySelector('#cs').onchange = draw;
+    const redraw = () => { page = 1; draw(); };
+    el.querySelector('#q').oninput = () => { clearTimeout(el._t); el._t = setTimeout(redraw, 300); };
+    el.querySelector('#st').onchange = redraw;
+    el.querySelector('#cs').onchange = redraw;
     await draw();
   }
 });
@@ -333,6 +352,11 @@ async function consentDialog(clientId, key, isMinorDoc, onDone) {
 App.page('client', {
   title: '個案總覽',
   sub: '',
+  help: [
+    '上方按鈕是這位個案的常用動作：編輯資料、新增預約、撰寫晤談紀錄、登錄危機事件。',
+    '下方分頁依序是晤談紀錄、處遇計畫、量表、附件、危機事件與同意書。',
+    '晤談紀錄僅主責心理師、督導與管理者可讀；實習生的紀錄要送督導覆核才定稿。',
+  ],
   module: 'clients',
   async render(el, id) {
     if (!id) return App.go('clients');

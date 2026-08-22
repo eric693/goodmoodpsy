@@ -93,6 +93,11 @@ function issueDialog(inv, onDone) {
 App.page('receipts', {
   title: '收據',
   sub: '晤談結束後個案要收據就開一張；事後要補開、補印或重開都在這裡',
+  help: [
+    '上半部是已收款但還沒開收據的收費單，個案要收據就按「開立收據」。',
+    '下半部是已開立的收據：可「檢視／列印」、「LINE 傳給個案」、金額打錯用「編輯」或「重開」，整張不要了按「作廢」。',
+    '作廢的收據會留存不刪除，重開會產生新號碼。',
+  ],
   module: 'billing',
   async render(el) {
     const [data, pending] = await Promise.all([GET('/receipts'), GET('/receipts/pending')]);

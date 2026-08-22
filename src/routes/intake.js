@@ -126,7 +126,7 @@ router.post('/intakes/:id/convert', requireStaff('intake'), (req, res) => {
     // 一併建立初談預約
     if (b.date && b.start_time) {
       const { endTime, conflictOf } = require('./schedule');
-      const end = b.end_time || endTime(b.start_time, require('../db').getSetting('session_minutes', '50'));
+      const end = b.end_time || endTime(b.start_time, require('../plans').defaultSessionMinutes());
       const hit = conflictOf({ date: b.date, start_time: b.start_time, end_time: end, counselor_id: counselorId, room_id: b.room_id });
       if (hit) throw new Error(`${hit.kind}時段衝突：${hit.row.start_time}-${hit.row.end_time} 已有預約`);
       db.prepare(`INSERT INTO appointments (client_id, counselor_id, room_id, date, start_time, end_time,

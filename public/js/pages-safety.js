@@ -141,6 +141,11 @@ async function safetyPlanTab(client, body, refresh) {
 App.page('safety', {
   title: '安全計畫列管',
   sub: '高風險個案是否都有現行安全計畫、是否逾期未檢視',
+  help: [
+    '列出高風險個案是否都有現行安全計畫、是否逾期未檢視，逾期的排在最前面。',
+    '安全計畫本身在個案總覽建立與更新；內容有變動時請「另存新版本」而不是覆蓋，才留得住歷程。',
+    '可「列印」給個案帶回。',
+  ],
   module: 'risk',
   async render(el) {
     const d = await GET('/safety-plans/overview');
@@ -178,6 +183,11 @@ App.page('safety', {
 App.page('notes-review', {
   title: '紀錄覆核',
   sub: '實習心理師的晤談紀錄需經指定督導覆核後才定稿',
+  help: [
+    '實習心理師的晤談紀錄要經指定督導覆核才定稿。',
+    '按「覆核」看內容，通過就「覆核通過並定稿」，要改就「退回補正」並寫明原因。',
+    '下半部是被退回、等實習生修改的紀錄。',
+  ],
   module: 'notes',
   visible: () => App.meta.intern_review && App.me && (App.me.is_supervisor || App.me.is_intern),
   async render(el) {

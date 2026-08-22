@@ -1,4 +1,5 @@
 const express = require('express');
+const compression = require('compression');
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
@@ -14,6 +15,8 @@ const loginRateLimit = rateLimit({ windowMs: 5 * 60 * 1000, max: 30, prefix: 'lo
 
 const app = express();
 app.disable('x-powered-by');
+// gzip：JSON 清單與前端 js/css 都是純文字，壓縮後約剩三成，外網與手機差很多
+app.use(compression());
 // 保留原始 body：LINE Webhook 的簽章要對未經解析的位元組做 HMAC 驗證
 app.use(express.json({ limit: '2mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 

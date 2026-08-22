@@ -36,6 +36,11 @@ function partnerDialog(p, onDone) {
 App.page('partners', {
   title: '合作單位與請款',
   sub: '學校認輔、企業 EAP、社政委託案的契約、用量與月結請款',
+  help: [
+    '先「新增合作單位」建立契約（學校認輔、企業 EAP、社政委託等），設定計價與用量上限。',
+    '月底按「產生月結請款單」把該單位當月的晤談彙整成一張，「對帳單」可列印給對方，收到款再按「狀態」改為已收。',
+    '契約內容有變動時，草稿狀態的請款單可按「依現況重算」。',
+  ],
   module: 'partners',
   async render(el) {
     const [partners, settlements] = await Promise.all([GET('/partners'), GET('/settlements')]);
@@ -169,6 +174,10 @@ App.page('partners', {
 App.page('hr', {
   title: '請假與繼續教育',
   sub: '請假期間不會出現在可預約時段；繼續教育積分供執照更新佐證',
+  help: [
+    '「登錄請假」的期間不會出現在可預約時段，個案端也約不到。',
+    '「登錄積分」記繼續教育時數，供執照更新佐證，可看每人累計。',
+  ],
   module: 'hr',
   async render(el) {
     const [offs, ce, list] = await Promise.all([GET('/time-off'), GET('/ce-summary'), GET('/ce-credits')]);
@@ -247,6 +256,10 @@ App.page('hr', {
 App.page('retention', {
   title: '紀錄保存與歸檔',
   sub: '結案滿保存年限的個案，可依所內政策歸檔或銷毀',
+  help: [
+    '結案滿保存年限的個案會列在這裡，依所內政策決定歸檔或銷毀。',
+    '銷毀不可復原，請先確認法定保存年限（通常自結案起算）。',
+  ],
   module: 'clients',
   async render(el) {
     const d = await GET('/retention');
@@ -325,6 +338,11 @@ function payoutDialog(p, month, onDone) {
 App.page('payouts', {
   title: '報酬與扣繳',
   sub: '心理師鐘點給付、代扣所得稅與二代健保補充保費；年度彙總供申報扣繳憑單',
+  help: [
+    '按「依當月晤談帶入」自動算出每位心理師的鐘點報酬，再逐筆確認；也可「新增報酬單」手動開。',
+    '付款後按「付款」留紀錄；代扣所得稅與二代健保補充保費會一併算出。',
+    '「年度扣繳彙總」供申報扣繳憑單使用。',
+  ],
   module: 'payouts',
   async render(el) {
     const draw = async () => {

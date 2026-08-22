@@ -126,6 +126,11 @@ async function aftercareTab(client, body, refresh) {
 App.page('follow-ups', {
   title: '結案追蹤',
   sub: '結案後的關懷追蹤點，逾期未追蹤列於最前',
+  help: [
+    '結案後的關懷追蹤點（例如結案後 1 個月、3 個月），逾期未追蹤的排最前面。',
+    '聯絡完按「完成追蹤」記下結果；需要再追一次就新增下一個追蹤點。',
+    '追蹤點與轉介紀錄是在個案總覽的結案區建立的。',
+  ],
   module: 'notes',
   async render(el) {
     const d = await GET('/follow-ups');

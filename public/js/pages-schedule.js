@@ -196,6 +196,12 @@ async function apptStatusDialog(a, onDone) {
 App.page('schedule', {
   title: '預約排程',
   sub: '週檢視：同一心理師或諮商室時段衝突會即時擋下；下方可設定每週可預約時段與請假',
+  help: [
+    '<strong>週檢視</strong>：點任一張預約卡可看明細，並做「狀態異動／修改／刪除」。卡片顏色＝預約狀態，對照表在表格上方。',
+    '右上「新增預約」排新的一筆；同一心理師或同一諮商室撞時段會直接擋下。',
+    '下方「排班設定」用格子刷出每週可預約時段，不在格線上的時間（如 13:15-14:05）用「自訂時段」加，請假也在同一區登錄。',
+    '上方下拉可只看某一位心理師。',
+  ],
   module: 'schedule',
   async render(el, arg) {
     let start = arg || localStorage.getItem('mc-week') || UI.today();
@@ -243,6 +249,16 @@ App.page('schedule', {
       `<option value="${o[0]}"${String(o[0]) === filterC ? ' selected' : ''}>${UI.esc(o[1])}</option>`).join('')}</select>
         <div class="spacer"></div>
         <button class="btn" id="add">新增預約</button>
+      </div>
+      <div class="chip-legend">
+        顏色＝預約狀態：
+        <span class="appt-chip booked">已預約</span>
+        <span class="appt-chip arrived">已報到</span>
+        <span class="appt-chip done">已完成</span>
+        <span class="appt-chip no_show">未到</span>
+        <span class="appt-chip cancelled">已取消</span>
+        <span class="appt-chip group">團體</span>
+        <span class="appt-chip off">請假</span>
       </div>
       <div class="table-wrap"><table class="list week-table"><thead><tr>
         ${days.map(dt => `<th>${dt.slice(5)}（${UI.weekdayName(dt)}）${dt === UI.today() ? ' ●' : ''}</th>`).join('')}
@@ -311,6 +327,11 @@ App.page('schedule', {
 App.page('today', {
   title: '今日看板',
   sub: '報到、完成與未到一鍵處理',
+  help: [
+    '今天的每一筆晤談依序列出，個案來了按「狀態」改成<strong>已報到</strong>，談完改<strong>已完成</strong>，沒來改<strong>未到</strong>。',
+    '改成「已完成」才會產生收費單、扣方案堂數，也才會出現在「待補紀錄」；「未到」依系統設定的比例計費。',
+    '上方是今天各諮商室的使用狀況，管理者可在此編輯空間。',
+  ],
   module: 'schedule',
   async render(el) {
     const date = UI.today();
@@ -385,6 +406,11 @@ App.page('today', {
 App.page('notes-pending', {
   title: '待補紀錄與報告',
   sub: '已完成但尚未撰寫的晤談紀錄，以及未完成的衡鑑報告',
+  help: [
+    '已完成但還沒寫紀錄的晤談會留在這裡，按「撰寫紀錄」直接開紀錄表單。',
+    '超過系統設定天數未補的會標紅，代表已逾所內規定的補記期限。',
+    '下半部是尚未完成的衡鑑報告，可「撰寫報告」或「繼續編輯」草稿。',
+  ],
   module: 'notes',
   async render(el) {
     const [d, rp] = await Promise.all([GET('/notes/pending'), GET('/reports/pending').catch(() => null)]);

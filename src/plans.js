@@ -13,6 +13,22 @@ const { db, getSetting, ageYears } = require('./db');
 const COUNTED_STATUSES = ['booked', 'arrived', 'done', 'no_show'];
 const COUNTED_SQL = `('${COUNTED_STATUSES.join("','")}')`;
 
+// 晤談時長只有這一個出處：方案有訂就用方案的，沒有才回到系統設定的預設值。
+// 原本這個 fallback 散在十幾個檔案裡各寫一次，改預設值時很容易漏掉一處。
+function defaultSessionMinutes() {
+  return Number(getSetting('session_minutes', '50')) || 50;
+}
+function sessionMinutes(plan) {
+  const p = plan && typeof plan === 'object' ? plan : getPlan(plan);
+  return Number(p && p.session_minutes) || defaultSessionMinutes();
+}
+// 由開始時間與時長推算結束時間（跨午夜取模，維持 HH:MM）
+function endTime(start, minutes) {
+  const [h, m] = String(start).split(':').map(Number);
+  const t = h * 60 + m + (Number(minutes) || defaultSessionMinutes());
+  return `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+}
+
 function getPlan(id) {
   return db.prepare('SELECT * FROM service_plans WHERE id = ?').get(Number(id) || 0) || null;
 }
@@ -272,6 +288,7 @@ function pickRoom({ date, start_time, end_time, exclude_appointment_id }) {
 }
 
 module.exports = {
+  defaultSessionMinutes, sessionMinutes, endTime,
   COUNTED_STATUSES, getPlan, getTopic, getRate, parseOptions, resolveFee,
   clientUsage, clientUsageAll, counselorLoad, nextWeekHint, weekRange, checkBooking, pickRoom, noShowCharge
 };
