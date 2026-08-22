@@ -116,8 +116,8 @@ router.get('/invoices/:id/receipt', requireStaff('billing'), (req, res) => {
     center_director: getSetting('center_director'),
     center_tax_id: getSetting('center_tax_id'),
     receipt_stamp_enabled: getSetting('receipt_stamp_enabled', '1'),
-    receipt_stamp_note: getSetting('receipt_stamp_note'),
-    receipt_stamp_authority: getSetting('receipt_stamp_authority'),
+    receipt_stamp_note: getSetting('receipt_stamp_note', '本執行費收據印花稅總繳'),
+    receipt_stamp_authority: getSetting('receipt_stamp_authority', '臺南市'),
     receipt_stamp_payer: getSetting('receipt_stamp_payer')
   });
 });
