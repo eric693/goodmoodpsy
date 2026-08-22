@@ -3,14 +3,12 @@
 // 印花稅總繳戳記：內容取自系統設定，與所內用印的戳章一致
 function stampHtml(r) {
   if (String(r.receipt_stamp_enabled ?? '1') === '0') return '';
-  const cell = 'padding:6px 10px;border-left:1px solid #1f3f8f;text-align:center;line-height:1.6';
-  return `<div style="display:flex;justify-content:flex-end">
-    <div style="display:flex;border:1.5px solid #1f3f8f;color:#1f3f8f;font-size:12.5px;font-weight:600">
-      <div style="${cell};border-left:0">${UI.esc(r.center_name || '')}</div>
-      <div style="${cell}">${UI.esc(r.receipt_stamp_note || '')}</div>
-      <div style="${cell}">${UI.esc(r.receipt_stamp_authority || '')}<br>
-        負責總繳人：${UI.esc(r.receipt_stamp_payer || r.center_director || '')}</div>
-    </div>
+  return `<div style="display:inline-block;border:1.5px solid #1f3f8f;color:#1f3f8f;
+      padding:6px 12px;font-size:12.5px;font-weight:600;line-height:1.7;text-align:center">
+    <div>${UI.esc(r.center_name || '')}</div>
+    <div>${UI.esc(r.receipt_stamp_note || '')}</div>
+    <div>${UI.esc(r.receipt_stamp_authority || '')}</div>
+    <div>負責總繳人：${UI.esc(r.receipt_stamp_payer || r.center_director || '')}</div>
   </div>`;
 }
 
