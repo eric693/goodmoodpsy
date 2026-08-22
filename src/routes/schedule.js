@@ -324,9 +324,11 @@ router.get('/rooms/usage', requireStaff('schedule'), (req, res) => {
   const date = req.query.date || today();
   const rooms = db.prepare('SELECT id, name, capacity, note FROM rooms WHERE active = 1 ORDER BY id').all();
   const appts = db.prepare(`SELECT a.room_id, a.start_time, a.end_time, a.status, a.mode,
-      c.name AS client_name, c.code AS client_code, u.name AS counselor_name
+      c.name AS client_name, c.code AS client_code, u.name AS counselor_name,
+      p.name AS plan_name, p.kind AS plan_kind
     FROM appointments a JOIN clients c ON c.id = a.client_id
     LEFT JOIN users u ON u.id = a.counselor_id
+    LEFT JOIN service_plans p ON p.id = a.plan_id
     WHERE a.date = ? AND a.status IN ('booked','arrived','done') ORDER BY a.start_time`).all(date);
   const sessions = db.prepare(`SELECT s.room_id, s.start_time, s.end_time, g.name AS group_name,
       u.name AS counselor_name
@@ -401,9 +403,10 @@ router.get('/rooms/week', requireStaff('schedule'), (req, res) => {
     rooms,
     items: [
       ...appts.map(a => ({
-        kind: 'appointment', room_id: a.room_id, date: a.date,
+        kind: 'appointment', id: a.id, room_id: a.room_id, date: a.date,
         start_time: a.start_time, end_time: a.end_time, status: a.status, mode: a.mode,
-        client: `${a.client_code} ${a.client_name}`, counselor: a.counselor_name || ''
+        client: `${a.client_code} ${a.client_name}`, counselor: a.counselor_name || '',
+        plan: a.plan_name || '', plan_kind: a.plan_kind || ''
       })),
       ...sessions.map(s => ({
         kind: 'group', room_id: s.room_id, date: s.date,

@@ -534,6 +534,8 @@ App.page('room-board', {
   help: [
     '每一間諮商室一週的使用狀況，每格標明個案與使用心理師，用來確認空間有沒有撞、還有哪些時段空著。',
     '上方可切換週次。這頁只看不改，要調整請到「預約排程」。',
+    '格子底色代表方案別（自費白底、市民方案藍底、國軍黃底、青壯粉紅底、EAP 綠底、馬太鞍／北捷土黃底），沒指定方案的以自費白底呈現。',
+    '點任一格晤談可直接開啟修改預約，改完方案底色就會跟著變。',
   ],
   module: 'schedule',
   async render(el, arg) {
@@ -543,6 +545,18 @@ App.page('room-board', {
     const toMin = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
     const label = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
     const from = toMin(d.grid.start), to = toMin(d.grid.end), step = d.grid.step || 30;
+
+    // 格子底色沿用所內原本試算表的方案別配色（見下方圖例）
+    const PLAN_COLORS = [
+      { key: 'self', name: '自費', match: null, bg: '#ffffff', line: '#c8ccd4' },
+      { key: 'citizen', name: '市民方案', match: /市民/, bg: '#dbeafe', line: '#3b82f6' },
+      { key: 'army', name: '國軍', match: /國軍/, bg: '#fef3c7', line: '#eab308' },
+      { key: 'youth', name: '青壯', match: /青壯/, bg: '#fce7f3', line: '#ec4899' },
+      { key: 'eap', name: 'EAP', match: /EAP|員工協助/i, bg: '#dcfce7', line: '#22c55e' },
+      { key: 'mtn', name: '馬太鞍／北捷', match: /馬太鞍|捷運/, bg: '#e3d5a1', line: '#a1863a' }
+    ];
+    // 沒對到任何方案關鍵字（含沒指定方案）一律當自費白底，跟原本試算表一致
+    const planColor = it => PLAN_COLORS.find(c => c.match && c.match.test(it.plan || '')) || PLAN_COLORS[0];
 
     // 每格找出佔用它的那筆晤談；跨多格的晤談每格都標，看得出整段被佔用
     const cellFor = (roomId, date, m) => d.items.find(it => it.room_id === roomId && it.date === date
@@ -557,12 +571,17 @@ App.page('room-board', {
     const it = cellFor(room.id, date, m);
     if (!it) return '<td></td>';
     const head = toMin(it.start_time) === m;   // 只在第一格寫字，後續格子只上色
-    return `<td style="background:${it.kind === 'group' ? 'var(--warn-bg)' : 'var(--primary-light)'};
-        border-left:3px solid ${it.kind === 'group' ? 'var(--warn)' : 'var(--primary)'}">
-      ${head ? `<div style="font-size:12.5px;line-height:1.6">
+    const pc = it.kind === 'group'
+      ? { name: '團體', bg: 'var(--warn-bg)', line: 'var(--warn)' }
+      : planColor(it);
+    return `<td style="background:${pc.bg};border-left:3px solid ${pc.line}${it.id ? ';cursor:pointer' : ''}"
+        ${it.id ? `data-appt="${it.id}" data-appt-date="${it.date}"` : ''}
+        title="${UI.esc(it.plan || (it.kind === 'group' ? '團體' : '未指定方案（以自費白底呈現）'))}${it.id ? '　點一下可改方案' : ''}">
+      ${head ? `<div style="font-size:12.5px;line-height:1.6;color:#1f2430">
         <div><span class="tag" style="font-size:11px">個案</span> <strong>${UI.esc(it.client)}</strong></div>
         <div><span class="tag ok" style="font-size:11px">心理師</span> ${UI.esc(it.counselor)}</div>
-        <div style="color:var(--muted)">${it.start_time}-${it.end_time}${it.mode === 'online' ? '／視訊' : ''}</div>
+        <div style="opacity:.7">${it.start_time}-${it.end_time}${it.mode === 'online' ? '／視訊' : ''}</div>
+        ${it.plan ? `<div style="opacity:.7">${UI.esc(it.plan)}</div>` : ''}
       </div>` : ''}</td>`;
   }).join('')}
         </tr>`);
@@ -586,11 +605,33 @@ App.page('room-board', {
           <span class="tag" style="font-size:11px">個案</span> 來談者　
           <span class="tag ok" style="font-size:11px">心理師</span> 使用心理師</span>
       </div>
+      <div class="card" style="padding:10px 12px">
+        <div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:12.5px">
+          <strong style="font-size:13px">底色代表方案別</strong>
+          ${PLAN_COLORS.map(c => `<span style="display:inline-flex;align-items:center;gap:6px">
+            <span style="width:16px;height:16px;border-radius:3px;background:${c.bg};
+              border:1px solid var(--line);border-left:3px solid ${c.line}"></span>${c.name}</span>`).join('')}
+          <span style="display:inline-flex;align-items:center;gap:6px">
+            <span style="width:16px;height:16px;border-radius:3px;background:var(--warn-bg);
+              border:1px solid var(--line);border-left:3px solid var(--warn)"></span>團體</span>
+          <span style="color:var(--muted)">點格子可改方案</span>
+        </div>
+      </div>
       ${d.unassigned.length ? `<div class="notice warn">
         尚未指定空間的到所晤談：${d.unassigned.map(u =>
     `${u.date.slice(5)} ${u.start_time} ${UI.esc(u.client)}（${UI.esc(u.counselor)}）`).join('、')}
         　請在預約中指定諮商室，否則不會出現在這張表上。</div>` : ''}
       ${d.rooms.length ? d.rooms.map(table).join('') : '<div class="empty">尚未建立諮商室，請至系統設定新增</div>'}`;
+
+    // 點格子直接開修改預約（方案在裡面改），省得再切到預約排程找同一筆
+    el.querySelectorAll('[data-appt]').forEach(td => {
+      td.onclick = async () => {
+        const list = await GET(`/appointments?date=${td.dataset.apptDate}`);
+        const a = list.find(x => x.id === Number(td.dataset.appt));
+        if (a) apptDialog(a, () => App.go('room-board/' + d.start));
+        else UI.toast('找不到這筆預約，請重新整理', true);
+      };
+    });
 
     el.querySelector('#prev').onclick = () => App.go('room-board/' + UI.addDays(d.start, -7));
     el.querySelector('#next').onclick = () => App.go('room-board/' + UI.addDays(d.start, 7));
