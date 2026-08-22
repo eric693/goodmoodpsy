@@ -461,8 +461,8 @@ App.page('billing', {
                   ${r.center_tax_id ? '<br>統一編號：' + UI.esc(r.center_tax_id) : ''}
                   ${r.center_license_no ? '<br>開業執照字號：' + UI.esc(r.center_license_no) : ''}
                   ${r.center_director ? '　負責心理師：' + UI.esc(r.center_director) : ''}</div>
-                <div style="margin-top:22px">收款人：＿＿＿＿＿＿　　（諮商所用印）</div>
-                ${stampHtml(r)}
+                <div style="display:flex;align-items:center;gap:12px;margin-top:22px">
+                  <span>收款人：＿＿＿＿＿＿　　（諮商所用印）</span>${stampHtml(r)}</div>
               </div>
               <button class="btn small secondary" style="margin-top:14px" onclick="window.print()">列印</button>`
           });

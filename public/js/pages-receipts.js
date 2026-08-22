@@ -4,7 +4,7 @@
 function stampHtml(r) {
   if (String(r.receipt_stamp_enabled ?? '1') === '0') return '';
   const cell = 'padding:6px 10px;border-left:1px solid #1f3f8f;text-align:center;line-height:1.6';
-  return `<div style="display:flex;justify-content:flex-end;margin-top:14px">
+  return `<div style="display:flex;justify-content:flex-end">
     <div style="display:flex;border:1.5px solid #1f3f8f;color:#1f3f8f;font-size:12.5px;font-weight:600">
       <div style="${cell};border-left:0">${UI.esc(r.center_name || '')}</div>
       <div style="${cell}">${UI.esc(r.receipt_stamp_note || '')}</div>
@@ -43,11 +43,13 @@ function receiptHtml(r) {
       font-size:20px;font-weight:700;text-align:right">${money(r.amount)}</div>
     ${r.reissue_of ? `<div style="font-size:12.5px;color:#6b7a85">（本張係重開，原收據編號 ${UI.esc(r.reissue_of)}）</div>` : ''}
     ${r.note ? `<div style="font-size:13px;margin-top:6px">備註：${UI.nl2br(r.note)}</div>` : ''}
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:26px;font-size:13.5px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:26px;font-size:13.5px">
       <div>開立人：${UI.esc(r.issuer_name || '')}</div>
-      <div>負責心理師：${UI.esc(r.center_director || '')}　　（用印）</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span>負責心理師：${UI.esc(r.center_director || '')}　　（用印）</span>
+        ${stampHtml(r)}
+      </div>
     </div>
-    ${stampHtml(r)}
     <div style="font-size:12px;color:#6b7a85;margin-top:16px">${UI.esc(r.receipt_footer || '')}</div>
   </div>`;
 }
