@@ -114,7 +114,11 @@ router.get('/invoices/:id/receipt', requireStaff('billing'), (req, res) => {
     center_address: getSetting('center_address'),
     center_license_no: getSetting('center_license_no'),
     center_director: getSetting('center_director'),
-    center_tax_id: getSetting('center_tax_id')
+    center_tax_id: getSetting('center_tax_id'),
+    receipt_stamp_enabled: getSetting('receipt_stamp_enabled', '1'),
+    receipt_stamp_note: getSetting('receipt_stamp_note'),
+    receipt_stamp_authority: getSetting('receipt_stamp_authority'),
+    receipt_stamp_payer: getSetting('receipt_stamp_payer')
   });
 });
 

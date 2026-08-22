@@ -823,7 +823,12 @@ ensureColumns('invoices', {
     // 需要時把代碼從這裡移除即可回復，資料與 API 都還在。
     hidden_modules: 'groups,hr,supervision,partners,overdue,risk,safety',
     receipt_footer: '本收據為心理諮商服務費用憑證，請妥善保存。',
-    receipt_title_default: '心理諮商服務費收據'
+    receipt_title_default: '心理諮商服務費收據',
+    // 印花稅總繳戳記：與所內公文用印相同內容，印在收據右下角
+    receipt_stamp_enabled: '1',
+    receipt_stamp_note: '本執行費收據印花稅總繳',
+    receipt_stamp_authority: '臺南市',
+    receipt_stamp_payer: ''             // 負責總繳人姓名
   };
   const has = db.prepare('SELECT 1 FROM settings WHERE key = ?');
   const ins = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');

@@ -462,6 +462,7 @@ App.page('billing', {
                   ${r.center_license_no ? '<br>開業執照字號：' + UI.esc(r.center_license_no) : ''}
                   ${r.center_director ? '　負責心理師：' + UI.esc(r.center_director) : ''}</div>
                 <div style="margin-top:22px">收款人：＿＿＿＿＿＿　　（諮商所用印）</div>
+                ${stampHtml(r)}
               </div>
               <button class="btn small secondary" style="margin-top:14px" onclick="window.print()">列印</button>`
           });
@@ -1091,6 +1092,9 @@ App.page('settings', {
       ['提醒訊息', [['reminder_template', '晤談提醒範本（{client}{counselor}{date}{weekday}{time}{center}{cancel_hours}{phone}{meeting}）'],
         ['dunning_template', '催繳訊息範本（{client}{date}{item}{amount}{days}{phone}{center}）'],
         ['waitlist_template', '候補遞補通知範本（{name}{date}{weekday}{time}{counselor}{center}{phone}）']]],
+      ['收據印花稅總繳戳記', [['receipt_stamp_enabled', '收據是否印出戳記（1/0）'],
+        ['receipt_stamp_note', '戳記中間文字'], ['receipt_stamp_authority', '總繳所在地（如 臺南市）'],
+        ['receipt_stamp_payer', '負責總繳人姓名（留空則用負責心理師）']]],
       ['候補遞補', [['waitlist_match_days', '視為「近期候補」的天數（僅影響標示）']]],
       ['排班表', [['shift_start', '排班表起始時間'], ['shift_end', '排班表結束時間'],
         ['shift_step', '每格分鐘數'],
@@ -1122,6 +1126,8 @@ App.page('settings', {
       no_show_fee_rate: '未到收原費用的幾成；只有在上方固定收費為 0 時才生效。',
       case_code_prefix: '新建個案的編號開頭，例如 G2026002。',
       receipt_prefix: '收據流水號開頭，例如 GM20260800001。',
+      receipt_stamp_enabled: '填 1 會在收據右下角印出「印花稅總繳」戳記，填 0 則不印。',
+      receipt_stamp_payer: '向稅捐機關登記的印花稅總繳負責人，留空時自動用負責心理師。',
       note_lock_days: '晤談完成後幾天內要寫紀錄；逾期會在「待補紀錄與報告」與總覽以紅字警示。留空視為 7 天。'
     };
     const GROUP_HELP = {
