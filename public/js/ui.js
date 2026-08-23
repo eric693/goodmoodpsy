@@ -71,13 +71,20 @@ const UI = {
       <input name="${name}" type="${type}" value="${UI.esc(value)}" placeholder="${UI.esc(placeholder)}"${step ? ` step="${step}"` : ''}${min !== undefined ? ` min="${min}"` : ''}${max !== undefined ? ` max="${max}"` : ''}>
     </div>`;
   },
+  // 選項一多（個案清單動輒上百筆）就在下拉上方附一個篩選框，打字即時縮小選項，
+  // 不必自己捲。要關掉可傳 search: false。
   select(name, label, options, opts = {}) {
-    const { value = '', full = false } = opts;
+    const { value = '', full = false, search } = opts;
     const inner = options.map(o => {
       const [v, t] = Array.isArray(o) ? o : [o, o];
       return `<option value="${UI.esc(v)}"${String(v) === String(value) ? ' selected' : ''}>${UI.esc(t)}</option>`;
     }).join('');
-    return `<div class="form-row${full ? ' full' : ''}"><label>${UI.esc(label)}</label><select name="${name}">${inner}</select></div>`;
+    const withSearch = search === undefined ? options.length >= 12 : search;
+    const sid = `sel-${name}-${Math.random().toString(36).slice(2, 7)}`;
+    return `<div class="form-row${full ? ' full' : ''}"><label>${UI.esc(label)}</label>
+      ${withSearch ? `<input type="search" class="sel-search" data-sel="${sid}" autocomplete="off"
+        placeholder="輸入關鍵字篩選（姓名、編號皆可）" style="margin-bottom:5px">` : ''}
+      <select name="${name}"${withSearch ? ` id="${sid}"` : ''}>${inner}</select></div>`;
   },
   inputList(name, label, options, opts = {}) {
     const { value = '', placeholder = '', full = false } = opts;
@@ -303,3 +310,31 @@ const TAGCLS = {
 function stateTag(kind, value) {
   return UI.tag((TW[kind] && TW[kind][value]) || value || '-', (TAGCLS[kind] && TAGCLS[kind][value]) || '');
 }
+
+// 下拉篩選框：全域一次綁定，任何用 UI.select 產生的搜尋框都適用（含之後才開的視窗）。
+// 只隱藏不符的 option，不動選項本身，送出的值仍是 select 的 value。
+document.addEventListener('input', e => {
+  const box = e.target.closest && e.target.closest('.sel-search');
+  if (!box) return;
+  const sel = document.getElementById(box.dataset.sel);
+  if (!sel) return;
+  const q = box.value.trim().toLowerCase();
+  let first = null, visible = 0;
+  Array.from(sel.options).forEach((o, i) => {
+    const hit = !q || o.text.toLowerCase().includes(q);
+    o.hidden = !hit;
+    o.disabled = !hit && i > 0;   // 舊版 Safari 不吃 option.hidden，至少讓它點不到
+    if (hit && i > 0) { visible++; if (!first) first = o; }
+  });
+  // 篩到剩一筆就直接選起來，櫃檯打完字可以馬上按確定
+  if (first && visible === 1) sel.value = first.value;
+  else if (q && sel.selectedOptions[0] && sel.selectedOptions[0].hidden) sel.selectedIndex = 0;
+});
+// 在篩選框按 Enter 不要把整張表單送出，先跳到下拉讓人確認選到誰
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.closest && e.target.closest('.sel-search')) {
+    e.preventDefault();
+    const sel = document.getElementById(e.target.dataset.sel);
+    if (sel) sel.focus();
+  }
+});

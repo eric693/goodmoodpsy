@@ -380,9 +380,11 @@ router.get('/rooms/week', requireStaff('schedule'), (req, res) => {
   const end = addDays(start, 6);
   const rooms = db.prepare('SELECT id, name, capacity, note FROM rooms WHERE active = 1 ORDER BY id').all();
   const appts = db.prepare(`SELECT a.id, a.room_id, a.date, a.start_time, a.end_time, a.status, a.mode, a.type,
-      c.name AS client_name, c.code AS client_code, u.name AS counselor_name
+      c.name AS client_name, c.code AS client_code, u.name AS counselor_name,
+      p.name AS plan_name, p.kind AS plan_kind
     FROM appointments a JOIN clients c ON c.id = a.client_id
     LEFT JOIN users u ON u.id = a.counselor_id
+    LEFT JOIN service_plans p ON p.id = a.plan_id
     WHERE a.date BETWEEN ? AND ? AND a.status IN ('booked','arrived','done')
     ORDER BY a.date, a.start_time`).all(start, end);
   const sessions = db.prepare(`SELECT s.id, s.room_id, s.date, s.start_time, s.end_time,

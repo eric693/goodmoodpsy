@@ -828,7 +828,12 @@ ensureColumns('invoices', {
     receipt_stamp_enabled: '1',
     receipt_stamp_note: '本執行費收據印花稅總繳',
     receipt_stamp_authority: '臺南市',
-    receipt_stamp_payer: ''             // 負責總繳人姓名
+    receipt_stamp_payer: '',            // 負責總繳人姓名
+    // 發票章（統一編號章）掃描圖：存 data URI，收據列印時蓋在用印欄旁邊。
+    // 留空就只印文字，不會有破圖。
+    receipt_seal_image: '',
+    // 印花稅總繳章掃描圖：有上傳就用圖，沒有就印上面那組文字戳記
+    receipt_stamp_image: ''
   };
   const has = db.prepare('SELECT 1 FROM settings WHERE key = ?');
   const ins = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)');

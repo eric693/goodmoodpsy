@@ -70,11 +70,19 @@ a { color: var(--primary); text-decoration: none; }
   .layout { flex-direction: column; }
   .sidebar { position: fixed; left: -240px; z-index: 60; transition: left 0.2s; height: 100vh; }
   .sidebar.open { left: 0; box-shadow: 4px 0 20px rgba(0,0,0,0.3); }
+  /* 以 App 方式開啟時（加入主畫面）頂欄會頂到手機的狀態列／瀏海，
+     用 safe-area 把整條頂欄往下推，選單鈕才點得到。 */
   .topbar {
     display: flex; align-items: center; gap: 12px; background: #123a3a; color: #fff;
-    padding: 12px 16px; position: sticky; top: 0; z-index: 50;
+    padding: 12px 16px; padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    position: sticky; top: 0; z-index: 50;
   }
-  .topbar .menu-btn { background: none; border: 1px solid rgba(255,255,255,0.4); color: #fff; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+  .topbar .menu-btn {
+    background: none; border: 1px solid rgba(255,255,255,0.4); color: #fff; border-radius: 6px;
+    padding: 8px 12px; font-size: 15px; cursor: pointer; flex: none;
+  }
+  /* 抽屜本身也要避開狀態列，否則最上面那個項目一樣被蓋住 */
+  .sidebar { padding-top: env(safe-area-inset-top, 0px); }
   .main { padding: 16px 14px 60px; }
   .backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 55; }
   .backdrop.show { display: block; }

@@ -462,7 +462,9 @@ App.page('billing', {
                   ${r.center_license_no ? '<br>開業執照字號：' + UI.esc(r.center_license_no) : ''}
                   ${r.center_director ? '　負責心理師：' + UI.esc(r.center_director) : ''}</div>
                 <div style="display:flex;align-items:center;gap:12px;margin-top:22px">
-                  <span>收款人：＿＿＿＿＿＿　　（諮商所用印）</span>${stampHtml(r)}</div>
+                  <span>收款人：＿＿＿＿＿＿　　（諮商所用印）</span>
+                  ${sealHtml(r, 96)}
+                  ${stampHtml(r)}</div>
               </div>
               <button class="btn small secondary" style="margin-top:14px" onclick="window.print()">列印</button>`
           });
@@ -1143,7 +1145,41 @@ App.page('settings', {
         (String(s[k] || '').length > 40 || k === 'reminder_template' || k === 'shift_quick_fills' || k === 'safety_plan_resources' || k.startsWith('ui_demo') || k === 'ui_portal_note' || k === 'ui_crisis_note' || k.endsWith('_options') || k.endsWith('_types') || k.endsWith('_methods') || k.endsWith('_reasons') || k.endsWith('_channels'))
           ? UI.textarea(k, l, { value: s[k] || '' })
           : UI.input(k, l, { value: s[k] || '' }) + fieldHelp(k)).join('')}</div></div>`).join('') +
-      `<div class="card"><h3>諮商室</h3><div id="rooms"></div></div>
+      `<div class="card"><h3>收據用印</h3>
+         <div style="font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:12px">
+           把實體印章蓋在白紙上拍照或掃描後上傳，開立收據與列印時就會自動蓋在收據上。
+           系統會縮圖並<strong>去掉紙張底色</strong>（只留下印泥的線條，背景透明），所以拍照時紙張泛黃、燈光偏色都沒關係。
+           沒有上傳的章就不印，收據不會出現空白框。</div>
+         <div style="margin-bottom:14px">
+           <div style="font-weight:600;font-size:14px;margin-bottom:4px">發票章（統一編號章）</div>
+           <div style="font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:8px">蓋在收據的「統一編號」欄位上。</div>
+           <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+             <div id="seal-preview" style="min-width:130px;min-height:70px;border:1px dashed var(--border);
+               border-radius:8px;display:flex;align-items:center;justify-content:center;padding:6px;
+               font-size:12.5px;color:var(--muted);background:#fff"></div>
+             <div>
+               <input type="file" id="seal-file" accept="image/*" style="font-size:13px">
+               <button class="btn tiny danger" id="seal-clear" style="margin-left:8px">移除</button>
+               <div id="seal-hint" style="font-size:12.5px;color:var(--muted);margin-top:6px"></div>
+             </div>
+           </div>
+         </div>
+         <div style="margin-bottom:14px">
+           <div style="font-weight:600;font-size:14px;margin-bottom:4px">印花稅總繳章</div>
+           <div style="font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:8px">蓋在收據右下角。<strong>沒有上傳時</strong>會改印上面「收據印花稅總繳戳記」那組欄位組出來的文字方框。</div>
+           <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+             <div id="stamp-preview" style="min-width:130px;min-height:70px;border:1px dashed var(--border);
+               border-radius:8px;display:flex;align-items:center;justify-content:center;padding:6px;
+               font-size:12.5px;color:var(--muted);background:#fff"></div>
+             <div>
+               <input type="file" id="stamp-file" accept="image/*" style="font-size:13px">
+               <button class="btn tiny danger" id="stamp-clear" style="margin-left:8px">移除</button>
+               <div id="stamp-hint" style="font-size:12.5px;color:var(--muted);margin-top:6px"></div>
+             </div>
+           </div>
+         </div>
+       </div>
+       <div class="card"><h3>諮商室</h3><div id="rooms"></div></div>
        <div class="card"><h3>安裝成手機／電腦 App</h3>
          <div style="font-size:13px;color:var(--muted);line-height:1.9;margin-bottom:10px">
            本系統可安裝成 App，開啟後沒有網址列，跟一般 App 一樣從主畫面進入，資料仍即時連線（非離線版）。<br>
@@ -1182,9 +1218,100 @@ App.page('settings', {
       } catch (e) { out.innerHTML = `<span style="color:var(--danger)">${UI.esc(e.message)}</span>`; }
       bk.disabled = false;
     };
+    // 印章上傳：縮到 320px 寬、去掉紙張底色後存成透明 PNG 放進系統設定。
+    // 存圖片而不是檔案路徑，備份資料庫就等於連章一起備份，換機不會掉。
+    {
+      // 有些手機拍的檔案（例如 LINE 存下來的 HEIC 改名成 .jpg）用 <img> 解不開，
+      // 因此先試 createImageBitmap（瀏覽器解碼器較寬鬆），再退回 <img>。
+      const loadBitmap = async f => {
+        if (window.createImageBitmap) {
+          try { return await createImageBitmap(f); } catch (e) { /* 換下一招 */ }
+        }
+        const url = URL.createObjectURL(f);
+        try {
+          return await new Promise((ok, bad) => {
+            const im = new Image();
+            im.onload = () => ok(im);
+            im.onerror = () => bad(new Error('decode'));
+            im.src = url;
+          });
+        } finally { setTimeout(() => URL.revokeObjectURL(url), 5000); }
+      };
+      // 去底色：印泥（深色）留下，紙張（淺色）變透明，中間亮度做漸層才不會鋸齒。
+      // 以整張圖較亮的那一端當紙張基準，泛黃、逆光、白平衡不準都能吃。
+      const dropBackground = im => {
+        const w = Math.min(320, im.width), h = Math.round(im.height * w / im.width);
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const ctx = cv.getContext('2d');
+        ctx.drawImage(im, 0, 0, w, h);
+        const d = ctx.getImageData(0, 0, w, h), px = d.data;
+        const lum = i => 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+        // 取亮度的第 85 百分位當紙張亮度，第 10 百分位當印泥亮度
+        const hist = new Array(256).fill(0);
+        for (let i = 0; i < px.length; i += 4) hist[Math.round(lum(i))]++;
+        const total = px.length / 4;
+        const pct = p => { let n = 0; for (let v = 0; v < 256; v++) { n += hist[v]; if (n >= total * p) return v; } return 255; };
+        const paper = Math.max(pct(0.85), 60), ink = Math.min(pct(0.10), paper - 20);
+        const hi = paper * 0.92, lo = ink + (paper - ink) * 0.35;   // hi 以上全透明，lo 以下全不透明
+        for (let i = 0; i < px.length; i += 4) {
+          const L = lum(i);
+          let a = L >= hi ? 0 : L <= lo ? 255 : Math.round(255 * (hi - L) / (hi - lo));
+          px[i + 3] = a;
+          if (a) {   // 把印泥壓深一點，去底後才不會看起來灰灰的
+            const k = 0.75;
+            px[i] = Math.round(px[i] * k); px[i + 1] = Math.round(px[i + 1] * k); px[i + 2] = Math.round(px[i + 2] * k);
+          }
+        }
+        ctx.putImageData(d, 0, 0);
+        return cv.toDataURL('image/png');
+      };
+      // 兩顆章共用同一套上傳流程，只有設定鍵不同
+      const bindSeal = (id, key, confirmMsg) => {
+        const box = el.querySelector(`#${id}-preview`);
+        const hint = el.querySelector(`#${id}-hint`);
+        const draw = v => {
+          box.innerHTML = v
+            ? `<img src="${UI.esc(v)}" alt="印章" style="max-width:180px;max-height:110px">`
+            : '尚未上傳';
+        };
+        draw(s[key] || '');
+        const save = async v => {
+          await PUT('/settings', { [key]: v });
+          s[key] = v;
+          draw(v);
+          UI.toast(v ? '已更新' : '已移除');
+        };
+        el.querySelector(`#${id}-file`).onchange = async ev => {
+          const f = ev.target.files[0];
+          if (!f) return;
+          hint.textContent = '處理中...';
+          try {
+            const im = await loadBitmap(f).catch(() => {
+              throw new Error('這個圖檔瀏覽器解不開，請改存成 JPG 或 PNG 再上傳。');
+            });
+            await save(dropBackground(im));
+            hint.textContent = '已去除紙張底色';
+          } catch (e) {
+            hint.innerHTML = `<span style="color:var(--danger)">${UI.esc(e.message)}</span>`;
+          }
+          ev.target.value = '';
+        };
+        el.querySelector(`#${id}-clear`).onclick = async () => {
+          if (!s[key]) return UI.toast('目前沒有這顆章');
+          if (!await UI.confirm(confirmMsg)) return;
+          await save('');
+        };
+      };
+      bindSeal('seal', 'receipt_seal_image', '移除發票章？之後收據就不會蓋這顆章。');
+      bindSeal('stamp', 'receipt_stamp_image', '移除印花稅總繳章？之後會改印文字戳記。');
+    }
+
     el.querySelector('#save').onclick = async () => {
       const data = {};
-      el.querySelectorAll('.card input[name], .card textarea[name]').forEach(i => { data[i.name] = i.value; });
+      el.querySelectorAll('.card input[name], .card textarea[name]').forEach(i => {
+        if (i.type !== 'file') data[i.name] = i.value;
+      });
       await PUT('/settings', data);
       UI.toast('已儲存，重新整理後生效');
     };

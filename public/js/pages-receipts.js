@@ -3,6 +3,11 @@
 // 印花稅總繳戳記：內容取自系統設定，與所內用印的戳章一致
 function stampHtml(r) {
   if (String(r.receipt_stamp_enabled ?? '1') === '0') return '';
+  // 有上傳實體印花章的掃描圖就直接蓋圖，沒有才用文字戳記
+  if (r.receipt_stamp_image) {
+    return `<img src="${UI.esc(r.receipt_stamp_image)}" alt="印花稅總繳章"
+      style="width:150px;height:auto;mix-blend-mode:multiply">`;
+  }
   return `<div style="display:inline-block;border:1.5px solid #1f3f8f;color:#1f3f8f;
       padding:6px 12px;font-size:12.5px;font-weight:600;line-height:1.7;text-align:center">
     <div>${UI.esc(r.center_name || '')}</div>
@@ -10,6 +15,13 @@ function stampHtml(r) {
     <div>${UI.esc(r.receipt_stamp_authority || '')}</div>
     <div>負責總繳人：${UI.esc(r.receipt_stamp_payer || r.center_director || '')}</div>
   </div>`;
+}
+
+// 發票章（統一編號章）：後台上傳的掃描圖，沒上傳就不印，不會出現破圖
+function sealHtml(r, size) {
+  if (!r.receipt_seal_image) return '';
+  return `<img src="${UI.esc(r.receipt_seal_image)}" alt="諮商所發票章"
+    style="width:${size || 108}px;height:auto;mix-blend-mode:multiply">`;
 }
 
 function receiptHtml(r) {
@@ -29,7 +41,9 @@ function receiptHtml(r) {
       <tr><td style="width:110px;color:#6b7a85">收據編號</td><td><strong>${UI.esc(r.receipt_no)}</strong></td>
         <td style="width:80px;color:#6b7a85">日期</td><td>${UI.esc(r.date)}</td></tr>
       <tr><td style="color:#6b7a85">抬頭</td><td>${UI.esc(r.title || r.client_name)}</td>
-        <td style="color:#6b7a85">統一編號</td><td>${UI.esc(r.tax_id || '－')}</td></tr>
+        <td style="color:#6b7a85">統一編號</td>
+        <td><div style="display:flex;align-items:center;gap:10px">
+          <span>${UI.esc(r.tax_id || '－')}</span>${sealHtml(r, 96)}</div></td></tr>
       <tr><td style="color:#6b7a85">個案編號</td><td>${UI.esc(r.client_code || '')}</td>
         <td style="color:#6b7a85">服務日期</td><td>${UI.esc(r.service_date || r.date)}</td></tr>
       <tr><td style="color:#6b7a85">服務項目</td><td colspan="3">${UI.esc(r.item)}
