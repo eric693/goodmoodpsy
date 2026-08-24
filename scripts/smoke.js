@@ -241,6 +241,28 @@ function startServer() {
     });
     apptId = r.id;
   });
+  await test('改成 80 分鐘的方案時，結束時間跟著重算', async () => {
+    // 方案各有時長（40／50／80 分），改方案卻沿用舊的結束時間，
+    // 行事曆就會出現「伴侶 80 分鐘」卻只排 50 分鐘的格子。
+    const plan = await admin.ok('POST', '/api/service-plans', {
+      name: '時長測試方案（80 分鐘）', kind: 'self', fee: 3000, session_minutes: 80
+    });
+    const day = addDays(monday, 35);
+    const a = await lin.ok('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: day, start_time: '09:00' });
+    const fetch1 = (await admin.ok('GET', `/api/appointments?date=${day}`)).find(x => x.id === a.id);
+    equal(fetch1.end_time, '09:50', '未指定方案時用系統預設 50 分鐘');
+    await admin.ok('PUT', `/api/appointments/${a.id}`, { plan_id: plan.id });
+    const after = (await admin.ok('GET', `/api/appointments?date=${day}`)).find(x => x.id === a.id);
+    equal(after.end_time, '10:20', '改成 80 分鐘方案後結束時間應為 10:20');
+    // 只改備註不該動到刻意調整過的時長
+    await admin.ok('PUT', `/api/appointments/${a.id}`, { plan_id: plan.id, end_time: '11:00' });
+    await admin.ok('PUT', `/api/appointments/${a.id}`, { plan_id: plan.id, note: '只改備註' });
+    const kept = (await admin.ok('GET', `/api/appointments?date=${day}`)).find(x => x.id === a.id);
+    equal(kept.end_time, '11:00', '沒改時間與方案時，手動調整過的時長要保留');
+    await admin.ok('DELETE', `/api/appointments/${a.id}`);
+    await admin.ok('DELETE', `/api/service-plans/${plan.id}`);
+  });
   await test('同一心理師時段衝突被擋', () =>
     lin.fails('POST', '/api/appointments',
       { client_id: clientId, counselor_id: 2, date: monday, start_time: '14:00' }, '心理師'));
