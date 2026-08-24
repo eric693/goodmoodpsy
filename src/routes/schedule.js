@@ -167,7 +167,15 @@ router.put('/appointments/:id', requireStaff('schedule'), (req, res) => {
   if (!a) return res.status(404).json({ error: '找不到此預約' });
   if (a.status === 'done') return res.status(400).json({ error: '已完成的晤談不可修改，請改用取消或新增紀錄' });
   const b = { ...a, ...req.body };
-  if (req.body.start_time && !req.body.end_time) b.end_time = endTime(b.start_time, defaultSessionMinutes());
+  // 改時間或改方案時要重算結束時間：方案各有自己的時長（40／50／80 分鐘），
+  // 原本一律用系統預設 50 分，導致把預約改成 80 分鐘的伴侶方案後仍顯示 20:00-20:50。
+  // 只在時間或方案真的變動時重算，避免蓋掉刻意手動調整過的時長。
+  const planChanged = req.body.plan_id !== undefined
+    && (Number(req.body.plan_id) || 0) !== (Number(a.plan_id) || 0);
+  if (!req.body.end_time && (req.body.start_time || planChanged)) {
+    const planMinutes = b.plan_id ? plans.resolveFee({ plan_id: b.plan_id }).session_minutes : 0;
+    b.end_time = endTime(b.start_time, planMinutes || defaultSessionMinutes());
+  }
   const hit = conflictOf({ ...b, id: a.id });
   if (hit) return res.status(400).json({ error: `${hit.kind}時段衝突：${hit.row.start_time}-${hit.row.end_time} 已有預約` });
   let meeting_url;
