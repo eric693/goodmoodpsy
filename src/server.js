@@ -135,6 +135,35 @@ app.get(['/sw.js', '/manifest.json', '/portal.manifest.json'], (req, res, next) 
   next();
 });
 
+// 前端改版後，瀏覽器仍會拿快取裡的舊 js/css（max-age 1h），櫃檯常因此看不到新功能、
+// 只能請人硬重整。改成：HTML 一律不快取，且頁面裡的 /js、/css 網址自動帶上以檔案 mtime 算出的
+// 版本號；檔案一改網址就變，瀏覽器自然會抓新的，靜態檔本身仍可安心長快取。
+const PUBLIC_DIR = path.join(__dirname, '..', 'public');
+let assetVerCache = { at: 0, v: '0' };
+function assetVersion() {
+  if (Date.now() - assetVerCache.at < 5000) return assetVerCache.v;
+  let newest = 0;
+  for (const dir of ['js', 'css']) {
+    const full = path.join(PUBLIC_DIR, dir);
+    for (const f of fs.readdirSync(full)) {
+      const st = fs.statSync(path.join(full, f));
+      if (st.mtimeMs > newest) newest = st.mtimeMs;
+    }
+  }
+  assetVerCache = { at: Date.now(), v: String(Math.floor(newest)) };
+  return assetVerCache.v;
+}
+app.get(/^\/(?:[\w-]+\.html)?$/, (req, res, next) => {
+  const name = req.path === '/' ? 'index.html' : req.path.slice(1);
+  const file = path.join(PUBLIC_DIR, name);
+  if (!fs.existsSync(file)) return next();
+  const v = assetVersion();
+  const html = fs.readFileSync(file, 'utf8')
+    .replace(/(src|href)="(\/(?:js|css)\/[^"?]+)"/g, (m, attr, url) => `${attr}="${url}?v=${v}"`);
+  res.set('Cache-Control', 'no-cache');
+  res.type('html').send(html);
+});
+
 app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h', index: 'index.html' }));
 
 app.use('/api', (req, res) => res.status(404).json({ error: '找不到此 API' }));
