@@ -14,7 +14,7 @@ const pi = process.argv.indexOf('--plan');
 const onlyPlan = pi > -1 ? Number(process.argv[pi + 1]) : null;
 const fallback = Number(getSetting('session_minutes', '50')) || 50;
 
-const rows = db.prepare(`SELECT a.id, a.date, a.start_time, a.end_time, a.plan_id,
+const rows = db.prepare(`SELECT a.id, a.date, a.start_time, a.end_time, a.plan_id, a.counselor_id, a.room_id,
     p.name AS plan_name, p.session_minutes
   FROM appointments a JOIN service_plans p ON p.id = a.plan_id
   WHERE a.date >= date('now','localtime') AND a.status IN ('booked','arrived')
@@ -26,12 +26,33 @@ const endOf = (start, mins) => {
   const t = h * 60 + m + mins;
   return `${String(Math.floor(t / 60) % 24).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 };
-const fix = rows.map(a => ({ ...a, want: endOf(a.start_time, a.session_minutes || fallback) }))
+const want = rows.map(a => ({ ...a, want: endOf(a.start_time, a.session_minutes || fallback) }))
   .filter(a => a.want !== a.end_time);
+
+// 拉長時長可能撞到後面那一筆（同心理師或同諮商室），這種就跳過不改，
+// 由所方自己決定要移到幾點，程式不擅自動別人的時段。
+const clash = db.prepare(`SELECT a.id, a.start_time, a.end_time, c.name AS client
+  FROM appointments a JOIN clients c ON c.id = a.client_id
+  WHERE a.date = ? AND a.id <> ? AND a.status IN ('booked','arrived')
+    AND (a.counselor_id = ? OR (a.room_id IS NOT NULL AND a.room_id = ?))
+    AND a.start_time < ? AND a.end_time > ?`);
+const fix = [], skip = [];
+for (const a of want) {
+  const hit = a.want > a.end_time
+    ? clash.get(a.date, a.id, a.counselor_id, a.room_id, a.want, a.start_time) : null;
+  if (hit) skip.push({ ...a, hit }); else fix.push(a);
+}
 
 console.log(`檢查 ${rows.length} 筆未來預約，需修正 ${fix.length} 筆：`);
 for (const a of fix) {
   console.log(`  #${a.id} ${a.date} ${a.start_time} ${a.end_time} → ${a.want}　${a.plan_name}`);
+}
+if (skip.length) {
+  console.log(`\n跳過 ${skip.length} 筆（拉長後會與後一筆重疊，請人工處理）：`);
+  for (const a of skip) {
+    console.log(`  #${a.id} ${a.date} ${a.start_time} ${a.end_time} → ${a.want}　${a.plan_name}`
+      + `　卡到 #${a.hit.id} ${a.hit.start_time}-${a.hit.end_time} ${a.hit.client}`);
+  }
 }
 if (!fix.length) process.exit(0);
 if (!apply) { console.log('\n（試跑，未寫入。加 --apply 才會實際更新）'); process.exit(0); }
