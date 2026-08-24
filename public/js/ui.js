@@ -83,7 +83,7 @@ const UI = {
     const sid = `sel-${name}-${Math.random().toString(36).slice(2, 7)}`;
     return `<div class="form-row${full ? ' full' : ''}"><label>${UI.esc(label)}</label>
       ${withSearch ? `<input type="search" class="sel-search" data-sel="${sid}" autocomplete="off"
-        placeholder="輸入關鍵字篩選（姓名、編號皆可）" style="margin-bottom:5px">` : ''}
+        placeholder="在這裡打字篩選（姓名或編號）" style="margin-bottom:5px">` : ''}
       <select name="${name}"${withSearch ? ` id="${sid}"` : ''}>${inner}</select></div>`;
   },
   inputList(name, label, options, opts = {}) {

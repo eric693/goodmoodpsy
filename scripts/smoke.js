@@ -719,8 +719,9 @@ function startServer() {
       const u = usage.rows.find(r => r.plan_id === youthPlanId);
       equal(u.used, 3, '已用次數');
       equal(u.remaining, 0, '剩餘次數');
+      // 第四次必須落在與前三次同一年度，額度是按年度計算；用 128 天在年底跑會跨年而誤判
       const blocked = await admin.fails('POST', '/api/appointments', {
-        client_id: planClientId, counselor_id: lins.id, date: nextWeekday(1, 128), start_time: '07:00',
+        client_id: planClientId, counselor_id: lins.id, date: nextWeekday(1, 121), start_time: '07:00',
         plan_id: youthPlanId
       }, '額度');
       assert(/額度已用完/.test(blocked.error || ''), '錯誤訊息應說明額度用完：' + JSON.stringify(blocked));
