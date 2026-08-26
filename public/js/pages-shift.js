@@ -618,10 +618,21 @@ App.page('room-board', {
         </div>
       </div>
       ${d.unassigned.length ? `<div class="notice warn">
-        尚未指定空間的到所晤談：${d.unassigned.map(u =>
-    `${u.date.slice(5)} ${u.start_time} ${UI.esc(u.client)}（${UI.esc(u.counselor)}）`).join('、')}
-        　請在預約中指定諮商室，否則不會出現在這張表上。</div>` : ''}
+        尚未指定空間的到所晤談（點一下直接補指定）：${d.unassigned.map(u =>
+    `<button type="button" class="linkish" data-un="${u.id}" data-un-date="${u.date}">${u.date.slice(5)}
+      ${u.start_time} ${UI.esc(u.client)}（${UI.esc(u.counselor)}）</button>`).join('、')}
+        　沒指定諮商室就不會出現在這張表上。</div>` : ''}
       ${d.rooms.length ? d.rooms.map(table).join('') : '<div class="empty">尚未建立諮商室，請至系統設定新增</div>'}`;
+
+    // 提醒列的每一筆都可以直接點開該預約，不必自己翻到那一週再找
+    el.querySelectorAll('[data-un]').forEach(b => {
+      b.onclick = async () => {
+        const list = await GET(`/appointments?date=${b.dataset.unDate}`);
+        const a = list.find(x => x.id === Number(b.dataset.un));
+        if (a) apptDialog(a, () => App.go('room-board/' + d.start));
+        else UI.toast('找不到這筆預約，請重新整理', true);
+      };
+    });
 
     // 點格子直接開修改預約（方案在裡面改），省得再切到預約排程找同一筆
     el.querySelectorAll('[data-appt]').forEach(td => {

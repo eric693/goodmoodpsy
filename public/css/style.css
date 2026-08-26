@@ -166,6 +166,13 @@ table.list tr:hover td { background: #f8fbfb; }
 }
 .form-row input.sel-search::placeholder { color: var(--primary-dark); opacity: .75; }
 .form-row input.sel-search:focus { border-style: solid; background-color: #fff; }
+
+/* 提醒文字裡可點的項目：外觀是連結，實際是按鈕（要跑 JS 而不是換頁） */
+.linkish {
+  background: none; border: 0; padding: 0; font: inherit; color: inherit;
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.linkish:hover { color: var(--primary-dark); }
 .form-row input:focus, .form-row select:focus, .form-row textarea:focus { outline: 2px solid var(--primary-light); border-color: var(--primary); }
 
 /* ---- Modal ---- */

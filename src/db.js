@@ -812,7 +812,9 @@ ensureColumns('invoices', {
     room_auto_assign: '1',
     room_hide_from_client: '1',
     // ---- 方案人次上限的預設值（各方案可自訂覆寫）----
-    plan_default_week_limit: '6',
+    // 預設不限：只有真的有名額限制的補助方案（如青壯方案一週 6 人次）才在該方案自己設定，
+    // 否則連自費的個別諮商都會被這個預設值擋住。
+    plan_default_week_limit: '0',
     plan_default_month_limit: '0',
     plan_quota_enforce: '1',            // 1 超額直接擋下；0 只警示
     // ---- 收據 ----

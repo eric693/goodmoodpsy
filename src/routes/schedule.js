@@ -426,7 +426,8 @@ router.get('/rooms/week', requireStaff('schedule'), (req, res) => {
     ],
     // 到所卻沒指定空間的晤談：這張表上看不到，另外列出來提醒補指定
     unassigned: appts.filter(a => !a.room_id && a.mode !== 'online').map(a => ({
-      date: a.date, start_time: a.start_time,
+      // 帶上 id，畫面上那條提醒才能點一下直接開該筆預約去補指定空間
+      id: a.id, date: a.date, start_time: a.start_time,
       client: `${a.client_code} ${a.client_name}`, counselor: a.counselor_name || ''
     }))
   });
