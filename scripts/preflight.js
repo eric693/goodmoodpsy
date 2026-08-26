@@ -77,6 +77,51 @@ const backups = fs.existsSync(backupDir)
 check(backups.length > 0, '尚無任何每日備份檔');
 info.push(`備份檔 ${backups.length} 份，最新：${backups[backups.length - 1] || '無'}`);
 
+// ---- 帳號密碼 ----
+// 建置時的預設密碼若沒改就上線，等於門沒鎖：這是全所個案資料，一律列為阻擋項目。
+{
+  const bcrypt = require('bcryptjs');
+  const COMMON = ['mindcare123', '123456', '1234', '12345678', 'password', 'abc123'];
+  const weak = [];
+  for (const u of db.prepare('SELECT username, name, password_hash FROM users WHERE active = 1').all()) {
+    const hit = COMMON.concat(u.username).find(pw => {
+      try { return bcrypt.compareSync(pw, u.password_hash); } catch { return false; }
+    });
+    if (hit) weak.push(`${u.name}（${u.username}）密碼仍是「${hit}」`);
+  }
+  check(weak.length === 0, `有帳號沿用預設或過於簡單的密碼，請先改掉：${weak.join('、')}`);
+}
+
+// ---- 異地備份 ----
+// 同一台主機若有多套系統寫到同一個備份目錄，檔名相同會互相覆蓋，
+// 出事時才發現備份是別人的資料。
+{
+  // 正式站的環境變數寫在 ecosystem.config.js，直接跑這支腳本時要自己讀進來，
+  // 否則會去檢查預設目錄而誤判。
+  let envMirror = process.env.MINDCARE_BACKUP_MIRROR;
+  if (envMirror === undefined) {
+    try { envMirror = require('../ecosystem.config.js').apps[0].env.MINDCARE_BACKUP_MIRROR; } catch { /* 沒有就算了 */ }
+  }
+  const mirror = envMirror !== undefined ? envMirror : '/root/backups/mindcare';
+  if (mirror) {
+    const latest = fs.existsSync(mirror)
+      ? fs.readdirSync(mirror).filter(f => /^mindcare-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort().pop() : null;
+    check(latest, `異地備份目錄 ${mirror} 裡沒有備份檔`, 'warn');
+    if (latest) {
+      let n = -1;
+      try {
+        const B = require('better-sqlite3')(path.join(mirror, latest), { readonly: true });
+        n = B.prepare('SELECT COUNT(*) c FROM clients').get().c;
+        B.close();
+      } catch { /* 讀不起來也算異常 */ }
+      const here = db.prepare('SELECT COUNT(*) c FROM clients').get().c;
+      check(n >= here * 0.9, `異地備份 ${latest} 只有 ${n} 位個案，本機有 ${here} 位，`
+        + `可能被同名系統的備份覆蓋（目錄：${mirror}）`);
+      info.push(`異地備份：${mirror}／${latest}（${n} 位個案）`);
+    }
+  }
+}
+
 // ---- 展示資料 ----
 const demoUsers = db.prepare("SELECT name FROM users WHERE username IN ('lin','chen','wu','office') AND active = 1").all();
 const demoClients = db.prepare("SELECT COUNT(*) n FROM clients WHERE code LIKE 'C%'").get().n;
