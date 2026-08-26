@@ -10,7 +10,10 @@ module.exports = {
       NODE_ENV: 'production',
       PORT: 3340,
       // 主機時區是 UTC；不設這個，資料庫寫入的時間會少 8 小時
-      TZ: 'Asia/Taipei'
+      TZ: 'Asia/Taipei',
+      // 異地備份要用本所專屬目錄：預設的 /root/backups/mindcare 與同一台主機上
+      // 另一套 mindcare 同名，兩邊的備份檔名一樣會互相覆蓋。
+      MINDCARE_BACKUP_MIRROR: '/root/backups/goodmoodpsy'
     },
     max_restarts: 10,
     time: true
