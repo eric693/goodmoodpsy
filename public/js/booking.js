@@ -306,6 +306,12 @@ const BK = {
       </div>
       ${r.line_add_friend_url ? `<a class="btn" style="margin-top:14px;display:inline-block"
         href="${UI.esc(r.line_add_friend_url)}" target="_blank" rel="noopener">加入 LINE 接收提醒</a>` : ''}
+      ${r.portal_url ? `<div style="margin-top:14px">
+        <a class="btn secondary" style="display:inline-block"
+          href="${UI.esc(r.portal_url)}" target="_blank" rel="noopener">前往個案專區</a>
+        <div class="bk-note" style="margin-top:8px">
+          個案專區可查看自己的預約、線上填量表與同意書，並綁定 LINE 接收提醒。
+          帳號為本次填寫的手機號碼，預設密碼是手機號碼後 6 碼。</div></div>` : ''}
       <div class="bk-note" style="margin-top:16px">${UI.esc(c.crisis_note || '')}</div>
     </div>`;
   }

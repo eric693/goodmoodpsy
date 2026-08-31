@@ -794,6 +794,11 @@ ensureColumns('invoices', {
     line_counselor_daily_enabled: '1',
     line_flex_color: '#0e7c7b',         // Flex 卡片主色
     // ---- 線上預約表單 ----
+    // 個案專區網址：留空時自動由線上預約表單網址推得（booking.html → portal.html），
+    // 用於預約成立與晤談提醒的 LINE 卡片、以及預約完成頁的按鈕。
+    // 線上預約表單的對外網址：LINE 卡片的預約按鈕、以及推算個案專區網址時都會用到
+    booking_public_url: '',
+    portal_public_url: '',
     booking_form_enabled: '1',
     // Google 表單同步：Apps Script 以此密鑰呼叫 /api/integrations/google-form，
     // 表單填完即寫入後台的「線上預約申請」。留空表示不開放同步。

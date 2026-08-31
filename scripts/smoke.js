@@ -866,6 +866,21 @@ function startServer() {
     assert(r.ok, '送出失敗：' + JSON.stringify(d));
     bookingId = d.id;
   });
+  await test('預約完成頁帶出個案專區網址（未設定時由表單網址推得）', async () => {
+    // 個案要知道專區在哪，才會去看預約、綁 LINE
+    await admin.ok('PUT', '/api/settings', { booking_public_url: 'https://example.tw/booking.html', portal_public_url: '' });
+    const send = () => fetch(BASE + '/api/public/bookings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '連結測試', phone: '0911777889', birth_date: '2000-05-05',
+        plan_id: youthPlanId, consent: true })
+    }).then(r => r.json());
+    const d1 = await send();
+    equal(d1.portal_url, 'https://example.tw/portal.html', '未設定時由預約表單網址推得');
+    await admin.ok('PUT', '/api/settings', { portal_public_url: 'https://example.tw/mine' });
+    const d2 = await send();
+    equal(d2.portal_url, 'https://example.tw/mine', '有設定就以設定為準');
+    await admin.ok('PUT', '/api/settings', { portal_public_url: '', booking_public_url: '' });
+  });
   await test('櫃檯看得到待處理申請', async () => {
     const rows = await admin.ok('GET', '/api/bookings?status=new');
     assert(rows.some(r => r.id === bookingId), '待處理清單應含此申請');

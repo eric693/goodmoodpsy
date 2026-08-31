@@ -224,6 +224,7 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
       : '已收到您的預約申請。',
     fee: quote.fee, self_pay: quote.self_pay,
     line_add_friend_url: getSetting('line_add_friend_url'),
+    portal_url: require('../line').portalUrl(),
     center_phone: getSetting('center_phone')
   });
 });

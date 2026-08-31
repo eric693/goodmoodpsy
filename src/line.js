@@ -99,12 +99,21 @@ function bookingReceivedFlex(b) {
   });
 }
 
+// 個案專區網址：設定沒填時由線上預約表單網址推得，讓卡片上的「個案專區」按鈕
+// 不必每個呼叫端各自帶一次，個案也才知道有這個地方可以看自己的預約。
+function portalUrl() {
+  const u = (getSetting('portal_public_url', '')
+    || getSetting('booking_public_url', '').replace(/\/booking\.html.*$/, '/portal.html')).trim();
+  return /^https?:\/\//.test(u) ? u : '';
+}
+
 // 預約成立
 function bookingConfirmedFlex(a) {
   const c = centerInfo();
   const footer = [];
   if (a.meeting_url) footer.push(actionButton('進入視訊晤談', { type: 'uri', label: '進入視訊晤談', uri: a.meeting_url }));
-  if (a.portal_url) footer.push(actionButton('個案專區', { type: 'uri', label: '個案專區', uri: a.portal_url }, 'secondary'));
+  const portal = a.portal_url || portalUrl();
+  if (portal) footer.push(actionButton('個案專區', { type: 'uri', label: '個案專區', uri: portal }, 'secondary'));
   if (c.phone) footer.push(actionButton('改期或取消請來電', { type: 'uri', label: '改期或取消請來電', uri: `tel:${c.phone}` }, 'secondary'));
   return card({
     title: '預約已成立',
@@ -132,6 +141,8 @@ function reminderFlex(a) {
   const c = centerInfo();
   const footer = [];
   if (a.meeting_url) footer.push(actionButton('進入視訊晤談', { type: 'uri', label: '進入視訊晤談', uri: a.meeting_url }));
+  const rPortal = a.portal_url || portalUrl();
+  if (rPortal) footer.push(actionButton('個案專區', { type: 'uri', label: '個案專區', uri: rPortal }, 'secondary'));
   if (c.phone) footer.push(actionButton('聯絡諮商所', { type: 'uri', label: '聯絡諮商所', uri: `tel:${c.phone}` }, 'secondary'));
   return card({
     title: '晤談提醒',
@@ -280,7 +291,7 @@ function verifySignature(rawBody, signature) {
 module.exports = {
   lineEnabled, weekdayOf, centerInfo,
   card, kv, noteBox, actionButton, textMessage,
-  bookingReceivedFlex, bookingConfirmedFlex, reminderFlex,
+  bookingReceivedFlex, bookingConfirmedFlex, reminderFlex, portalUrl,
   counselorScheduleFlex, counselorBookingFlex, receiptFlex,
   pushFlex, replyMessages, verifySignature, logNotification
 };
