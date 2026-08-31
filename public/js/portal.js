@@ -76,6 +76,35 @@ const Portal = {
     });
   },
 
+  // LINE 綁定卡片：加好友與回報綁定碼都要本人在 LINE 操作，這裡把兩步做成按鈕，
+  // 綁定碼也直接包在聊天室連結裡（開啟後訊息已填好，按送出即可），免得長輩打錯字。
+  lineCard(d) {
+    if (!d || !d.enabled) return '';
+    const name = UI.esc(d.official_name || 'LINE 官方帳號');
+    if (d.bound) {
+      return `<div class="card"><h3>LINE 提醒 ${UI.tag('已綁定', 'ok')}</h3>
+        <div style="font-size:14px;line-height:1.9">已與「${name}」連結，晤談前 ${d.reminder_hours} 小時會收到提醒，
+          預約成立與異動也會通知您。</div>
+        <button class="btn tiny secondary" id="line-unbind" style="margin-top:10px">解除綁定</button></div>`;
+    }
+    return `<div class="card"><h3>LINE 提醒 ${UI.tag('尚未綁定', 'warn')}</h3>
+      <div style="font-size:14px;line-height:1.9">綁定後，晤談前 ${d.reminder_hours} 小時會用 LINE 提醒您，
+        預約成立與異動也會通知，不必擔心記錯時間。</div>
+      <div style="margin-top:12px;font-size:14px;line-height:2">
+        <strong>步驟 1</strong>　加「${name}」為好友
+        ${d.add_friend_url ? `<br><a class="btn small" style="margin:6px 0"
+          href="${UI.esc(d.add_friend_url)}" target="_blank" rel="noopener">加入好友</a>` : ''}
+        <br><strong>步驟 2</strong>　在聊天室傳送這組綁定碼
+        <div style="font-size:26px;font-weight:700;letter-spacing:4px;margin:6px 0">${UI.esc(d.code || '')}</div>
+        ${d.message_url ? `<a class="btn small" style="margin-bottom:6px"
+          href="${UI.esc(d.message_url)}" target="_blank" rel="noopener">開啟聊天室並帶入綁定碼</a>` : ''}
+        <button class="btn small secondary" id="line-copy" data-code="${UI.esc(d.code || '')}">複製綁定碼</button>
+      </div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.8">
+        綁定碼於 ${UI.esc(d.expires_at || '')} 前有效，逾期回到本頁會自動換一組新的。
+        傳送後官方帳號會回覆「綁定完成」，此頁重新整理即顯示已綁定。</div></div>`;
+  },
+
   navItems: [
     { key: 'home', label: '首頁' },
     { key: 'book', label: '預約' },
@@ -265,7 +294,9 @@ const Portal = {
     },
 
     async me(el) {
-      const [consents, files] = await Promise.all([GET(PAPI('/consents')), GET(PAPI('/attachments'))]);
+      const [consents, files, line] = await Promise.all([
+        GET(PAPI('/consents')), GET(PAPI('/attachments')), GET(PAPI('/line')).catch(() => null)
+      ]);
       const m = Portal.me;
       el.innerHTML = `
         <div class="card"><h3>我的資料</h3>
@@ -293,6 +324,7 @@ const Portal = {
             </div>
             <button class="btn tiny secondary" data-fd="${f.id}">下載</button></div>`).join('')}
         </div>` : ''}
+        ${Portal.lineCard(line)}
         <div class="card"><h3>諮商所資訊</h3>
           <div style="font-size:14px;line-height:1.9">${UI.esc(m.center_name)}<br>
             ${UI.esc(m.center_phone || '')}<br>${UI.esc(m.center_address || '')}</div></div>`;
@@ -300,6 +332,16 @@ const Portal = {
         b.onclick = () => { window.location.href = `/api/portal/attachments/${b.dataset.fd}/download`; };
       });
       el.querySelector('#pw').onclick = () => Portal.passwordDialog(false);
+      const unbind = el.querySelector('#line-unbind');
+      if (unbind) unbind.onclick = async () => {
+        if (!await UI.confirm('解除後就不會再收到 LINE 提醒，確定解除？')) return;
+        try { await DEL(PAPI('/line')); UI.toast('已解除綁定'); Portal.go('me'); } catch (e) { UI.err(e); }
+      };
+      const copy = el.querySelector('#line-copy');
+      if (copy) copy.onclick = async () => {
+        try { await navigator.clipboard.writeText(copy.dataset.code); UI.toast('已複製綁定碼'); }
+        catch { UI.toast('請長按上方號碼手動複製', true); }
+      };
       el.querySelectorAll('[data-cs]').forEach(b => { b.onclick = () => Portal.signConsent(b.dataset.cs); });
     }
   },

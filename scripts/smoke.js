@@ -137,6 +137,19 @@ function nextWeekday(wd, minDaysAhead = 2) {
   return d;
 }
 
+// 年度額度是「同一年內」計算，測試用的幾個日期必須落在同一年，
+// 否則年底跑測試時第四筆會跨年、額度重算而不被擋（曾誤判為系統壞掉）。
+function sameYearMondays(count, minDaysAhead = 60) {
+  let start = nextWeekday(1, minDaysAhead);
+  const year = () => start.slice(0, 4);
+  // 從起點往後數 count 個週一；若最後一個跨年，整組往後推到下一年年初再數
+  if (addDays(start, (count - 1) * 7).slice(0, 4) !== year()) {
+    start = nextWeekday(1, minDaysAhead + 120);
+    while (addDays(start, (count - 1) * 7).slice(0, 4) !== start.slice(0, 4)) start = addDays(start, 7);
+  }
+  return Array.from({ length: count }, (_, i) => addDays(start, i * 7));
+}
+
 let server;
 function startServer() {
   return new Promise((resolve, reject) => {
@@ -351,6 +364,23 @@ function startServer() {
     const dash = await admin.ok('GET', '/api/dashboard');
     assert(dash.cancel_requests.some(c => c.id === r.id), '總覽應列出取消申請');
     await admin.ok('POST', `/api/appointments/${r.id}/status`, { status: 'cancelled' });
+  });
+  await test('個案端可自助取得 LINE 綁定碼', async () => {
+    // 加好友只能由本人在 LINE 點下去，系統能做的是把綁定碼給個案、讓他傳進官方帳號；
+    // 傳送後由 Webhook 完成綁定（另有測試涵蓋）。
+    await admin.ok('PUT', '/api/line/settings', { line_channel_token: 'test-token', line_official_id: '@testoa' });
+    try {
+      const d = await portal.ok('GET', '/api/portal/line');
+      assert(d.enabled, '已設定權杖時應為啟用');
+      assert(!d.bound, '一開始不應是已綁定');
+      assert(/^\d{6}$/.test(d.code || ''), '應提供 6 碼綁定碼：' + d.code);
+      assert((d.message_url || '').includes(d.code), '聊天室連結應帶入綁定碼');
+      const again = await portal.ok('GET', '/api/portal/line');
+      equal(again.code, d.code, '重整頁面不應一直換新碼');
+      await portal.ok('DELETE', '/api/portal/line');   // 尚未綁定時解除也不應出錯
+    } finally {
+      await admin.ok('PUT', '/api/line/settings', { line_channel_token: '', line_official_id: '' });
+    }
   });
   await test('個案端讀不到晤談紀錄類 API', async () => {
     const res = await fetch(BASE + `/api/clients/${clientId}/notes`);
@@ -729,21 +759,22 @@ function startServer() {
     const lins = (await admin.ok('GET', '/api/users')).find(u => u.username === 'lin');
     // 挑遠一點的空白週次，避開 seed 灌入的預約與請假
     const made = [];
+    const days = sameYearMondays(4, 100);
     try {
       for (let i = 0; i < 3; i++) {
-        const d = nextWeekday(1, 100 + i * 7);
+        const d = days[i];
         made.push((await admin.ok('POST', '/api/appointments', {
           client_id: planClientId, counselor_id: lins.id, date: d, start_time: '07:00',
           plan_id: youthPlanId, topic_id: youthTopicId
         })).id);
       }
-      const usage = await admin.ok('GET', `/api/clients/${planClientId}/plan-usage`);
+      // 額度按年度算，測試日期可能落在明年，查詢時要指定同一年
+      const usage = await admin.ok('GET', `/api/clients/${planClientId}/plan-usage?year=${days[0].slice(0, 4)}`);
       const u = usage.rows.find(r => r.plan_id === youthPlanId);
       equal(u.used, 3, '已用次數');
       equal(u.remaining, 0, '剩餘次數');
-      // 第四次必須落在與前三次同一年度，額度是按年度計算；用 128 天在年底跑會跨年而誤判
       const blocked = await admin.fails('POST', '/api/appointments', {
-        client_id: planClientId, counselor_id: lins.id, date: nextWeekday(1, 121), start_time: '07:00',
+        client_id: planClientId, counselor_id: lins.id, date: days[3], start_time: '07:00',
         plan_id: youthPlanId
       }, '額度');
       assert(/額度已用完/.test(blocked.error || ''), '錯誤訊息應說明額度用完：' + JSON.stringify(blocked));

@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { db, audit, today, addDays, getSetting, nowStamp } = require('../db');
 const {
   CLIENT_COOKIE, signToken, setAuthCookie, clearAuthCookie, requireClient,
@@ -294,6 +295,53 @@ router.get('/announcements', requireClient, (req, res) => {
   res.json(db.prepare(`SELECT id, title, content, publish_date FROM announcements
     WHERE audience IN ('all','client') AND publish_date <= date('now','localtime')
     ORDER BY pinned DESC, publish_date DESC LIMIT 20`).all());
+});
+
+// ---- LINE 綁定（個案自助）----
+// 加好友一定要由本人在 LINE 點下去，系統無法代勞；能做的是把「加好友」與「回報綁定碼」
+// 兩步都放到個案專區，並把綁定碼直接做進聊天室連結，個案只要按送出即可，不必手動輸入。
+function officialMessageUrl(code) {
+  const id = getSetting('line_official_id', '');   // 例如 @032cjyby
+  if (!id || !code) return '';
+  return `https://line.me/R/oaMessage/${encodeURIComponent(id)}/?${encodeURIComponent(code)}`;
+}
+router.get('/line', requireClient, (req, res) => {
+  const c = db.prepare('SELECT line_user_id FROM clients WHERE id = ?').get(req.client.id) || {};
+  const enabled = !!getSetting('line_channel_token');
+  const out = {
+    enabled,
+    bound: !!c.line_user_id,
+    official_name: getSetting('line_official_name', ''),
+    official_id: getSetting('line_official_id', ''),
+    add_friend_url: getSetting('line_add_friend_url', ''),
+    reminder_hours: Number(getSetting('line_reminder_hours', '24'))
+  };
+  if (!enabled || out.bound) return res.json(out);
+  // 沿用還沒過期的那組碼，重整頁面不會一直換新碼讓人混淆
+  let bind = db.prepare(`SELECT code, expires_at FROM line_bindings
+    WHERE client_id = ? AND status = 'pending' AND (expires_at IS NULL OR expires_at >= date('now','localtime'))
+    ORDER BY id DESC LIMIT 1`).get(req.client.id);
+  if (!bind) {
+    db.prepare("UPDATE line_bindings SET status = 'expired' WHERE status = 'pending' AND client_id = ?")
+      .run(req.client.id);
+    const expires_at = addDays(today(), 1);
+    const ins = db.prepare('INSERT INTO line_bindings (code, client_id, expires_at) VALUES (?,?,?)');
+    // code 有唯一索引，萬一撞到別人手上還沒用掉的碼就再抽一次
+    for (let i = 0; i < 10 && !bind; i++) {
+      const code = String(crypto.randomInt(100000, 1000000));
+      try { ins.run(code, req.client.id, expires_at); bind = { code, expires_at }; }
+      catch (e) { if (i === 9) throw e; }
+    }
+  }
+  res.json({ ...out, code: bind.code, expires_at: bind.expires_at, message_url: officialMessageUrl(bind.code) });
+});
+// 個案自己解除綁定（換手機、不想再收提醒），不必打電話請櫃檯處理
+router.delete('/line', requireClient, (req, res) => {
+  db.prepare("UPDATE clients SET line_user_id = '' WHERE id = ?").run(req.client.id);
+  db.prepare("UPDATE line_bindings SET status = 'revoked' WHERE client_id = ? AND status = 'done'")
+    .run(req.client.id);
+  audit('client', req.client.id, req.client.name, '解除 LINE 綁定');
+  res.json({ ok: true });
 });
 
 module.exports = router;
