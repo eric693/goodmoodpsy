@@ -40,15 +40,20 @@ function shiftBlocks(picked, cfg) {
 // 排班面板：原本的「我的排班」獨立頁，現直接掛在預約排程頁下方，時段設定只有這一處入口。
 // el 為容器；arg 為指定心理師 id（管理者切換用）；onChange 供外層在請假異動後整頁重載，
 // 讓同頁的週檢視（請假會顯示在格子裡）跟著更新，不會出現一邊改完另一邊還是舊資料。
-async function renderShiftPanel(el, arg, onChange) {
+async function renderShiftPanel(el, arg, onChange, weekArg) {
   {
     const canPickOther = App.me.role === 'admin';
     const cid = Number(arg) || (canPickOther ? Number(localStorage.getItem('mc-shift-c')) || App.me.id : App.me.id);
     if (canPickOther) localStorage.setItem('mc-shift-c', cid);
-    const [avail, offs] = await Promise.all([
-      GET(`/availability?counselor_id=${cid}`),
-      App.can('hr') ? GET(`/time-off?counselor_id=${cid}`).catch(() => []) : Promise.resolve(null)
+    // week 為空＝編輯每週都套用的固定班；有值＝只編輯那一週
+    const week = weekArg || '';
+    const q = `counselor_id=${cid}${week ? '&week_start=' + week : ''}`;
+    const [avail, offs, weekInfo] = await Promise.all([
+      GET(`/availability?${q}`),
+      App.can('hr') ? GET(`/time-off?counselor_id=${cid}`).catch(() => []) : Promise.resolve(null),
+      week ? GET(`/availability/week-info?${q}`).catch(() => null) : Promise.resolve(null)
     ]);
+    const reload = w => renderShiftPanel(el, cid, onChange, w === undefined ? week : w);
 
     const cfg = shiftCfg();
     const picked = new Set();
@@ -77,16 +82,31 @@ async function renderShiftPanel(el, arg, onChange) {
         <button class="btn secondary small" id="q-custom">自訂時段</button>
         <button class="btn secondary small" id="q-clear">全部清空</button>
         <div class="spacer"></div>
-        <button class="btn" id="save">儲存排班</button>
+        <button class="btn" id="save">${week ? '儲存這一週' : '儲存固定班'}</button>
+      </div>
+      <div class="toolbar" style="margin-top:-4px">
+        <button class="btn ${week ? 'secondary' : ''} small" id="w-fixed">每週固定班</button>
+        <button class="btn secondary small" id="w-prev">上一週</button>
+        <button class="btn ${week ? '' : 'secondary'} small" id="w-this">${week ? '本週' : '改排某一週'}</button>
+        <button class="btn secondary small" id="w-next">下一週</button>
+        ${week ? `<strong style="margin-left:6px;font-size:13px">${week} ~ ${UI.addDays(week, 6)}</strong>
+          ${weekInfo && weekInfo.custom
+    ? UI.tag('這週單獨排班', 'ok') + '<button class="btn tiny secondary" id="w-reset">改回沿用固定班</button>'
+    : UI.tag('沿用固定班（尚未單獨排）', 'warn')}` : ''}
       </div>
       <div class="card">
         <div class="table-wrap"><table class="list shift-table"><thead><tr><th></th>
-          ${SHIFT_WD.map(w => `<th>${w[1]}</th>`).join('')}</tr></thead>
+          ${SHIFT_WD.map(w => `<th>${w[1]}${week
+    ? `<br><span style="font-weight:400;font-size:12px;color:var(--muted)">${UI.addDays(week, (w[0] + 6) % 7).slice(5)}</span>`
+    : ''}</th>`).join('')}</tr></thead>
           <tbody>${rows.join('')}</tbody></table></div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:10px">
           點一下切換單格，按住拖曳可整段刷選；表格範圍（目前 ${shiftFmt(cfg.start)}–${shiftFmt(cfg.end)}、每格 ${cfg.step} 分鐘）
           與快填按鈕可於系統設定調整。不在格線上的時間請用「自訂時段」。
-          已被預約或請假的時間會自動從可預約清單扣除，不必在這裡調整。</div>
+          已被預約或請假的時間會自動從可預約清單扣除，不必在這裡調整。<br>
+          ${week
+    ? '目前編輯的是<strong>這一週專用</strong>的班表，存檔後只影響這一週；其他週仍照固定班。'
+    : '目前編輯的是<strong>每週固定班</strong>，存檔後每一週都套用。某一週要臨時調整，按上方「改排某一週」。'}</div>
         <div id="custom-list" style="margin-top:12px"></div>
       </div>
       ${offs ? `<div class="card"><h3>我的請假／不可預約</h3><div id="offs"></div></div>` : ''}
@@ -183,13 +203,28 @@ async function renderShiftPanel(el, arg, onChange) {
         UI.toast('已加入，記得按「儲存排班」');
       }
     });
-    if (canPickOther) el.querySelector('#sc').onchange = e => renderShiftPanel(el, e.target.value, onChange);
+    if (canPickOther) el.querySelector('#sc').onchange = e => renderShiftPanel(el, e.target.value, onChange, week);
+    const thisMonday = UI.mondayOf(UI.today());
+    el.querySelector('#w-fixed').onclick = () => reload('');
+    el.querySelector('#w-this').onclick = () => reload(thisMonday);
+    el.querySelector('#w-prev').onclick = () => reload(UI.addDays(week || thisMonday, -7));
+    el.querySelector('#w-next').onclick = () => reload(UI.addDays(week || thisMonday, 7));
+    const wReset = el.querySelector('#w-reset');
+    if (wReset) wReset.onclick = async () => {
+      if (!await UI.confirm(`取消 ${week} 這一週的單獨排班，改回沿用固定班？`)) return;
+      try {
+        await DEL(`/availability/week?counselor_id=${cid}&week_start=${week}`);
+        UI.toast('已改回沿用固定班');
+        reload(week);
+      } catch (e) { UI.err(e); }
+    };
 
     el.querySelector('#save').onclick = async () => {
       try {
         const blocks = shiftBlocks(picked, cfg).concat(custom);
-        const r = await POST('/availability/bulk', { counselor_id: cid, blocks });
-        UI.toast(`已儲存 ${r.count} 個時段`);
+        const r = await POST('/availability/bulk', { counselor_id: cid, blocks, week_start: week });
+        UI.toast(week ? `已儲存 ${week} 當週的 ${r.count} 個時段` : `已儲存固定班 ${r.count} 個時段`);
+        reload(week);
       } catch (e) { UI.err(e); }
     };
 
@@ -301,15 +336,21 @@ App.page('calendar', {
     const cells = Math.ceil((lead + daysInMonth) / 7) * 7;
     const data = await GET(`/schedule/calendar?from=${gridStart}&to=${UI.addDays(gridStart, cells - 1)}${filterC ? '&counselor_id=' + filterC : ''}`);
 
-    const dayItems = date => {
+    // 排班有「每週固定班」與「某週專用班」兩種：某位心理師那一週有專用班，
+    // 該週就只看專用班，否則沿用固定班（與後端 availabilityOn 同一套規則）。
+    const availOn = date => {
       const wd = new Date(date + 'T00:00:00').getDay();
-      return {
-        offs: data.time_off.filter(o => date >= o.start_date && date <= o.end_date),
-        groups: data.group_sessions.filter(g => g.date === date),
-        appts: data.appointments.filter(a => a.date === date).sort((x, y) => x.start_time.localeCompare(y.start_time)),
-        avail: data.availability.filter(v => v.weekday === wd)
-      };
+      const ws = UI.mondayOf(date);
+      const custom = new Set(data.availability.filter(v => v.week_start === ws).map(v => v.counselor_id));
+      return data.availability.filter(v => v.weekday === wd
+        && (custom.has(v.counselor_id) ? v.week_start === ws : !v.week_start));
     };
+    const dayItems = date => ({
+      offs: data.time_off.filter(o => date >= o.start_date && date <= o.end_date),
+      groups: data.group_sessions.filter(g => g.date === date),
+      appts: data.appointments.filter(a => a.date === date).sort((x, y) => x.start_time.localeCompare(y.start_time)),
+      avail: availOn(date)
+    });
 
     const cellHtml = date => {
       const { offs, groups, appts, avail } = dayItems(date);

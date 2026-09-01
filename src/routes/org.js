@@ -623,7 +623,9 @@ router.get('/reports', requireStaff('reports'), (req, res) => {
       const toMin = t => { const [hh, mm] = String(t).split(':').map(Number); return hh * 60 + mm; };
       const util = db.prepare(`SELECT u.id, u.name FROM users u
         WHERE u.active = 1 AND u.role IN ('counselor','supervisor','admin')`).all().map(u => {
-        const av = db.prepare('SELECT weekday, start_time, end_time FROM availability WHERE counselor_id = ?').all(u.id);
+        // 產能以「每週固定班」估算；單週覆寫屬臨時調整，不列入月報的基準
+        const av = db.prepare(`SELECT weekday, start_time, end_time FROM availability
+          WHERE counselor_id = ? AND week_start = '' AND start_time < end_time`).all(u.id);
         const capacity = av.reduce((sum, a) =>
           sum + (toMin(a.end_time) - toMin(a.start_time)) * weekdayCount[a.weekday], 0);
         const used = db.prepare(`SELECT COALESCE(SUM(

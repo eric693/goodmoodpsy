@@ -288,6 +288,41 @@ function startServer() {
     await lin.fails('POST', '/api/appointments',
       { client_id: clientId, counselor_id: 2, date: off, start_time: '14:00' }, '請假');
   });
+  await test('排班可只改某一週，其他週仍照固定班', async () => {
+    // 這支測試會覆寫固定班，跑完要還原，否則後面的個案端預約測試會找不到時段
+    const before = (await lin.ok('GET', '/api/availability?counselor_id=2'))
+      .map(v => ({ weekday: v.weekday, start_time: v.start_time, end_time: v.end_time, note: v.note }));
+    const wed = nextWeekday(3, 30);
+    const wedNext = addDays(wed, 7);
+    await lin.ok('POST', '/api/availability/bulk', {
+      counselor_id: 2, blocks: [{ weekday: 3, start_time: '09:00', end_time: '12:00' }]
+    });
+    const base = await lin.ok('GET', `/api/slots?counselor_id=2&date=${wed}`);
+    assert(base.some(s => s.start_time === '09:00'), '固定班應開出 09:00 的時段');
+    // 只改 wed 那一週：改成 14:00-16:00
+    const monday = wed.slice(0, 10);
+    const info0 = await lin.ok('GET', `/api/availability/week-info?counselor_id=2&week_start=${monday}`);
+    assert(!info0.custom, '尚未單獨排班時應顯示沿用固定班');
+    await lin.ok('POST', '/api/availability/bulk', {
+      counselor_id: 2, week_start: monday, blocks: [{ weekday: 3, start_time: '14:00', end_time: '16:00' }]
+    });
+    const wk = await lin.ok('GET', `/api/slots?counselor_id=2&date=${wed}`);
+    assert(wk.some(s => s.start_time === '14:00'), '該週應改用專用班：' + JSON.stringify(wk));
+    assert(!wk.some(s => s.start_time === '09:00'), '該週不應再出現固定班的時段');
+    const other = await lin.ok('GET', `/api/slots?counselor_id=2&date=${wedNext}`);
+    assert(other.some(s => s.start_time === '09:00'), '其他週仍照固定班');
+    const info1 = await lin.ok('GET', `/api/availability/week-info?counselor_id=2&week_start=${monday}`);
+    assert(info1.custom, '設定後應顯示這週單獨排班');
+    // 某週整週不開放：存空白也要記住「這週不開」，不能回頭沿用固定班
+    await lin.ok('POST', '/api/availability/bulk', { counselor_id: 2, week_start: monday, blocks: [] });
+    const none = await lin.ok('GET', `/api/slots?counselor_id=2&date=${wed}`);
+    equal(none.length, 0, '整週不開放時不應有任何時段');
+    // 取消單週設定後回到固定班
+    await lin.del(`/api/availability/week?counselor_id=2&week_start=${monday}`);
+    const back = await lin.ok('GET', `/api/slots?counselor_id=2&date=${wed}`);
+    assert(back.some(s => s.start_time === '09:00'), '取消單週設定後應回到固定班');
+    await lin.ok('POST', '/api/availability/bulk', { counselor_id: 2, blocks: before });
+  });
   await test('週檢視與行事曆回傳資料', async () => {
     const w = await lin.ok('GET', `/api/schedule/week?start=${monday}`);
     assert(Array.isArray(w.appointments), '週檢視格式');

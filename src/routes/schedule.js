@@ -79,7 +79,7 @@ router.get('/schedule/week', requireStaff('schedule'), (req, res) => {
     start, end,
     counselors: db.prepare("SELECT id, name FROM users WHERE active = 1 AND role IN ('counselor','supervisor','admin') ORDER BY id").all(),
     rooms: db.prepare('SELECT id, name FROM rooms WHERE active = 1 ORDER BY id').all(),
-    availability: db.prepare('SELECT * FROM availability ORDER BY weekday, start_time').all(),
+    availability: db.prepare('SELECT * FROM availability WHERE start_time < end_time ORDER BY weekday, start_time').all(),
     time_off: db.prepare(`SELECT t.*, u.name AS counselor_name FROM time_off t JOIN users u ON u.id = t.counselor_id
       WHERE t.end_date >= ? AND t.start_date <= ?`).all(start, end),
     group_sessions: db.prepare(`SELECT s.*, g.name AS group_name, g.counselor_id, u.name AS counselor_name,
@@ -483,11 +483,57 @@ function mergeRanges(blocks) {
   }
   return out.sort((a, b) => a.weekday - b.weekday || a.start_time.localeCompare(b.start_time));
 }
+// 排班有兩層：week_start 為空的是「每週固定班」，填了週一日期的是「該週專用班」。
+// 某位心理師某一週只要有專用班，那一週就整週以專用班為準（含「那週完全不排」的情形，
+// 用一筆 00:00-00:00 的佔位資料表示，否則刪光後會被誤認為沒設定而回頭沿用固定班）。
+const PLACEHOLDER = { start_time: '00:00', end_time: '00:00' };
+function mondayOf(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function hasWeekPlan(counselorId, weekStart) {
+  return !!db.prepare('SELECT 1 FROM availability WHERE counselor_id = ? AND week_start = ? LIMIT 1')
+    .get(Number(counselorId), weekStart);
+}
+// 某位心理師在某一天實際適用的時段（已解析固定班／該週專用班）
+function availabilityOn(counselorId, dateStr) {
+  const weekStart = mondayOf(dateStr);
+  const weekday = new Date(dateStr + 'T00:00:00').getDay();
+  const scope = hasWeekPlan(counselorId, weekStart) ? weekStart : '';
+  return db.prepare(`SELECT * FROM availability WHERE counselor_id = ? AND week_start = ? AND weekday = ?
+    AND start_time < end_time ORDER BY start_time`).all(Number(counselorId), scope, weekday);
+}
+
 router.get('/availability', requireStaff('schedule'), (req, res) => {
-  const { counselor_id = '' } = req.query;
+  const { counselor_id = '', week_start = '' } = req.query;
+  // week_start 帶入某週的週一時，回該週實際適用的班表；沒有專用班就回固定班
+  const scope = week_start ? (hasWeekPlan(counselor_id, mondayOf(week_start)) ? mondayOf(week_start) : '') : '';
   const sql = `SELECT av.*, u.name AS counselor_name FROM availability av JOIN users u ON u.id = av.counselor_id
-    ${counselor_id ? 'WHERE av.counselor_id = ?' : ''} ORDER BY av.counselor_id, av.weekday, av.start_time`;
-  res.json(counselor_id ? db.prepare(sql).all(Number(counselor_id)) : db.prepare(sql).all());
+    WHERE av.week_start = ? AND av.start_time < av.end_time
+    ${counselor_id ? 'AND av.counselor_id = ?' : ''} ORDER BY av.counselor_id, av.weekday, av.start_time`;
+  const rows = counselor_id
+    ? db.prepare(sql).all(scope, Number(counselor_id))
+    : db.prepare(sql).all(scope);
+  res.set('X-Availability-Scope', scope || 'fixed');
+  res.json(rows);
+});
+// 這一週是沿用固定班還是有自己的班表（畫面上要顯示狀態）
+router.get('/availability/week-info', requireStaff('schedule'), (req, res) => {
+  const cid = Number(req.query.counselor_id) || req.user.id;
+  const weekStart = mondayOf(req.query.week_start || today());
+  res.json({ counselor_id: cid, week_start: weekStart, custom: hasWeekPlan(cid, weekStart) });
+});
+// 取消某週的專用班，改回沿用固定班
+router.delete('/availability/week', requireStaff('schedule'), (req, res) => {
+  const cid = Number(req.query.counselor_id) || req.user.id;
+  if (req.user.role !== 'admin' && cid !== req.user.id) {
+    return res.status(403).json({ error: '僅能設定自己的可預約時段' });
+  }
+  const weekStart = mondayOf(req.query.week_start || today());
+  const r = db.prepare('DELETE FROM availability WHERE counselor_id = ? AND week_start = ?').run(cid, weekStart);
+  audit('staff', req.user.id, req.user.name, '取消單週排班', String(cid), { week_start: weekStart });
+  res.json({ ok: true, removed: r.changes });
 });
 router.post('/availability', requireStaff('schedule'), (req, res) => {
   const { counselor_id, weekday, start_time, end_time, note = '' } = req.body || {};
@@ -501,12 +547,14 @@ router.post('/availability', requireStaff('schedule'), (req, res) => {
   if (end_time <= start_time) return res.status(400).json({ error: '結束時間需晚於開始時間' });
   const cid = Number(counselor_id);
   const wd = Number(weekday);
-  const same = db.prepare('SELECT * FROM availability WHERE counselor_id = ? AND weekday = ?').all(cid, wd);
+  const scope = req.body.week_start ? mondayOf(req.body.week_start) : '';
+  const same = db.prepare(`SELECT * FROM availability WHERE counselor_id = ? AND weekday = ? AND week_start = ?
+    AND start_time < end_time`).all(cid, wd, scope);
   const merged = mergeRanges(same.concat([{ weekday: wd, start_time, end_time, note }]));
   const write = db.transaction(() => {
-    db.prepare('DELETE FROM availability WHERE counselor_id = ? AND weekday = ?').run(cid, wd);
-    const ins = db.prepare('INSERT INTO availability (counselor_id, weekday, start_time, end_time, note) VALUES (?,?,?,?,?)');
-    for (const v of merged) ins.run(cid, v.weekday, v.start_time, v.end_time, v.note || '');
+    db.prepare('DELETE FROM availability WHERE counselor_id = ? AND weekday = ? AND week_start = ?').run(cid, wd, scope);
+    const ins = db.prepare('INSERT INTO availability (counselor_id, weekday, start_time, end_time, note, week_start) VALUES (?,?,?,?,?,?)');
+    for (const v of merged) ins.run(cid, v.weekday, v.start_time, v.end_time, v.note || '', scope);
   });
   write();
   res.json({ ok: true, count: merged.length });
@@ -538,14 +586,18 @@ router.post('/availability/bulk', requireStaff('schedule'), (req, res) => {
     }
     if (v.end_time <= v.start_time) return res.status(400).json({ error: '結束時間需晚於開始時間' });
   }
+  const scope = b.week_start ? mondayOf(b.week_start) : '';
   const merged = mergeRanges(blocks);
   const write = db.transaction(() => {
-    db.prepare('DELETE FROM availability WHERE counselor_id = ?').run(cid);
-    const ins = db.prepare('INSERT INTO availability (counselor_id, weekday, start_time, end_time, note) VALUES (?,?,?,?,?)');
-    for (const v of merged) ins.run(cid, v.weekday, v.start_time, v.end_time, v.note || '');
+    db.prepare('DELETE FROM availability WHERE counselor_id = ? AND week_start = ?').run(cid, scope);
+    const ins = db.prepare('INSERT INTO availability (counselor_id, weekday, start_time, end_time, note, week_start) VALUES (?,?,?,?,?,?)');
+    for (const v of merged) ins.run(cid, v.weekday, v.start_time, v.end_time, v.note || '', scope);
+    // 單週排成「完全不開放」時留一筆佔位，否則會被當成沒設定而沿用固定班
+    if (scope && !merged.length) ins.run(cid, 0, PLACEHOLDER.start_time, PLACEHOLDER.end_time, '整週不開放', scope);
   });
   write();
-  audit('staff', req.user.id, req.user.name, '更新排班', String(cid), { blocks: merged.length });
+  audit('staff', req.user.id, req.user.name, scope ? `更新 ${scope} 當週排班` : '更新固定班表',
+    String(cid), { blocks: merged.length });
   res.json({ ok: true, count: merged.length });
 });
 
@@ -558,9 +610,11 @@ router.get('/schedule/calendar', requireStaff('schedule'), (req, res) => {
   res.json({
     from, to, counselor_id: cid || '',
     counselors: db.prepare("SELECT id, name FROM users WHERE active = 1 AND role IN ('counselor','supervisor','admin') ORDER BY id").all(),
+    // 帶上 week_start，前端依「該週有專用班就用專用班」自行解析
     availability: cid
-      ? db.prepare('SELECT * FROM availability WHERE counselor_id = ? ORDER BY weekday, start_time').all(cid)
-      : db.prepare('SELECT * FROM availability ORDER BY weekday, start_time').all(),
+      ? db.prepare(`SELECT * FROM availability WHERE counselor_id = ? AND start_time < end_time
+          ORDER BY weekday, start_time`).all(cid)
+      : db.prepare('SELECT * FROM availability WHERE start_time < end_time ORDER BY weekday, start_time').all(),
     time_off: db.prepare(only(`SELECT t.*, u.name AS counselor_name FROM time_off t JOIN users u ON u.id = t.counselor_id
       WHERE t.end_date >= ? AND t.start_date <= ?`, 't.counselor_id = ' + cid)).all(from, to),
     group_sessions: db.prepare(only(`SELECT s.*, g.name AS group_name, g.counselor_id, u.name AS counselor_name, r.name AS room_name
@@ -577,10 +631,8 @@ router.get('/schedule/calendar', requireStaff('schedule'), (req, res) => {
 // minutesOverride：方案有自己的時長（如 40 分鐘的大學生方案、80 分鐘的伴侶諮商）時帶入，
 // 未帶則沿用系統預設的晤談長度。
 function freeSlots(counselorId, date, minutesOverride) {
-  const weekday = new Date(date + 'T00:00:00').getDay();
   const minutes = Number(minutesOverride) || defaultSessionMinutes();
-  const ranges = db.prepare('SELECT * FROM availability WHERE counselor_id = ? AND weekday = ? ORDER BY start_time')
-    .all(counselorId, weekday);
+  const ranges = availabilityOn(counselorId, date);
   const booked = db.prepare(`SELECT start_time, end_time FROM appointments
     WHERE counselor_id = ? AND date = ? AND status IN ('booked','arrived')`).all(counselorId, date);
   const toMin = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
@@ -815,3 +867,5 @@ module.exports.freeSlots = freeSlots;
 module.exports.endTime = endTime;
 module.exports.conflictOf = conflictOf;
 module.exports.matchWaitlist = matchWaitlist;
+module.exports.availabilityOn = availabilityOn;
+module.exports.mondayOf = mondayOf;

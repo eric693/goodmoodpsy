@@ -760,6 +760,11 @@ ensureColumns('clients', {
 ensureColumns('users', {
   line_user_id: "TEXT NOT NULL DEFAULT ''"           // 心理師的 LINE 綁定（行程提醒推播）
 });
+// 排班改為「固定班 + 逐週覆寫」：空字串是每週都套用的固定班，
+// 填週一日期（YYYY-MM-DD）則只屬於那一週；某週有自己的設定就整週以它為準。
+ensureColumns('availability', {
+  week_start: "TEXT NOT NULL DEFAULT ''"
+});
 ensureColumns('invoices', {
   plan_id: 'INTEGER REFERENCES service_plans(id)',
   topic_id: 'INTEGER REFERENCES plan_topics(id)'
