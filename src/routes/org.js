@@ -571,6 +571,10 @@ router.get('/reports', requireStaff('reports'), (req, res) => {
     })(),
     income_by_payer: db.prepare(`SELECT payer, COALESCE(SUM(amount),0) amt, COUNT(*) n FROM invoices
       WHERE date LIKE ? AND status = 'paid' GROUP BY payer ORDER BY amt DESC`).all(like),
+    // 收款方式分項：月底對帳時要分開看「現金該有多少」與「銀行進帳多少」
+    income_by_method: db.prepare(`SELECT COALESCE(NULLIF(method,''),'未填') AS method,
+        COALESCE(SUM(amount),0) amt, COUNT(*) n FROM invoices
+      WHERE date LIKE ? AND status IN ('paid','refunded') GROUP BY 1 ORDER BY amt DESC`).all(like),
     clients: db.prepare(`SELECT
         (SELECT COUNT(*) FROM clients WHERE substr(intake_date,1,7) = ?) AS new_clients,
         (SELECT COUNT(*) FROM clients WHERE substr(close_date,1,7) = ?) AS closed_clients,

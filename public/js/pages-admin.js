@@ -304,8 +304,10 @@ function invoiceDialog(inv, clients, onDone) {
         ${UI.input('item', '項目', { value: i.item || '' })}
         ${UI.input('amount', '金額', { type: 'number', value: i.amount || '' })}
         ${UI.select('payer', '付款人別', App.listOptions('payer_types', ['自費']), { value: i.payer })}
+        ${locked ? UI.select('method', '付款方式（收錯可在此更正）',
+    App.listOptions('pay_methods', ['現金']), { value: i.method || '現金' }) : ''}
       </div>
-      ${locked ? '<div class="notice" style="margin-top:10px">此筆已收款，金額不可修改；發票與核銷欄位仍可補登。</div>' : ''}
+      ${locked ? '<div class="notice" style="margin-top:10px">此筆已收款，金額不可修改；付款方式、發票與核銷欄位仍可更正補登。</div>' : ''}
       <div class="card" style="margin-top:14px"><h3>政府補助方案（無則留空）</h3>
         <div class="form-grid">
           ${UI.inputList('subsidy_program', '方案名稱', App.meta.subsidy_programs || [], { value: i.subsidy_program || '' })}
@@ -417,6 +419,14 @@ App.page('billing', {
           <div class="stat"><div class="num ${d.total_refunded ? 'danger' : ''}">${UI.fmtMoney(d.total_refunded)}</div><div class="label">已退費</div></div>
           <div class="stat"><div class="num">${UI.fmtMoney(d.total_net)}</div><div class="label">實收（收款−退費）</div></div>
         </div>
+        ${d.by_method && d.by_method.length ? `<div class="card"><h3>收款方式分項
+          <span style="font-size:13px;font-weight:400;color:var(--muted)">（此區間已收款者）</span></h3>
+          ${UI.table(['付款方式', '筆數', '收款金額', '其中已退', '淨額'], d.by_method.map(m => `<tr>
+            <td>${UI.esc(m.method)}</td><td>${m.n}</td><td>${UI.fmtMoney(m.amt)}</td>
+            <td>${m.refunded ? UI.fmtMoney(m.refunded) : '-'}</td>
+            <td><strong>${UI.fmtMoney(m.amt - m.refunded)}</strong></td></tr>`))}
+          <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+            收款當下選錯現金／轉帳時，按該筆的「編輯」即可更正，不必作廢重開。</div></div>` : ''}
         ${UI.table(['日期', '個案', '項目', '金額', '補助／自付', '付款人別', '狀態', '收據號／發票', ''],
           d.rows.map(i => `<tr>
           <td>${i.date}</td><td><a href="#client/${i.client_id}">${UI.esc(i.client_name)}</a></td>
@@ -895,6 +905,9 @@ App.page('reports', {
         ${UI.table(['來源', '人數'], d.by_source.map(r => `<tr><td>${UI.esc(r.source)}</td><td>${r.n}</td></tr>`))}</div>
       <div class="card"><h3>收入來源別</h3>
         ${UI.table(['付款人別', '筆數', '金額'], d.income_by_payer.map(r => `<tr><td>${UI.esc(r.payer)}</td><td>${r.n}</td><td>${UI.fmtMoney(r.amt)}</td></tr>`))}</div>
+      <div class="card"><h3>收款方式</h3>
+        ${UI.table(['付款方式', '筆數', '金額'], (d.income_by_method || []).map(r =>
+    `<tr><td>${UI.esc(r.method)}</td><td>${r.n}</td><td>${UI.fmtMoney(r.amt)}</td></tr>`), '本月尚無收款')}</div>
       <div class="card"><h3>危機事件</h3>
         ${UI.table(['類型', '件數', '其中已通報'], d.risk.map(r => `<tr><td>${UI.esc(r.type)}</td><td>${r.n}</td><td>${r.reported}</td></tr>`), '本月無危機事件')}</div>
       <div class="card"><h3>量表施測</h3>

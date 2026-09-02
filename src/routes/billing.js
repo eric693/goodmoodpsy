@@ -33,13 +33,34 @@ router.get('/invoices', requireStaff('billing'), (req, res) => {
     ORDER BY i.status = 'paid', i.date DESC, i.id DESC LIMIT 500`).all(...args);
   const sum = k => rows.filter(r => r.status === k).reduce((a, b) => a + b.amount, 0);
   const totalRefunded = rows.reduce((a, b) => a + (b.refunded || 0), 0);
+  // 依付款方式分項：月底對帳要分開看現金該有多少、銀行進帳多少
+  const byMethod = [];
+  for (const r of rows) {
+    if (r.status !== 'paid' && r.status !== 'refunded') continue;
+    const key = r.method || '未填';
+    let row = byMethod.find(x => x.method === key);
+    if (!row) { row = { method: key, n: 0, amt: 0, refunded: 0 }; byMethod.push(row); }
+    row.n += 1;
+    row.amt += r.amount;
+    row.refunded += r.refunded || 0;
+  }
+  byMethod.sort((a, b) => b.amt - a.amt);
   res.json({
     rows, total_unpaid: sum('unpaid'), total_paid: sum('paid'),
     total_refunded: totalRefunded,
     // 實收：已收款金額扣掉已退還的部分
-    total_net: sum('paid') + sum('refunded') - totalRefunded
+    total_net: sum('paid') + sum('refunded') - totalRefunded,
+    by_method: byMethod
   });
 });
+
+// 補助方案的收費單有兩種記法：金額填「總額」（自付＝總額−補助），
+// 或金額直接填「個案自付」（補助另記，常見於方案已全額核銷的情形）。
+// 補助額大於等於金額時視為後者，自付就等於金額；否則自付＝金額−補助。
+// 原本一律把補助額壓到不超過金額，會把「200 自付／1600 補助」這種資料改成補助 200、自付 0。
+function selfPayOf(amount, subsidy) {
+  return subsidy >= amount ? amount : amount - subsidy;
+}
 
 router.post('/invoices', requireStaff('billing'), (req, res) => {
   const b = req.body || {};
@@ -47,8 +68,7 @@ router.post('/invoices', requireStaff('billing'), (req, res) => {
   if (!c) return res.status(400).json({ error: '請選擇個案' });
   if (!b.item) return res.status(400).json({ error: '請填寫項目' });
   const amount = Number(b.amount) || 0;
-  // 補助方案：補助額不得超過總額，自付差額自動算出，核銷與收款金額才不會兜不攏
-  const subsidy = Math.min(Number(b.subsidy_amount) || 0, amount);
+  const subsidy = Number(b.subsidy_amount) || 0;
   const info = db.prepare(`INSERT INTO invoices (client_id, appointment_id, package_id, date, item, amount, payer, note,
       buyer_tax_id, buyer_title, invoice_no, invoice_date, carrier, love_code,
       subsidy_program, subsidy_no, subsidy_amount, self_pay)
@@ -58,7 +78,7 @@ router.post('/invoices', requireStaff('billing'), (req, res) => {
     b.payer || getSetting('payer_type_default', '自費'), b.note || '',
     (b.buyer_tax_id || '').trim(), b.buyer_title || '', (b.invoice_no || '').trim().toUpperCase(),
     b.invoice_date || '', (b.carrier || '').trim().toUpperCase(), (b.love_code || '').trim(),
-    b.subsidy_program || '', b.subsidy_no || '', subsidy, amount - subsidy);
+    b.subsidy_program || '', b.subsidy_no || '', subsidy, selfPayOf(amount, subsidy));
   audit('staff', req.user.id, req.user.name, '新增收費單', c.code, { amount, subsidy });
   res.json({ id: info.lastInsertRowid });
 });
@@ -81,15 +101,20 @@ router.put('/invoices/:id', requireStaff('billing'), (req, res) => {
   if (i.status === 'void') return res.status(400).json({ error: '已作廢的收費單不可修改' });
   const b = { ...i, ...req.body };
   const amount = i.status === 'paid' ? i.amount : (Number(b.amount) || 0);
-  const subsidy = Math.min(Number(b.subsidy_amount) || 0, amount);
-  db.prepare(`UPDATE invoices SET date = ?, item = ?, amount = ?, payer = ?, note = ?,
+  const subsidy = Number(b.subsidy_amount) || 0;
+  // 付款方式常在收款當下按錯（現金／轉帳），已收款者也要能更正，否則只能作廢重開
+  const method = i.status === 'paid'
+    ? (req.body.method !== undefined ? String(req.body.method).trim() || i.method : i.method)
+    : '';
+  db.prepare(`UPDATE invoices SET date = ?, item = ?, amount = ?, payer = ?, note = ?, method = ?,
       buyer_tax_id = ?, buyer_title = ?, invoice_no = ?, invoice_date = ?, carrier = ?, love_code = ?,
       subsidy_program = ?, subsidy_no = ?, subsidy_amount = ?, self_pay = ? WHERE id = ?`).run(
-    b.date, b.item, amount, b.payer, b.note || '',
+    b.date, b.item, amount, b.payer, b.note || '', method,
     (b.buyer_tax_id || '').trim(), b.buyer_title || '', (b.invoice_no || '').trim().toUpperCase(),
     b.invoice_date || '', (b.carrier || '').trim().toUpperCase(), (b.love_code || '').trim(),
-    b.subsidy_program || '', b.subsidy_no || '', subsidy, amount - subsidy, i.id);
-  audit('staff', req.user.id, req.user.name, '修改收費單', String(i.client_id), { id: i.id });
+    b.subsidy_program || '', b.subsidy_no || '', subsidy, selfPayOf(amount, subsidy), i.id);
+  audit('staff', req.user.id, req.user.name, '修改收費單', String(i.client_id),
+    method !== i.method ? { id: i.id, method_from: i.method, method_to: method } : { id: i.id });
   res.json({ ok: true });
 });
 

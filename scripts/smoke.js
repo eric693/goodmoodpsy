@@ -938,6 +938,32 @@ function startServer() {
 
   section('收據');
   let receiptId, receiptNo;
+  await test('收款方式選錯可更正，並分別統計現金與轉帳', async () => {
+    const list = await admin.ok('GET', '/api/invoices');
+    const inv = list.rows.find(i => i.status === 'paid');
+    assert(inv, '需要一筆已收款的收費單');
+    equal(inv.method, '現金', '前置：這筆應為現金');
+    // 誤選現金，事後更正為轉帳（不必作廢重開）
+    await admin.ok('PUT', `/api/invoices/${inv.id}`, { method: '轉帳' });
+    const after = (await admin.ok('GET', '/api/invoices')).rows.find(i => i.id === inv.id);
+    equal(after.method, '轉帳', '付款方式應已更正');
+    equal(after.amount, inv.amount, '更正付款方式不應動到金額');
+    // 分項統計看得出現金與轉帳各多少
+    const d = await admin.ok('GET', '/api/invoices?status=paid');
+    const t = d.by_method.find(m => m.method === '轉帳');
+    assert(t && t.amt >= after.amount, '轉帳分項應含這筆：' + JSON.stringify(d.by_method));
+    const rep = await admin.ok('GET', `/api/reports?month=${after.date.slice(0, 7)}`);
+    assert(rep.income_by_method.some(m => m.method === '轉帳'), '月報應有收款方式分項');
+    // 更正付款方式不應把補助方案的金額改壞（金額填自付、補助另記的那種收費單）
+    const sub = (await admin.ok('GET', '/api/invoices')).rows.find(i => i.subsidy_amount > i.amount);
+    if (sub) {
+      await admin.ok('PUT', `/api/invoices/${sub.id}`, { ...sub, method: sub.method || '現金' });
+      const kept = (await admin.ok('GET', '/api/invoices')).rows.find(i => i.id === sub.id);
+      equal(kept.subsidy_amount, sub.subsidy_amount, '補助金額不應被壓到金額以下');
+      equal(kept.self_pay, sub.self_pay, '自付金額不應被改成 0');
+    }
+    await admin.ok('PUT', `/api/invoices/${inv.id}`, { method: '現金' });
+  });
   await test('已收款的收費單可開立流水編號收據', async () => {
     const list = await admin.ok('GET', '/api/invoices');
     const inv = list.rows.find(i => i.status === 'paid') || list.rows[0];
