@@ -646,9 +646,13 @@ function freeSlots(counselorId, date, minutesOverride) {
     db.prepare(`SELECT s.start_time, s.end_time FROM group_sessions s JOIN groups g ON g.id = s.group_id
       WHERE s.date = ? AND s.status != 'cancelled' AND (g.counselor_id = ? OR g.co_counselor_id = ?)`)
       .all(date, counselorId, counselorId));
+  // 時段起點以「系統設定的時段間隔」為刻度（預設 30 分，即整點與半點），
+  // 而不是從排班起點一節接一節往後推——否則 80 分鐘的方案會排出 14:20、15:40 這種怪時間。
+  const step = Math.max(5, Number(getSetting('booking_slot_step', '30')) || 30);
   const out = [];
   for (const r of ranges) {
-    for (let s = toMin(r.start_time); s + minutes <= toMin(r.end_time); s += minutes) {
+    const rs = toMin(r.start_time), re = toMin(r.end_time);
+    for (let s = Math.max(Math.ceil(rs / step) * step, rs); s + minutes <= re; s += step) {
       const e = s + minutes;
       if (busy.some(b => b.start_time && s < toMin(b.end_time) && e > toMin(b.start_time))) continue;
       // 舊資料若仍有重疊時段，這裡再去一次重，確保同一開始時間只出現一次

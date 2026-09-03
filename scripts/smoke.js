@@ -288,6 +288,33 @@ function startServer() {
     await lin.fails('POST', '/api/appointments',
       { client_id: clientId, counselor_id: 2, date: off, start_time: '14:00' }, '請假');
   });
+  await test('時段起點對齊整點半點，不會出現 14:20 這種怪時間', async () => {
+    const before = (await lin.ok('GET', '/api/availability?counselor_id=2'))
+      .map(v => ({ weekday: v.weekday, start_time: v.start_time, end_time: v.end_time, note: v.note }));
+    const day = nextWeekday(2, 30);   // 週二
+    await lin.ok('POST', '/api/availability/bulk', {
+      counselor_id: 2, blocks: [{ weekday: 2, start_time: '13:00', end_time: '17:00' }]
+    });
+    // 80 分鐘的方案：舊做法會排出 13:00、14:20、15:40，現在應為 13:00、13:30、14:00...
+    const plan = await admin.ok('POST', '/api/service-plans', {
+      name: '時段對齊測試（80 分鐘）', kind: 'self', fee: 3000, session_minutes: 80
+    });
+    try {
+      const slots = await admin.ok('GET', `/api/slots?counselor_id=2&date=${day}`);
+      assert(slots.every(s => /:(00|30)$/.test(s.start_time)), '起點應落在整點或半點：' + JSON.stringify(slots));
+      const pub = await (await fetch(
+        `${BASE}/api/public/booking-slots?counselor_id=2&plan_id=${plan.id}&from=${day}&days=1`)).json();
+      const day1 = (pub.days || []).find(d => d.date === day) || { slots: [] };
+      assert(day1.slots.length, '表單端應有時段');
+      assert(day1.slots.every(s => /:(00|30)$/.test(s.start_time)),
+        '表單端起點也要對齊：' + JSON.stringify(day1.slots.map(s => s.start_time)));
+      // 最後一個 80 分鐘的時段不可超出 17:00
+      assert(day1.slots.every(s => s.end_time <= '17:00'), '時段不可超出排班結束時間');
+    } finally {
+      await admin.ok('DELETE', `/api/service-plans/${plan.id}`);
+      await lin.ok('POST', '/api/availability/bulk', { counselor_id: 2, blocks: before });
+    }
+  });
   await test('排班可只改某一週，其他週仍照固定班', async () => {
     // 這支測試會覆寫固定班，跑完要還原，否則後面的個案端預約測試會找不到時段
     const before = (await lin.ok('GET', '/api/availability?counselor_id=2'))
