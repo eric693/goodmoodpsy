@@ -42,11 +42,17 @@ const Portal = {
       <div class="login-wrap"><div class="login-card">
         <h1>${UI.esc(t.ui_portal_title || '好心情個案專區')}</h1>
         <div class="sub">${UI.esc(t.ui_portal_login_sub || '預約與行政事項')}</div>
-        <div class="form-row"><label>手機號碼</label><input id="lg-user" inputmode="numeric" autocomplete="username"></div>
-        <div class="form-row"><label>密碼</label><input id="lg-pass" type="password" autocomplete="current-password"></div>
+        <div class="form-row"><label>手機號碼（10 碼，不是員工帳號）</label>
+          <input id="lg-user" name="portal-phone" inputmode="numeric" maxlength="10"
+            placeholder="0912345678" autocomplete="off" autocapitalize="off" spellcheck="false"></div>
+        <div class="form-row"><label>密碼</label>
+          <input id="lg-pass" name="portal-pass" type="password" autocomplete="new-password"></div>
         <button class="btn" id="lg-btn">登入</button>
         <div class="login-err" id="lg-err"></div>
-        ${t.ui_portal_login_hint ? `<div style="margin-top:10px;font-size:12.5px;color:var(--muted)">${UI.esc(t.ui_portal_login_hint)}</div>` : ''}
+        <div style="margin-top:10px;font-size:12.5px;color:var(--muted);line-height:1.8">
+          ${UI.esc(t.ui_portal_login_hint || '首次登入密碼為手機末 6 碼；忘記密碼請來電諮商所。')}<br>
+          帳號請填<strong>手機號碼</strong>；若欄位被瀏覽器自動填成其他帳號，請先清空再輸入。
+          諮商所同仁請改用員工後台網址登入。</div>
         ${t.ui_demo_portal ? `<div style="margin-top:14px;padding:12px;background:var(--primary-light);border-radius:8px;font-size:13px;line-height:1.8">
           ${UI.esc(t.ui_demo_portal).replace(/\n/g, '<br>')}</div>` : ''}
         ${t.ui_crisis_note ? `<div class="crisis" style="margin-top:14px">${UI.esc(t.ui_crisis_note)}</div>` : ''}
@@ -54,9 +60,16 @@ const Portal = {
     const doLogin = async () => {
       const err = document.getElementById('lg-err');
       err.textContent = '';
+      // 同網域的員工後台帳密常被瀏覽器自動填進來（例如 admin），先擋下並說明清楚，
+      // 否則個案只會看到「手機號碼或密碼錯誤」，不知道自己填錯了欄位。
+      const phone = document.getElementById('lg-user').value.replace(/[\s-]/g, '');
+      if (!/^09\d{8}$/.test(phone)) {
+        err.textContent = '請輸入您的手機號碼（09 開頭共 10 碼）。這裡不是員工後台，請勿填員工帳號。';
+        return;
+      }
       try {
         await POST(PAPI('/login'), {
-          phone: document.getElementById('lg-user').value.trim(),
+          phone,
           password: document.getElementById('lg-pass').value
         });
         location.reload();
