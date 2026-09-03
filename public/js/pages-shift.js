@@ -115,6 +115,9 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
 
     const table = el.querySelector('.shift-table');
     let dragging = false, mode = true;
+    // mousedown／touchstart 已經切過一次，瀏覽器隨後補送的 click 若再切一次就等於白點，
+    // 因此標記「這一下已經處理過」，讓後面那個 click 略過。
+    let handledByPointer = false;
     // 改過還沒存就切走，刷了半天的班表會整個不見，因此記錄有無未存變更
     let dirty = false;
     const toggle = (td, on) => {
@@ -129,6 +132,7 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
       if (!td) return;
       e.preventDefault();
       dragging = true;
+      handledByPointer = true;
       mode = !td.classList.contains('on');
       toggle(td, mode);
     });
@@ -138,8 +142,9 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
       if (td) toggle(td, mode);
     });
     document.addEventListener('mouseup', () => { dragging = false; });
-    // 手機沒有 hover，改成單點切換
+    // 鍵盤操作或其他非指標來源的 click 才走這裡；滑鼠與手指都已在 down／touchstart 處理完
     table.addEventListener('click', e => {
+      if (handledByPointer) { handledByPointer = false; return; }
       const td = e.target.closest('.shift-cell');
       if (td && !dragging) toggle(td, !td.classList.contains('on'));
     });
@@ -150,6 +155,7 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
       const td = e.target.closest('.shift-cell');
       if (!td) return;
       touching = true;
+      handledByPointer = true;
       touchMode = !td.classList.contains('on');
       toggle(td, touchMode);
     }, { passive: true });
