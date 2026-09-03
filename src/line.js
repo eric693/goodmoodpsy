@@ -101,6 +101,15 @@ function bookingReceivedFlex(b) {
 
 // 個案專區網址：設定沒填時由線上預約表單網址推得，讓卡片上的「個案專區」按鈕
 // 不必每個呼叫端各自帶一次，個案也才知道有這個地方可以看自己的預約。
+// 加官方帳號好友的連結：優先用設定的連結，沒填就用官方帳號 ID 自動組。
+// 線上預約送出後要請個案加好友（櫃檯在 LINE 回覆確認才算完成預約），沒有連結就等於斷線。
+function addFriendUrl() {
+  const u = String(getSetting('line_add_friend_url', '')).trim();
+  if (/^https?:\/\//.test(u)) return u;
+  const id = String(getSetting('line_official_id', '')).trim();
+  return id ? `https://line.me/R/ti/p/${encodeURIComponent(id.startsWith('@') ? id : '@' + id)}` : '';
+}
+
 function portalUrl() {
   const u = (getSetting('portal_public_url', '')
     || getSetting('booking_public_url', '').replace(/\/booking\.html.*$/, '/portal.html')).trim();
@@ -319,7 +328,7 @@ function verifySignature(rawBody, signature) {
 module.exports = {
   lineEnabled, weekdayOf, centerInfo,
   card, kv, noteBox, actionButton, textMessage,
-  bookingReceivedFlex, bookingConfirmedFlex, reminderFlex, portalUrl, portalLoginUrl,
+  bookingReceivedFlex, bookingConfirmedFlex, reminderFlex, portalUrl, portalLoginUrl, addFriendUrl,
   counselorScheduleFlex, counselorBookingFlex, receiptFlex,
   pushFlex, pushText, replyMessages, verifySignature, logNotification
 };

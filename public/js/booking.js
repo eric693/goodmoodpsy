@@ -126,6 +126,9 @@ const BK = {
           <div class="hint">${UI.esc(c.privacy || '')}</div>
         </div>
         <div class="bk-note">${UI.esc(c.notice || '')}</div>
+        ${c.line_add_friend_url ? `<div class="bk-note" style="font-weight:700">
+          送出後請加入本所 LINE 官方帳號${c.line_official_name ? `「${UI.esc(c.line_official_name)}」` : ''}，
+          我們會在 LINE 回覆確認，收到確認才算完成預約。</div>` : ''}
         <div class="bk-err" id="err"></div>
         <button class="btn bk-submit" id="submit">送出預約申請</button>
       </div>
@@ -303,17 +306,28 @@ const BK = {
 
   done(r) {
     const c = BK.cfg;
+    const lineName = r.line_official_name || c.line_official_name || '本所 LINE 官方帳號';
     document.getElementById('app').innerHTML = `<div class="bk-card done-box">
       <div class="ok">✓</div>
       <h2 style="justify-content:center">已收到您的預約申請</h2>
+      <div class="bk-note" style="text-align:left;margin-top:10px;font-weight:700;color:#b45309">
+        目前<strong>尚未完成預約</strong>——還差最後一步。</div>
       <div class="bk-note" style="text-align:left;margin-top:10px">
         ${UI.esc(r.message)}
         ${BK.sel.date ? `\n\n希望時段：${BK.sel.date} ${BK.sel.time}` : ''}
         ${BK.sel.plan ? `\n方案：${BK.sel.plan.name}\n您需支付：NT$ ${r.self_pay}` : ''}
         ${r.center_phone ? `\n\n如需修改或有疑問，請來電 ${r.center_phone}。` : ''}
       </div>
-      ${r.line_add_friend_url ? `<a class="btn" style="margin-top:14px;display:inline-block"
-        href="${UI.esc(r.line_add_friend_url)}" target="_blank" rel="noopener">加入 LINE 接收提醒</a>` : ''}
+      ${r.line_add_friend_url ? `<div style="margin-top:16px;padding:14px;border:2px solid var(--pri,#0e7c7b);border-radius:10px;text-align:left">
+        <div style="font-weight:700;margin-bottom:6px">最後一步：加入「${UI.esc(lineName)}」</div>
+        <div class="bk-note" style="margin:0 0 10px">
+          我們會在 LINE 回覆確認您的時段，<strong>收到確認才算完成預約</strong>；
+          之後的晤談提醒、改期與收據也都走這個帳號。</div>
+        <a class="btn" style="display:inline-block"
+          href="${UI.esc(r.line_add_friend_url)}" target="_blank" rel="noopener">加入 LINE 官方帳號</a>
+      </div>` : `<div class="bk-note" style="margin-top:16px;text-align:left">
+        我們確認後會與您聯繫，${r.center_phone ? `亦可來電 ${UI.esc(r.center_phone)} 確認。` : '請留意來電。'}
+        收到我們的確認才算完成預約。</div>`}
       ${r.portal_url ? `<div style="margin-top:14px">
         <a class="btn secondary" style="display:inline-block"
           href="${UI.esc(r.portal_url)}" target="_blank" rel="noopener">前往個案專區</a>

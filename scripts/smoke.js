@@ -1120,7 +1120,18 @@ function startServer() {
     });
     const d = await r.json();
     assert(r.ok, '送出失敗：' + JSON.stringify(d));
+    // 送出只是申請：回覆要講清楚還沒完成，並給加官方帳號的連結
+    assert(/尚未|還沒/.test(d.message) && /LINE/.test(d.message), '完成頁文案應說明尚未完成：' + d.message);
     bookingId = d.id;
+  });
+  await test('沒設加好友連結時，用官方帳號 ID 自動組一組', async () => {
+    // 加不到好友就收不到櫃檯的確認，等於整條流程斷在這裡
+    const cfg = () => fetch(BASE + '/api/public/booking-config').then(x => x.json());
+    await admin.ok('PUT', '/api/settings', { line_add_friend_url: '', line_official_id: '@testline' });
+    equal((await cfg()).line_add_friend_url, 'https://line.me/R/ti/p/%40testline', '應由官方帳號 ID 推得');
+    await admin.ok('PUT', '/api/settings', { line_add_friend_url: 'https://lin.ee/abc' });
+    equal((await cfg()).line_add_friend_url, 'https://lin.ee/abc', '有設定就以設定為準');
+    await admin.ok('PUT', '/api/settings', { line_add_friend_url: '', line_official_id: '' });
   });
   await test('預約表單與完成頁都帶出個案專區網址（未設定時由表單網址推得）', async () => {
     // 個案要知道專區在哪，才會去看預約、綁 LINE
