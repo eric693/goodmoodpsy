@@ -10,6 +10,7 @@
 
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { db, audit, today, addDays, getSetting, nowStamp, ageYears, nextClientCode } = require('../db');
 const { requireStaff, rateLimit } = require('../auth');
 const plans = require('../plans');
@@ -224,7 +225,15 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
     });
   }
 
-  const friendUrl = require('../line').addFriendUrl();
+  const friendUrl = line.addFriendUrl();
+  // 只加好友還不夠：官方帳號不知道這個 LINE 是誰，櫃檯確認的卡片就推不出去。
+  // 沒有從 LINE 連結進來的人，給一組綁定碼請他貼進聊天室，之後的通知才走得通。
+  let bindCode = '';
+  if (!lineUserId && line.lineEnabled() && friendUrl) {
+    bindCode = String(crypto.randomInt(100000, 999999));
+    db.prepare('INSERT INTO line_bindings (code, booking_id, expires_at) VALUES (?,?,?)')
+      .run(bindCode, id, addDays(today(), 3));
+  }
   res.json({
     ok: true, id,
     require_review: !!plan.require_review,
@@ -237,6 +246,7 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
         : '我們確認後會盡快與您聯繫，收到我們的確認才算預約成立。'),
     fee: quote.fee, self_pay: quote.self_pay,
     line_add_friend_url: friendUrl,
+    line_bind_code: bindCode,
     line_official_name: getSetting('line_official_name'),
     portal_url: require('../line').portalUrl(),
     center_phone: getSetting('center_phone')
@@ -363,13 +373,13 @@ router.post('/bookings/:id/create-client', requireStaff('clients'), (req, res) =
     (code, name, gender, birth_date, phone, email, address, id_no,
      emergency_name, emergency_phone, emergency_relationship,
      counselor_id, status, main_issue, source, is_minor, intake_date,
-     password_hash, must_change_password)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'intake',?,?,?,?,?,?)`).run(
+     password_hash, must_change_password, line_user_id)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'intake',?,?,?,?,?,?,?)`).run(
     code, b.name, b.gender || '', b.birth_date || '', b.phone, b.email || '',
     b.address || '', b.id_no || '',
     b.emergency_name || '', b.emergency_phone || '', b.emergency_relationship || '',
     b.counselor_id || null, b.main_issue || '', b.source === 'google_form' ? 'Google 預約表單' : '線上預約表單',
-    age !== null && age < adultAge ? 1 : 0, today(), pwHash, pwHash ? 1 : 0);
+    age !== null && age < adultAge ? 1 : 0, today(), pwHash, pwHash ? 1 : 0, b.line_user_id || '');
   db.prepare('UPDATE booking_requests SET client_id = ? WHERE id = ?').run(info.lastInsertRowid, b.id);
   audit('staff', req.user.id, req.user.name, '由預約申請建檔', code);
   res.json({ client_id: info.lastInsertRowid, code });

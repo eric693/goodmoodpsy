@@ -87,15 +87,21 @@ async function handleEvent(ev) {
     if (code) {
       const bind = db.prepare("SELECT * FROM line_bindings WHERE code = ? AND status = 'pending'").get(code);
       if (bind && (!bind.expires_at || bind.expires_at >= today())) {
-        const name = bind.client_id
-          ? (db.prepare('SELECT name FROM clients WHERE id = ?').get(bind.client_id) || {}).name
-          : (db.prepare('SELECT name FROM users WHERE id = ?').get(bind.user_id) || {}).name;
-        if (bind.client_id) db.prepare('UPDATE clients SET line_user_id = ? WHERE id = ?').run(lineUserId, bind.client_id);
+        // 線上預約送出後拿到的碼綁在「申請」上（那時多半還沒建檔）；
+        // 若該申請後來已對應到個案，就順手一起補到個案身上。
+        const booking = bind.booking_id
+          ? db.prepare('SELECT * FROM booking_requests WHERE id = ?').get(bind.booking_id) : null;
+        const clientId = bind.client_id || (booking && booking.client_id) || null;
+        const name = clientId
+          ? (db.prepare('SELECT name FROM clients WHERE id = ?').get(clientId) || {}).name
+          : (booking ? booking.name : (db.prepare('SELECT name FROM users WHERE id = ?').get(bind.user_id) || {}).name);
+        if (booking) db.prepare('UPDATE booking_requests SET line_user_id = ? WHERE id = ?').run(lineUserId, booking.id);
+        if (clientId) db.prepare('UPDATE clients SET line_user_id = ? WHERE id = ?').run(lineUserId, clientId);
         if (bind.user_id) db.prepare('UPDATE users SET line_user_id = ? WHERE id = ?').run(lineUserId, bind.user_id);
         db.prepare("UPDATE line_bindings SET status = 'done', line_user_id = ?, bound_at = ? WHERE id = ?")
           .run(lineUserId, nowStamp(), bind.id);
-        audit('system', null, 'LINE', '完成 LINE 綁定', String(bind.client_id || bind.user_id || ''));
-        await line.replyMessages(ev.replyToken, [bindingWelcome(name || '您', bind.client_id)]);
+        audit('system', null, 'LINE', '完成 LINE 綁定', String(clientId || bind.user_id || ''));
+        await line.replyMessages(ev.replyToken, [bindingWelcome(name || '您', clientId)]);
         return;
       }
       // 6 碼但不是有效綁定碼：可能是個案在講電話號碼或金額，不要當成綁定失敗就結束，

@@ -723,6 +723,11 @@ ensureColumns('service_plans', {
   // 例：總額 1800 = 方案給付 1600（心理師依此抽成）+ 場地費 200（所方收入）。
   venue_fee: 'INTEGER NOT NULL DEFAULT 0'
 });
+// 線上預約送出後產生的綁定碼綁在「這筆申請」上：此時多半還沒建檔，沒有 client_id 可綁。
+// 個案加好友後把碼貼進聊天室，系統才認得出他是誰，櫃檯的確認卡片才推得出去。
+ensureColumns('line_bindings', {
+  booking_id: 'INTEGER'
+});
 ensureColumns('booking_requests', {
   topic_other: "TEXT NOT NULL DEFAULT ''",           // 主題選「其他」時的自填內容
   // 以下比照所內原本的 Google 預約表單欄位，建檔時可直接帶進個案基本資料

@@ -1561,6 +1561,34 @@ function startServer() {
     assert(d.ok, '簽章正確時應處理事件');
     await admin.ok('PUT', '/api/line/settings', { line_channel_secret: '' });
   });
+  await test('線上預約給的綁定碼，貼進 LINE 就認得出是哪一筆申請', async () => {
+    // 只加好友的話系統不知道這個 LINE 是誰，櫃檯的確認卡片就推不出去
+    await admin.ok('PUT', '/api/line/settings',
+      { line_channel_secret: 'smoke-secret', line_channel_token: 'smoke-token', line_official_id: '@smoke' });
+    const lins = (await admin.ok('GET', '/api/users')).find(u => u.username === 'lin');
+    const date = nextWeekday(3, 16);
+    const slots = await (await fetch(`${BASE}/api/public/booking-slots?counselor_id=${lins.id}&plan_id=${youthPlanId}&from=${date}&days=1`)).json();
+    const r = await (await fetch(BASE + '/api/public/bookings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: '綁定測試', phone: '0911555777', birth_date: '2000-01-01',
+        plan_id: youthPlanId, counselor_id: lins.id, date, start_time: slots.days[0].slots[0].start_time, consent: true })
+    })).json();
+    assert(/^\d{6}$/.test(r.line_bind_code || ''), '完成頁應給一組綁定碼：' + JSON.stringify(r));
+    const body = JSON.stringify({ events: [{ type: 'message', replyToken: 'rb', source: { userId: 'U-book-001' },
+      message: { type: 'text', text: r.line_bind_code } }] });
+    const sig = require('crypto').createHmac('sha256', 'smoke-secret').update(body).digest('base64');
+    await fetch(BASE + '/api/line/webhook', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-line-signature': sig }, body
+    });
+    const row = (await admin.ok('GET', '/api/bookings?status=new')).find(x => x.id === r.id);
+    equal(row.line_user_id, 'U-book-001', '綁定後這筆申請要記得住是哪個 LINE');
+    // 建檔時要把 LINE 帶到個案身上，之後的提醒才推得出去
+    const c = await admin.ok('POST', `/api/bookings/${r.id}/create-client`);
+    const client = await admin.ok('GET', `/api/clients/${c.client_id}`);
+    equal(client.line_user_id, 'U-book-001', '建檔後個案應繼承這組 LINE 綁定');
+    await admin.ok('PUT', '/api/line/settings',
+      { line_channel_secret: '', line_channel_token: '', line_official_id: '' });
+  });
   await test('個案在 LINE 傳的話會進到「個案訊息」，櫃檯回覆會推回去', async () => {
     // 原本個案在 LINE 打字只會收到自動說明，內容沒人看得到，等於無法聊
     await admin.ok('PUT', '/api/line/settings', { line_channel_secret: 'smoke-secret' });

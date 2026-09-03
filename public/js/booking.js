@@ -325,6 +325,13 @@ const BK = {
           之後的晤談提醒、改期與收據也都走這個帳號。</div>
         <a class="btn" style="display:inline-block"
           href="${UI.esc(r.line_add_friend_url)}" target="_blank" rel="noopener">加入 LINE 官方帳號</a>
+        ${r.line_bind_code ? `<div style="margin-top:12px">
+          <div class="bk-note" style="margin:0 0 4px">加入後請在聊天室<strong>傳送這組代碼</strong>，
+            我們才認得出您是哪一位，確認結果才送得到您的 LINE：</div>
+          <div style="font-size:30px;font-weight:700;letter-spacing:6px;text-align:center;margin:6px 0">
+            ${UI.esc(r.line_bind_code)}</div>
+          <div class="bk-note" style="margin:0">代碼 3 天內有效；沒傳也沒關係，我們會改用電話與您聯繫。</div>
+        </div>` : ''}
       </div>` : `<div class="bk-note" style="margin-top:16px;text-align:left">
         我們確認後會與您聯繫，${r.center_phone ? `亦可來電 ${UI.esc(r.center_phone)} 確認。` : '請留意來電。'}
         收到我們的確認才算完成預約。</div>`}
