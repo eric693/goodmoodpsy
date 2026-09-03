@@ -152,12 +152,16 @@ async function apptDialog(appt, onDone, defaults) {
 }
 
 async function apptStatusDialog(a, onDone) {
+  // 四種狀態都列出來（含改回「已預約」），按錯才有辦法改回去
   const acts = [
+    ['booked', '改回已預約', 'secondary'],
     ['arrived', '報到', 'secondary'],
     ['done', '完成晤談', ''],
     ['no_show', '未到', 'warn'],
     ['cancelled', '取消', 'danger']
   ].filter(x => x[0] !== a.status);
+  // 上一個狀態：誤按時一鍵還原
+  const prev = a.prev_status && a.prev_status !== a.status ? a.prev_status : '';
   const m = UI.modal({
     title: `${a.client_name}　${a.date} ${a.start_time}`,
     hideFooter: true,
@@ -179,6 +183,12 @@ async function apptStatusDialog(a, onDone) {
         </select>
         <div style="font-size:12.5px;color:var(--muted);margin-top:4px">
           選了收款方式，按「完成晤談」時就直接收款並取得收據號碼${a.fee ? `（本次應收 ${UI.fmtMoney(a.fee)}）` : ''}。</div></div>`}
+      ${prev ? `<div class="notice" style="margin-top:14px;margin-bottom:0">
+        按錯了？<button class="btn small" data-st="${prev}" type="button" style="margin-left:6px">
+          還原為「${UI.esc(TW.appt_status[prev] || prev)}」</button>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:6px">
+          還原會退回方案次數並移除尚未收款的收費單；已收款的部分不會自動退，系統會提示需人工處理。</div>
+      </div>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
         ${acts.map(x => `<button class="btn ${x[2]}" data-st="${x[0]}" type="button">${x[1]}</button>`).join('')}
       </div>

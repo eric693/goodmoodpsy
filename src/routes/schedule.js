@@ -338,7 +338,9 @@ router.post('/appointments/:id/status', requireStaff('schedule'), (req, res) => 
   };
 
   const tx = db.transaction(() => {
-    db.prepare('UPDATE appointments SET status = ?, cancel_reason = ? WHERE id = ?').run(status, cancel_reason, a.id);
+    // 記下上一個狀態，按錯時可一鍵還原；同狀態重按不覆蓋（否則還原會指向自己）
+    db.prepare('UPDATE appointments SET status = ?, cancel_reason = ?, prev_status = ? WHERE id = ?')
+      .run(status, cancel_reason, status === a.status ? a.prev_status : a.status, a.id);
     // 先全部回沖再依新狀態重算，狀態任意來回切換都不會重複計費或漏退次數
     if (a.charged) reverseCharge();
     if (willCharge) applyCharge();

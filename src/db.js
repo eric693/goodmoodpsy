@@ -768,7 +768,9 @@ ensureColumns('availability', {
 // 晤談提醒可請個案在 LINE 上按「會準時前往」，回覆時間記在這裡，
 // 櫃檯就看得出哪些人已確認、哪些人還沒回應（未回應不代表不來，只是要多留意）。
 ensureColumns('appointments', {
-  confirmed_at: "TEXT NOT NULL DEFAULT ''"
+  confirmed_at: "TEXT NOT NULL DEFAULT ''",
+  // 上一個狀態：櫃檯按錯（例如誤按「完成晤談」）時可一鍵還原，不必自己記原本是什麼
+  prev_status: "TEXT NOT NULL DEFAULT ''"
 });
 // LINE 卡片上的「個案專區」按鈕：帶一次性登入連結，個案點了直接進專區，
 // 不必記手機末 6 碼（很多舊個案連手機都沒登錄在系統裡）。

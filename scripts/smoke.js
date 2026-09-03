@@ -1136,6 +1136,30 @@ function startServer() {
 
   section('收據');
   let receiptId, receiptNo;
+  await test('誤按狀態可還原為上一個狀態', async () => {
+    const day = addDays(monday, 84);
+    const made = await lin.ok('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: day, start_time: '09:00', fee: 1800 });
+    // 報到 → 誤按完成 → 還原
+    await admin.ok('POST', `/api/appointments/${made.id}/status`, { status: 'arrived' });
+    await admin.ok('POST', `/api/appointments/${made.id}/status`, { status: 'done' });
+    let cur = (await admin.ok('GET', `/api/appointments?date=${day}`)).find(x => x.id === made.id);
+    equal(cur.status, 'done', '應為已完成');
+    equal(cur.prev_status, 'arrived', '應記下上一個狀態');
+    assert((await admin.ok('GET', '/api/invoices?status=unpaid')).rows.some(i => i.appointment_id === made.id),
+      '完成後應產生收費單');
+    // 還原為報到：收費單一併移除（尚未收款）
+    await admin.ok('POST', `/api/appointments/${made.id}/status`, { status: cur.prev_status });
+    cur = (await admin.ok('GET', `/api/appointments?date=${day}`)).find(x => x.id === made.id);
+    equal(cur.status, 'arrived', '應還原為已報到');
+    assert(!(await admin.ok('GET', '/api/invoices')).rows.some(i => i.appointment_id === made.id),
+      '未收款的收費單應被移除');
+    // 也要能改回「已預約」
+    await admin.ok('POST', `/api/appointments/${made.id}/status`, { status: 'booked' });
+    cur = (await admin.ok('GET', `/api/appointments?date=${day}`)).find(x => x.id === made.id);
+    equal(cur.status, 'booked', '應可改回已預約');
+    await admin.ok('DELETE', `/api/appointments/${made.id}`);
+  });
   await test('完成晤談時可當下選現金或轉帳收款', async () => {
     // 櫃檯多半在按「完成」的同時就收了錢，不必再繞到收費頁按一次收款
     const day = addDays(monday, 77);
