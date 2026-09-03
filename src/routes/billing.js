@@ -132,6 +132,22 @@ router.post('/invoices/:id/void', requireStaff('billing'), (req, res) => {
   res.json({ ok: true });
 });
 
+// 刪除收費單：重複開立（例如收款按了兩次）留著一張作廢單反而礙眼，所以給真的刪除。
+// 有退費紀錄的不能刪——那代表錢真的動過，帳要留得住；請先撤銷退費單。
+// 已收款者刪除必須寫原因，並完整記進稽核軌跡（誰、何時、刪了哪一張、多少錢）。
+router.delete('/invoices/:id', requireStaff('billing'), (req, res) => {
+  const i = db.prepare('SELECT * FROM invoices WHERE id = ?').get(req.params.id);
+  if (!i) return res.status(404).json({ error: '找不到此收費單' });
+  const refunded = db.prepare('SELECT COALESCE(SUM(amount),0) n FROM refunds WHERE invoice_id = ?').get(i.id).n;
+  if (refunded > 0) return res.status(400).json({ error: '此收費單已有退費紀錄，請先撤銷退費單再刪除' });
+  const reason = String((req.body || {}).reason || '').trim();
+  if (i.status === 'paid' && !reason) return res.status(400).json({ error: '刪除已收款的收費單請填寫原因' });
+  db.prepare('DELETE FROM invoices WHERE id = ?').run(i.id);
+  audit('staff', req.user.id, req.user.name, '刪除收費單', String(i.client_id),
+    { id: i.id, amount: i.amount, status: i.status, receipt_no: i.receipt_no, item: i.item, reason });
+  res.json({ ok: true });
+});
+
 router.get('/invoices/:id/receipt', requireStaff('billing'), (req, res) => {
   const i = db.prepare(`SELECT i.*, c.name AS client_name, c.code AS client_code FROM invoices i
     JOIN clients c ON c.id = i.client_id WHERE i.id = ?`).get(req.params.id);

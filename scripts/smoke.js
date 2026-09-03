@@ -1205,6 +1205,11 @@ function startServer() {
     // 重複開立時要能作廢（已收款者也可以，否則只能記一筆假的退費）
     await admin.ok('POST', `/api/invoices/${mine[0].id}/void`, { reason: '重複開立' });
     equal((await admin.ok('GET', '/api/invoices')).rows.find(i => i.id === mine[0].id).status, 'void', '應可作廢');
+    // 也能直接刪掉（重複開立留著一張作廢單反而礙眼）；已收款者要寫原因
+    await admin.ok('DELETE', `/api/invoices/${mine[0].id}`, { reason: '重複開立' });
+    assert(!(await admin.ok('GET', '/api/invoices')).rows.some(i => i.id === mine[0].id), '刪除後不應留在清單');
+    assert((await admin.ok('GET', '/api/audit-logs?q=' + encodeURIComponent('刪除收費單')))
+      .some(l => l.action === '刪除收費單'), '刪除動作應記入稽核軌跡');
   });
   await test('完成晤談時可當下選現金或轉帳收款', async () => {
     // 櫃檯多半在按「完成」的同時就收了錢，不必再繞到收費頁按一次收款

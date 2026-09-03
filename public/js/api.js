@@ -17,4 +17,5 @@ async function api(path, options = {}) {
 const GET = p => api(p);
 const POST = (p, body) => api(p, { method: 'POST', body });
 const PUT = (p, body) => api(p, { method: 'PUT', body });
-const DEL = p => api(p, { method: 'DELETE' });
+// 刪除偶爾要帶原因（例如刪收費單），body 為選填
+const DEL = (p, body) => api(p, body ? { method: 'DELETE', body } : { method: 'DELETE' });

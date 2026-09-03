@@ -405,6 +405,7 @@ App.page('billing', {
     '晤談狀態改成「已完成」時會自動產生收費單，未到則依系統設定的比例計費，通常不必手動新增。',
     '收到錢按「收款」並選付款方式；金額錯了在收款前用「編輯」改，開錯整張用「作廢」。',
     '已收款的可開「收據」或辦「退費」；退費紀錄在右上「退費紀錄」查。',
+    '按錯開成兩張（例如收款按了兩次）就按「刪除」，已收款的要寫原因，動作會記進稽核軌跡；真的要把錢退回個案才用「退費」。',
   ],
   module: 'billing',
   async render(el) {
@@ -442,7 +443,8 @@ App.page('billing', {
             <button class="btn tiny danger" data-void="${i.id}">作廢</button>`
             : (i.status === 'paid' || i.status === 'refunded') ? `<button class="btn tiny secondary" data-r="${i.id}">收據</button>
             <button class="btn tiny danger" data-refund="${i.id}">退費</button>
-            <button class="btn tiny danger" data-void="${i.id}">作廢</button>` : ''}</td></tr>`),
+            <button class="btn tiny danger" data-void="${i.id}">作廢</button>` : ''}
+            <button class="btn tiny danger" data-del="${i.id}">刪除</button></td></tr>`),
           '沒有符合條件的收費單')}`;
       el.querySelectorAll('[data-edit]').forEach(b => {
         b.onclick = () => invoiceDialog(d.rows.find(x => x.id === Number(b.dataset.edit)), null, draw);
@@ -519,6 +521,27 @@ App.page('billing', {
             }
           });
         };
+      });
+      // 刪除：重複開立時留著一張作廢單反而礙眼，直接刪掉；有退費紀錄的擋在後端
+      el.querySelectorAll('[data-del]').forEach(b => {
+        const inv = d.rows.find(x => String(x.id) === b.dataset.del);
+        b.onclick = () => UI.modal({
+          title: '刪除收費單',
+          submitText: '確定刪除',
+          body: `<div class="notice ${inv.status === 'paid' ? 'warn' : ''}" style="margin-bottom:12px;font-size:13.5px">
+              ${UI.esc(inv.item)}　${UI.fmtMoney(inv.amount)}
+              ${inv.receipt_no ? '（收據 ' + UI.esc(inv.receipt_no) + '）' : ''}<br>
+              ${inv.status === 'paid'
+    ? '這是<strong>已收款</strong>的單。只有重複開立或開錯才刪；真的收了錢要退回個案，請用「退費」。'
+    : '刪除後不會留在清單上，動作本身會記進稽核軌跡。'}</div>
+            <div class="form-grid">${UI.input('reason', '刪除原因'
+    + (inv.status === 'paid' ? '（必填）' : '（選填）'), { full: true, value: inv.status === 'paid' ? '重複開立' : '' })}</div>`,
+          onSubmit: async e => {
+            await DEL(`/invoices/${b.dataset.del}`, UI.formData(e));
+            UI.toast('已刪除');
+            draw();
+          }
+        });
       });
       el.querySelectorAll('[data-void]').forEach(b => {
         // 已收款者也給作廢：重複開立（例如收款按了兩次）用退費會記下一筆根本沒發生的退款，
