@@ -73,6 +73,54 @@ async function clientDialog(c, onDone) {
   });
 }
 
+// 重複個案：舊資料匯入常讓同一個人有兩個以上案號，排約時挑不到人、統計也會被拆開。
+// 這裡列出疑似重複的群組與各自的資料量，讓櫃檯判斷要保留哪一個，另一個停用或永久刪除。
+function duplicatesDialog(onDone) {
+  UI.modal({
+    title: '疑似重複的個案', wide: true, hideFooter: true,
+    body: '<div id="dup-body"><div class="empty">檢查中...</div></div>',
+    onOpen: async (body, close) => {
+      const box = body.querySelector('#dup-body');
+      let d;
+      try { d = await GET('/clients/duplicates'); } catch (e) { box.innerHTML = `<div class="empty">${UI.esc(e.message)}</div>`; return; }
+      if (!d.groups.length) { box.innerHTML = '<div class="empty">沒有發現重複的個案</div>'; return; }
+      box.innerHTML = `<div style="font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:10px">
+          共 ${d.total} 組。判斷方式：<strong>保留有預約與紀錄的那一筆</strong>，另一筆若完全沒有資料可永久刪除，
+          有資料則建議停用（資料仍保留）。停用後就不會再出現在排約的個案清單裡。</div>
+        ${d.groups.map(g => `<div class="card" style="margin-bottom:10px"><h3 style="font-size:15px">
+          ${UI.esc(g.key)}　<span style="font-size:12.5px;font-weight:400;color:var(--muted)">${g.kind}／${g.clients.length} 筆</span></h3>
+          ${UI.table(['編號', '姓名', '手機', '生日', '主責', '預約', '紀錄', '收費', '最近預約', ''],
+    g.clients.map(c => `<tr>
+            <td>${UI.esc(c.code)}</td>
+            <td><a href="#client/${c.id}">${UI.esc(c.name)}</a></td>
+            <td>${UI.esc(c.phone || '-')}</td>
+            <td>${UI.esc(c.birth_date || '-')}</td>
+            <td>${UI.esc(c.counselor_name || '-')}</td>
+            <td>${c.appointments}</td><td>${c.notes}</td><td>${c.invoices}</td>
+            <td>${UI.esc(c.last_appointment || '-')}</td>
+            <td style="white-space:nowrap">
+              <button class="btn tiny secondary" data-off="${c.id}">停用</button>
+              ${!c.appointments && !c.notes && !c.invoices
+    ? `<button class="btn tiny danger" data-purge="${c.id}">永久刪除</button>` : ''}</td></tr>`))}
+        </div>`).join('')}`;
+      box.querySelectorAll('[data-off]').forEach(b => {
+        b.onclick = async () => {
+          if (!await UI.confirm('停用這筆個案？資料保留，但不再出現在排約清單。')) return;
+          try { await DEL(`/clients/${b.dataset.off}`); UI.toast('已停用'); close(); onDone && onDone(); }
+          catch (e) { UI.err(e); }
+        };
+      });
+      box.querySelectorAll('[data-purge]').forEach(b => {
+        b.onclick = async () => {
+          if (!await UI.confirm('這筆沒有任何預約與紀錄，確定永久刪除？')) return;
+          try { await DEL(`/clients/${b.dataset.purge}/purge`); UI.toast('已刪除'); close(); onDone && onDone(); }
+          catch (e) { UI.err(e); }
+        };
+      });
+    }
+  });
+}
+
 App.page('clients', {
   title: '個案管理',
   sub: '個案基本資料與服務狀態；晤談紀錄僅主責心理師、督導與管理者可讀',
@@ -161,9 +209,12 @@ App.page('clients', {
         <input id="q" placeholder="搜尋姓名／編號／電話">
         <select id="st"><option value="">全部狀態</option>${App.enumOptions('client_status').map(o => `<option value="${o[0]}">${o[1]}</option>`).join('')}</select>
         <select id="cs">${App.counselorOptions(true).map(o => `<option value="${o[0]}">${UI.esc(o[1])}</option>`).join('')}</select>
-        <div class="spacer"></div><button class="btn" id="add">新增個案</button>
+        <div class="spacer"></div>
+        <button class="btn secondary" id="dup">找重複個案</button>
+        <button class="btn" id="add">新增個案</button>
       </div><div id="list"></div>`;
     el.querySelector('#add').onclick = () => clientDialog(null, draw);
+    el.querySelector('#dup').onclick = () => duplicatesDialog(draw);
     const redraw = () => { page = 1; draw(); };
     el.querySelector('#q').oninput = () => { clearTimeout(el._t); el._t = setTimeout(redraw, 300); };
     el.querySelector('#st').onchange = redraw;

@@ -765,6 +765,11 @@ ensureColumns('users', {
 ensureColumns('availability', {
   week_start: "TEXT NOT NULL DEFAULT ''"
 });
+// 晤談提醒可請個案在 LINE 上按「會準時前往」，回覆時間記在這裡，
+// 櫃檯就看得出哪些人已確認、哪些人還沒回應（未回應不代表不來，只是要多留意）。
+ensureColumns('appointments', {
+  confirmed_at: "TEXT NOT NULL DEFAULT ''"
+});
 ensureColumns('invoices', {
   plan_id: 'INTEGER REFERENCES service_plans(id)',
   topic_id: 'INTEGER REFERENCES plan_topics(id)'

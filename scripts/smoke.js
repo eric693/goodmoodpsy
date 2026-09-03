@@ -313,6 +313,17 @@ function startServer() {
     await admin.fails('POST', '/api/invoices', { client_id: clientId, item: '測試', amount: 20000000 }, '100 萬');
     await admin.fails('POST', '/api/invoices', { client_id: clientId, item: '測試', amount: 0 }, '請填寫金額');
   });
+  await test('個案可在 LINE 提醒卡片上按「我會準時前往」', async () => {
+    // 提醒卡片帶 postback 按鈕，webhook 收到後記下確認時間；改期則轉為取消申請通知櫃檯
+    const line = require('../src/line');
+    const day = addDays(monday, 63);
+    const made = await lin.ok('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: day, start_time: '11:00' });
+    const flex = JSON.stringify(line.reminderFlex({ id: made.id, date: day, start_time: '11:00', end_time: '11:50' }));
+    assert(flex.includes(`act=confirm&id=${made.id}`), '提醒卡片應有確認出席的按鈕');
+    assert(flex.includes(`act=change&id=${made.id}`), '提醒卡片應有改期按鈕');
+    await admin.ok('DELETE', `/api/appointments/${made.id}`);
+  });
   await test('視訊晤談不佔用諮商室', async () => {
     // 通訊諮商在線上進行，若也被指派空間，諮商室使用表會被塞滿看不出空檔
     const day = addDays(monday, 42);

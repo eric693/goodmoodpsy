@@ -24,6 +24,32 @@ const App = {
   // 所內暫不使用的模組（系統設定 hidden_modules）：導覽與總覽區塊都不出現
   hidden(key) { return ((App.meta && App.meta.hidden_modules) || []).includes(key); },
   isCounselor() { return App.me && ['counselor', 'supervisor', 'admin'].includes(App.me.role); },
+  // 心理師自己的 LINE 綁定：只加好友而沒綁定的話，官方帳號會把他當成一般民眾回覆預約說明，
+  // 也收不到自己的隔日行程推播。這張卡片讓本人兩步完成綁定。
+  myLineCard(d) {
+    if (!d || !d.enabled) return '';
+    const name = UI.esc(d.official_name || 'LINE 官方帳號');
+    if (d.bound) {
+      return `<div class="card"><h3>我的 LINE 通知 ${UI.tag('已綁定', 'ok')}</h3>
+        <div style="font-size:14px;line-height:1.9">已與「${name}」連結${d.daily_enabled
+        ? `，每天 ${UI.esc(d.daily_time)} 會收到隔日行程` : ''}。</div>
+        <button class="btn tiny secondary" id="myline-unbind" style="margin-top:10px">解除綁定</button></div>`;
+    }
+    return `<div class="card"><h3>我的 LINE 通知 ${UI.tag('尚未綁定', 'warn')}</h3>
+      <div style="font-size:14px;line-height:1.9">只加好友還不夠——官方帳號要知道這個 LINE 是你，
+        才會把<strong>你的隔日行程</strong>推給你；沒綁定的話系統只會把你當一般民眾回覆預約說明。</div>
+      <div style="margin-top:12px;font-size:14px;line-height:2">
+        <strong>步驟 1</strong>　加「${name}」為好友
+        ${d.add_friend_url ? `<br><a class="btn small" style="margin:6px 0"
+          href="${UI.esc(d.add_friend_url)}" target="_blank" rel="noopener">加入好友</a>` : ''}
+        <br><strong>步驟 2</strong>　在聊天室傳送這組綁定碼
+        <div style="font-size:26px;font-weight:700;letter-spacing:4px;margin:6px 0">${UI.esc(d.code || '')}</div>
+        ${d.message_url ? `<a class="btn small" style="margin-bottom:6px"
+          href="${UI.esc(d.message_url)}" target="_blank" rel="noopener">開啟聊天室並帶入綁定碼</a>` : ''}
+      </div>
+      <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+        綁定碼於 ${UI.esc(d.expires_at || '')} 前有效；傳送後會收到「綁定完成」卡片，重新整理本頁即顯示已綁定。</div></div>`;
+  },
 
   listOptions(key, fallback = []) {
     const list = (App.meta && App.meta[key] && App.meta[key].length) ? App.meta[key] : fallback;
@@ -294,7 +320,7 @@ App.page('my', {
   ],
   visible: () => App.isCounselor(),
   async render(el) {
-    const d = await GET('/my-dashboard');
+    const [d, myLine] = await Promise.all([GET('/my-dashboard'), GET('/my/line').catch(() => null)]);
     const bar = (now, need, label) => {
       const pct = need > 0 ? Math.min(100, Math.round(now / need * 100)) : 100;
       const done = now >= need;
@@ -325,6 +351,7 @@ App.page('my', {
         <div class="stat"><div class="num">${UI.fmtMoney(d.month_revenue)}</div><div class="label">本月開立費用（我的個案）</div></div>
       </div>
 
+      ${App.myLineCard(myLine)}
       ${d.open_risk_events.length && !App.hidden('risk') ? `<div class="card"><h3>追蹤中的危機事件</h3>
         ${UI.table(['日期', '個案', '類型', '嚴重度', '通報'], d.open_risk_events.map(e => `<tr>
           <td>${e.date}</td>
@@ -427,5 +454,11 @@ App.page('my', {
           <td>${p.month}</td><td>${UI.esc(p.item)}</td><td>${p.sessions}</td>
           <td>${UI.fmtMoney(p.gross)}</td><td>${UI.fmtMoney(p.net)}</td>
           <td>${p.status === 'paid' ? UI.tag('已付', 'ok') : UI.tag('待付', 'warn')}</td></tr>`))}</div>` : ''}`;
+
+    const unbind = el.querySelector('#myline-unbind');
+    if (unbind) unbind.onclick = async () => {
+      if (!await UI.confirm('解除後就不會再收到 LINE 行程推播，確定解除？')) return;
+      try { await DEL('/my/line'); UI.toast('已解除綁定'); App.go('my'); } catch (e) { UI.err(e); }
+    };
   }
 });

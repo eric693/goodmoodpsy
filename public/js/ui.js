@@ -86,6 +86,24 @@ const UI = {
         placeholder="在這裡打字篩選（姓名或編號）" style="margin-bottom:5px">` : ''}
       <select name="${name}"${withSearch ? ` id="${sid}"` : ''}>${inner}</select></div>`;
   },
+  // 長清單挑選器（個案上千筆）：手機上原生 <select> 一展開就蓋住上方的篩選框，
+  // 只能用手指刷很久。改成「輸入框 + 即時清單」，打字就縮小範圍，點一下就選好，
+  // 表單送出的仍是隱藏欄位裡的 id，與 select 相容。
+  picker(name, label, options, opts = {}) {
+    const { value = '', full = false, placeholder = '輸入姓名或編號搜尋' } = opts;
+    const id = `pk-${name}-${Math.random().toString(36).slice(2, 7)}`;
+    const list = options.filter(o => String(Array.isArray(o) ? o[0] : o) !== '');
+    const cur = list.find(o => String(o[0]) === String(value));
+    return `<div class="form-row${full ? ' full' : ''} picker" data-pk="${id}">
+      <label>${UI.esc(label)}</label>
+      <input type="hidden" name="${name}" value="${UI.esc(value)}">
+      <input type="search" class="pk-input" id="${id}" autocomplete="off"
+        placeholder="${UI.esc(placeholder)}" value="${cur ? UI.esc(cur[1]) : ''}">
+      <div class="pk-list" hidden></div>
+      <script type="application/json" class="pk-data">${JSON.stringify(list)}</script>
+    </div>`;
+  },
+
   inputList(name, label, options, opts = {}) {
     const { value = '', placeholder = '', full = false } = opts;
     const listId = `dl-${name}-${Math.random().toString(36).slice(2, 7)}`;
@@ -337,4 +355,46 @@ document.addEventListener('keydown', e => {
     const sel = document.getElementById(e.target.dataset.sel);
     if (sel) sel.focus();
   }
+});
+
+// ---- 長清單挑選器 ----
+// 全域一次綁定：輸入時即時篩選、點選寫回隱藏欄位；沒選到人時清空，避免送出半截文字。
+function pkData(box) {
+  const tag = box.querySelector('.pk-data');
+  try { return JSON.parse(tag.textContent || '[]'); } catch { return []; }
+}
+function pkRender(box, q) {
+  const list = pkData(box);
+  const key = String(q || '').trim().toLowerCase();
+  const hit = (key ? list.filter(o => String(o[1]).toLowerCase().includes(key)) : list).slice(0, 50);
+  const ul = box.querySelector('.pk-list');
+  ul.innerHTML = hit.length
+    ? hit.map(o => `<button type="button" class="pk-item" data-v="${UI.esc(o[0])}">${UI.esc(o[1])}</button>`).join('')
+    : '<div class="pk-empty">找不到符合的對象</div>';
+  ul.hidden = false;
+}
+document.addEventListener('input', e => {
+  const box = e.target.closest && e.target.closest('.picker');
+  if (!box || !e.target.classList.contains('pk-input')) return;
+  box.querySelector('input[type=hidden]').value = '';
+  pkRender(box, e.target.value);
+});
+document.addEventListener('focusin', e => {
+  const box = e.target.closest && e.target.closest('.picker');
+  if (box && e.target.classList.contains('pk-input')) pkRender(box, '');
+});
+document.addEventListener('click', e => {
+  const item = e.target.closest && e.target.closest('.pk-item');
+  if (item) {
+    const box = item.closest('.picker');
+    box.querySelector('input[type=hidden]').value = item.dataset.v;
+    box.querySelector('.pk-input').value = item.textContent;
+    box.querySelector('.pk-list').hidden = true;
+    box.querySelector('.pk-input').dispatchEvent(new Event('change', { bubbles: true }));
+    return;
+  }
+  // 點到別處就收起清單
+  document.querySelectorAll('.picker .pk-list').forEach(ul => {
+    if (!e.target.closest || !e.target.closest('.picker') || e.target.closest('.picker') !== ul.closest('.picker')) ul.hidden = true;
+  });
 });

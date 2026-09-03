@@ -100,6 +100,45 @@ async function handleEvent(ev) {
     return;
   }
 
+  // 晤談提醒卡片上的「我會準時前往／需要改期」——個案按一下就回覆，不必打字也不必打電話。
+  if (ev.type === 'postback') {
+    const data = new URLSearchParams(String((ev.postback && ev.postback.data) || ''));
+    const act = data.get('act');
+    const id = Number(data.get('id')) || 0;
+    const client = db.prepare('SELECT * FROM clients WHERE line_user_id = ? AND active = 1').get(lineUserId);
+    const appt = id ? db.prepare('SELECT * FROM appointments WHERE id = ?').get(id) : null;
+    // 只認自己的預約：換人綁定或轉傳卡片都動不到別人的資料
+    if (!client || !appt || appt.client_id !== client.id) {
+      await line.replyMessages(ev.replyToken, [line.textMessage('這筆預約已經有變動，請直接來電與我們確認。')]);
+      return;
+    }
+    if (appt.status !== 'booked' && appt.status !== 'arrived') {
+      await line.replyMessages(ev.replyToken, [line.textMessage('這筆晤談已不在預約狀態，若有疑問請來電洽詢。')]);
+      return;
+    }
+    if (act === 'confirm') {
+      db.prepare('UPDATE appointments SET confirmed_at = ? WHERE id = ?').run(nowStamp(), appt.id);
+      audit('client', client.id, client.name, '以 LINE 確認出席', client.code, { id: appt.id });
+      await line.replyMessages(ev.replyToken, [line.textMessage(
+        `已為您記錄：${appt.date} ${appt.start_time} 準時前往，我們到時見。`)]);
+      return;
+    }
+    if (act === 'change') {
+      // 改期不在 LINE 上直接改（要看空檔與收費規則），改為記下申請並提醒櫃檯
+      db.prepare(`UPDATE appointments SET cancel_requested_at = ?,
+          cancel_request_reason = CASE WHEN cancel_request_reason = '' THEN 'LINE 回覆需要改期或取消' ELSE cancel_request_reason END
+        WHERE id = ?`).run(nowStamp(), appt.id);
+      audit('client', client.id, client.name, '以 LINE 提出改期／取消', client.code, { id: appt.id });
+      const phone = getSetting('center_phone', '');
+      await line.replyMessages(ev.replyToken, [line.textMessage(
+        `已收到您的改期／取消需求（${appt.date} ${appt.start_time}），櫃檯會與您聯繫。`
+        + (phone ? `\n急需處理請直接來電 ${phone}。` : ''))]);
+      return;
+    }
+    await line.replyMessages(ev.replyToken, [line.textMessage('收到，若需協助請直接來電。')]);
+    return;
+  }
+
   // 加好友當下就給預約入口，個案不必再問「要怎麼預約」
   if (ev.type === 'follow') {
     await line.replyMessages(ev.replyToken, [helpFlex(lineUserId)]);
@@ -259,6 +298,47 @@ router.post('/line/bind-code', requireStaff(), (req, res) => {
     .run(code, clientId, userId, addDays(today(), 1));
   audit('staff', req.user.id, req.user.name, '產生 LINE 綁定碼', String(clientId || userId));
   res.json({ code, expires_at: addDays(today(), 1), add_friend_url: getSetting('line_add_friend_url') });
+});
+
+// 心理師自助綁定：加好友後若沒綁定，系統只把他當一般民眾回覆預約說明，
+// 收不到自己的行程推播。這支讓本人在「我的工作台」直接拿到碼與帶碼的聊天室連結。
+router.get('/my/line', requireStaff(), (req, res) => {
+  const u = db.prepare('SELECT line_user_id FROM users WHERE id = ?').get(req.user.id) || {};
+  const enabled = !!getSetting('line_channel_token');
+  const out = {
+    enabled,
+    bound: !!u.line_user_id,
+    official_name: getSetting('line_official_name', ''),
+    add_friend_url: getSetting('line_add_friend_url', ''),
+    daily_time: getSetting('line_counselor_daily_time', '20:00'),
+    daily_enabled: getSetting('line_counselor_daily_enabled', '1') === '1'
+  };
+  if (!enabled || out.bound) return res.json(out);
+  let bind = db.prepare(`SELECT code, expires_at FROM line_bindings
+    WHERE user_id = ? AND status = 'pending' AND (expires_at IS NULL OR expires_at >= date('now','localtime'))
+    ORDER BY id DESC LIMIT 1`).get(req.user.id);
+  if (!bind) {
+    db.prepare("UPDATE line_bindings SET status = 'expired' WHERE status = 'pending' AND user_id = ?")
+      .run(req.user.id);
+    const expires_at = addDays(today(), 1);
+    const ins = db.prepare('INSERT INTO line_bindings (code, user_id, expires_at) VALUES (?,?,?)');
+    for (let i = 0; i < 10 && !bind; i++) {
+      const code = String(crypto.randomInt(100000, 1000000));
+      try { ins.run(code, req.user.id, expires_at); bind = { code, expires_at }; }
+      catch (e) { if (i === 9) throw e; }
+    }
+  }
+  const oa = getSetting('line_official_id', '');
+  res.json({
+    ...out, code: bind.code, expires_at: bind.expires_at,
+    message_url: oa ? `https://line.me/R/oaMessage/${encodeURIComponent(oa)}/?${encodeURIComponent(bind.code)}` : ''
+  });
+});
+router.delete('/my/line', requireStaff(), (req, res) => {
+  db.prepare("UPDATE users SET line_user_id = '' WHERE id = ?").run(req.user.id);
+  db.prepare("UPDATE line_bindings SET status = 'revoked' WHERE user_id = ? AND status = 'done'").run(req.user.id);
+  audit('staff', req.user.id, req.user.name, '解除自己的 LINE 綁定');
+  res.json({ ok: true });
 });
 
 // 作廢還沒被使用的綁定碼（發錯人、或對方說沒收到要重發）

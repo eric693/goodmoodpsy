@@ -379,7 +379,9 @@ table.list tr:hover td { background: #f8fbfb; }
 .shift-cell.on:hover { filter: brightness(1.08); }
 /* 手機：格子太小按不準、左右滑又會整頁跑掉。加大點擊高度、時間欄固定在左邊，
    刷選時由 JS 擋掉頁面捲動（touch-action），才不會一拖就換頁。 */
-.shift-table { touch-action: pan-y; }
+/* 格子本身不交給瀏覽器處理觸控手勢（否則手指一動就變成整頁捲動、刷選被取消）；
+   頁面捲動仍可從左側時間欄或表格外的空白處滑。 */
+.shift-cell { touch-action: none; }
 .shift-table .shift-time { position: sticky; left: 0; z-index: 1; background: var(--card); }
 @media (max-width: 720px) {
   .shift-cell { height: 30px; }
@@ -406,3 +408,30 @@ table.list tr:hover td { background: #f8fbfb; }
 }
 .who-client { background: var(--primary-light); color: var(--primary-dark); }
 .who-staff { background: #f1e3d3; color: #8a5a25; }
+
+/* ---- 諮商室使用表：單日總覽（各空間並排）---- */
+/* 目的是一眼掃完一整天，所以字級與列高都刻意壓小，只留姓名與心理師。 */
+.rb-table { font-size: 12px; }
+.rb-table th, .rb-table td { padding: 2px 6px; }
+.rb-table .rb-time { color: var(--muted); font-size: 11.5px; white-space: nowrap; width: 52px; }
+.rb-table .rb-free { background: #fbfcfd; }
+.rb-table .rb-busy { line-height: 1.35; }
+.rb-table .rb-name { font-weight: 600; color: #1f2430; }
+.rb-table .rb-sub { font-size: 11px; color: #5b6775; }
+
+/* ---- 長清單挑選器（個案選擇）---- */
+/* 手機上原生下拉一展開就蓋住篩選框，故改用輸入框 + 浮出清單。 */
+.picker { position: relative; }
+.picker .pk-list {
+  position: absolute; z-index: 30; left: 0; right: 0; top: 100%;
+  max-height: 260px; overflow-y: auto; background: var(--card);
+  border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 18px rgba(16, 36, 54, .14);
+}
+.picker .pk-item {
+  display: block; width: 100%; text-align: left; padding: 9px 11px;
+  background: none; border: 0; border-bottom: 1px solid var(--border);
+  font: inherit; font-size: 14px; cursor: pointer;
+}
+.picker .pk-item:last-child { border-bottom: 0; }
+.picker .pk-item:hover, .picker .pk-item:focus { background: var(--primary-light); }
+.picker .pk-empty { padding: 10px 11px; font-size: 13px; color: var(--muted); }

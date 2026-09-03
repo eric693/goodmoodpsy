@@ -14,7 +14,7 @@ async function apptDialog(appt, onDone, defaults) {
     title: isNew ? '新增預約' : '修改預約',
     wide: true,
     body: `<div class="form-grid">
-      ${UI.select('client_id', '個案', clients, { value: a.client_id || '' })}
+      ${UI.picker('client_id', '個案', clients, { value: a.client_id || '' })}
       ${UI.select('counselor_id', '心理師', App.counselorOptions(), { value: a.counselor_id })}
       ${UI.input('date', '日期', { type: 'date', value: a.date })}
       ${UI.input('start_time', '開始時間', { type: 'time', value: a.start_time })}
@@ -22,7 +22,9 @@ async function apptDialog(appt, onDone, defaults) {
       ${UI.select('topic_id', '主題', [['', '不指定主題']], { value: a.topic_id || '' })}
       ${UI.select('type', '晤談類型', App.enumOptions('appt_type'), { value: a.type })}
       ${UI.select('mode', '形式', App.enumOptions('appt_mode'), { value: a.mode })}
-      ${UI.select('room_id', '諮商室', [['', '自動指派']].concat((App.meta.rooms || []).map(r => [r.id, r.name])), { value: a.room_id || '' })}
+      ${UI.select('room_id', '諮商室',
+    [['', '自動指派'], ['none', '不到所（線上視訊）']].concat((App.meta.rooms || []).map(r => [r.id, r.name])),
+    { value: a.mode === 'online' ? 'none' : (a.room_id || '') })}
       ${UI.input('fee', '個案應付金額', { type: 'number', value: a.fee !== undefined ? a.fee : (App.meta.default_fee || 2000) })}
       <div class="form-row full" id="quota-hint" style="display:none"></div>
       ${UI.select('package_id', '扣抵方案', [['', '不扣抵（單次收費）']].concat(packages.map(p => [p.id, `${p.name}（剩 ${p.remaining} 次）`])), { value: a.package_id || '' })}
@@ -112,8 +114,17 @@ async function apptDialog(appt, onDone, defaults) {
         sel.innerHTML = ['<option value="">不扣抵（單次收費）</option>']
           .concat(list.map(p => `<option value="${p.id}">${UI.esc(p.name)}（剩 ${p.remaining} 次）</option>`)).join('');
       };
+      // 視訊不在所內進行：諮商室固定為「不到所」並鎖住，避免實體個案的空間被排到視訊上；
+      // 改回到所時放開，並回到「自動指派」由系統挑一間空的。
+      const roomSel = el.querySelector('[name=room_id]');
+      const syncRoom = mode => {
+        if (mode === 'online') { roomSel.value = 'none'; roomSel.disabled = true; }
+        else { if (roomSel.value === 'none') roomSel.value = ''; roomSel.disabled = false; }
+      };
+      syncRoom(el.querySelector('[name=mode]').value);
       el.querySelector('[name=mode]').onchange = e => {
         el.querySelector('#mu-row').style.display = e.target.value === 'online' ? '' : 'none';
+        syncRoom(e.target.value);
       };
       el.querySelector('[name=type]').onchange = e => {
         el.querySelector('[name=fee]').value = e.target.value === 'intake' ? (App.meta.intake_fee || 2500) : (App.meta.default_fee || 2000);
@@ -122,6 +133,8 @@ async function apptDialog(appt, onDone, defaults) {
     },
     onSubmit: async el => {
       const data = UI.formData(el);
+      // 選「不到所」＝不佔任何空間；欄位被鎖住時 formData 收不到，這裡依形式補回來
+      if (data.mode === 'online' || data.room_id === 'none') { data.mode = data.mode || 'online'; data.room_id = ''; }
       const save = () => (isNew ? POST('/appointments', data) : PUT(`/appointments/${a.id}`, data));
       try {
         await save();
@@ -232,7 +245,7 @@ App.page('schedule', {
       const apptHtml = list.map(a => `<div class="appt-chip ${a.status}" data-appt="${a.id}">
         <strong>${a.start_time}</strong>
         <span class="who who-client">個案</span> ${UI.esc(a.client_name)}
-        ${a.risk_level === 'high' ? '⚠' : ''}${a.cancel_requested_at ? '　🕓申請取消' : ''}<br>
+        ${a.risk_level === 'high' ? '⚠' : ''}${a.confirmed_at ? '　✅已確認' : ''}${a.cancel_requested_at ? '　🕓申請取消' : ''}<br>
         <span style="font-size:11.5px"><span class="who who-staff">心理師</span> ${UI.esc(a.counselor_name)}
         ${a.mode === 'online' ? '／視訊' : a.room_name ? '／' + UI.esc(a.room_name) : ''}</span></div>`).join('');
       const all = offHtml + groupHtml + apptHtml;
@@ -286,6 +299,9 @@ App.page('schedule', {
             <div><div class="dg-label">狀態</div>${stateTag('appt_status', a.status)}</div>
             <div><div class="dg-label">費用</div>${UI.fmtMoney(a.fee)}</div>
             <div><div class="dg-label">來源</div>${UI.esc(TW.source_kind[a.source] || a.source)}</div>
+            <div><div class="dg-label">個案確認</div>${a.confirmed_at
+    ? UI.tag('已於 LINE 確認前往', 'ok') + `<div style="font-size:12px;color:var(--muted)">${UI.esc(a.confirmed_at.slice(0, 16))}</div>`
+    : '<span style="color:var(--muted)">尚未回覆</span>'}</div>
           </div>
           ${a.mode === 'online' && a.meeting_url ? `<div style="margin-top:10px;font-size:14px">
             視訊連結：<a href="${UI.esc(a.meeting_url)}" target="_blank" rel="noopener noreferrer">${UI.esc(a.meeting_url)}</a></div>` : ''}
@@ -374,6 +390,7 @@ App.page('today', {
           </div>
           <div class="kid-status"><span class="who who-staff">心理師</span> ${UI.esc(a.counselor_name || '')}${a.room_name ? '／' + UI.esc(a.room_name) : ''}<br>
             ${stateTag('appt_status', a.status)} ${a.has_note ? UI.tag('已寫紀錄', 'ok') : ''}
+            ${a.confirmed_at ? UI.tag('個案已於 LINE 確認', 'ok') : ''}
             ${a.cancel_requested_at ? UI.tag('個案申請取消', 'warn') : ''}</div>
           <div class="kid-actions">
             <button class="btn tiny" data-st="${a.id}">狀態</button>

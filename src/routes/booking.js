@@ -9,6 +9,7 @@
 //     個案不會白填一輪才被退。
 
 const express = require('express');
+const bcrypt = require('bcryptjs');
 const { db, audit, today, addDays, getSetting, nowStamp, ageYears, nextClientCode } = require('../db');
 const { requireStaff, rateLimit } = require('../auth');
 const plans = require('../plans');
@@ -341,16 +342,21 @@ router.post('/bookings/:id/create-client', requireStaff('clients'), (req, res) =
   const code = nextClientCode();
   const adultAge = Number(getSetting('adult_age', '18'));
   const age = ageYears(b.birth_date, today());
+  // 個案端預設密碼為手機末 6 碼、首次登入強制更換（與手動建檔、匯入一致）；
+  // 少了這段，從預約申請建檔的個案會沒有密碼，個案專區怎麼按都登不進去。
+  const digits = String(b.phone || '').replace(/\D/g, '');
+  const pwHash = digits.length >= 6 ? bcrypt.hashSync(digits.slice(-6), 10) : '';
   const info = db.prepare(`INSERT INTO clients
     (code, name, gender, birth_date, phone, email, address, id_no,
      emergency_name, emergency_phone, emergency_relationship,
-     counselor_id, status, main_issue, source, is_minor, intake_date)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'intake',?,?,?,?)`).run(
+     counselor_id, status, main_issue, source, is_minor, intake_date,
+     password_hash, must_change_password)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'intake',?,?,?,?,?,?)`).run(
     code, b.name, b.gender || '', b.birth_date || '', b.phone, b.email || '',
     b.address || '', b.id_no || '',
     b.emergency_name || '', b.emergency_phone || '', b.emergency_relationship || '',
     b.counselor_id || null, b.main_issue || '', b.source === 'google_form' ? 'Google 預約表單' : '線上預約表單',
-    age !== null && age < adultAge ? 1 : 0, today());
+    age !== null && age < adultAge ? 1 : 0, today(), pwHash, pwHash ? 1 : 0);
   db.prepare('UPDATE booking_requests SET client_id = ? WHERE id = ?').run(info.lastInsertRowid, b.id);
   audit('staff', req.user.id, req.user.name, '由預約申請建檔', code);
   res.json({ client_id: info.lastInsertRowid, code });

@@ -93,6 +93,38 @@ router.get('/clients/options', requireStaff('clients'), (req, res) => {
     WHERE ${sql} ORDER BY c.status = 'closed', c.name`).all(...args));
 });
 
+// 重複個案：舊資料匯入時同一個人被開了兩個以上案號，排約時要挑很久，
+// 統計與額度也會被拆開算。這支把疑似重複的整理出來，附各自的預約與紀錄筆數供人工判斷。
+router.get('/clients/duplicates', requireStaff('clients'), (req, res) => {
+  const rows = db.prepare(`SELECT c.id, c.code, c.name, c.phone, c.birth_date, c.status,
+      c.counselor_id, u.name AS counselor_name,
+      (SELECT COUNT(*) FROM appointments a WHERE a.client_id = c.id) AS appointments,
+      (SELECT COUNT(*) FROM session_notes n WHERE n.client_id = c.id) AS notes,
+      (SELECT COUNT(*) FROM invoices i WHERE i.client_id = c.id) AS invoices,
+      (SELECT MAX(a.date) FROM appointments a WHERE a.client_id = c.id) AS last_appointment
+    FROM clients c LEFT JOIN users u ON u.id = c.counselor_id
+    WHERE c.active = 1 ORDER BY c.name, c.code`).all();
+  const groups = [];
+  const push = (key, kind, list) => {
+    if (list.length < 2) return;
+    groups.push({ key, kind, clients: list });
+  };
+  const byName = new Map();
+  const byPhone = new Map();
+  for (const c of rows) {
+    if (c.name) byName.set(c.name, (byName.get(c.name) || []).concat(c));
+    const ph = String(c.phone || '').replace(/\D/g, '');
+    if (ph.length >= 8) byPhone.set(ph, (byPhone.get(ph) || []).concat(c));
+  }
+  for (const [name, list] of byName) push(name, '同姓名', list);
+  for (const [phone, list] of byPhone) {
+    // 同手機但不同姓名才另外列（同姓名的已在上面）
+    if (new Set(list.map(c => c.name)).size > 1) push(phone, '同手機', list);
+  }
+  groups.sort((a, b) => b.clients.length - a.clients.length || a.key.localeCompare(b.key));
+  res.json({ total: groups.length, groups });
+});
+
 router.get('/clients/:id', requireStaff('clients'), (req, res) => {
   const c = db.prepare(`SELECT c.*, u.name AS counselor_name, p.name AS partner_name FROM clients c
     LEFT JOIN users u ON u.id = c.counselor_id

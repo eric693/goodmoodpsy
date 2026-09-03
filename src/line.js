@@ -140,6 +140,14 @@ function bookingConfirmedFlex(a) {
 function reminderFlex(a) {
   const c = centerInfo();
   const footer = [];
+  // 讓個案直接在提醒卡片上回覆是否前來：按下去以 postback 回傳，不需要打字。
+  // 沒有 id（測試推播）時不放按鈕，避免按了找不到對應預約。
+  if (a.id) {
+    footer.push(actionButton('我會準時前往', { type: 'postback', label: '我會準時前往',
+      data: `act=confirm&id=${a.id}`, displayText: '我會準時前往' }));
+    footer.push(actionButton('需要改期或取消', { type: 'postback', label: '需要改期或取消',
+      data: `act=change&id=${a.id}`, displayText: '需要改期或取消' }, 'secondary'));
+  }
   if (a.meeting_url) footer.push(actionButton('進入視訊晤談', { type: 'uri', label: '進入視訊晤談', uri: a.meeting_url }));
   const rPortal = a.portal_url || portalUrl();
   if (rPortal) footer.push(actionButton('個案專區', { type: 'uri', label: '個案專區', uri: rPortal }, 'secondary'));

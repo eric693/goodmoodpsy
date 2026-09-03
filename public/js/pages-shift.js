@@ -101,7 +101,8 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
     : ''}</th>`).join('')}</tr></thead>
           <tbody>${rows.join('')}</tbody></table></div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:10px">
-          點一下切換單格，按住拖曳（手機可直接用手指滑過）可整段刷選；表格範圍（目前 ${shiftFmt(cfg.start)}–${shiftFmt(cfg.end)}、每格 ${cfg.step} 分鐘）
+          點一下切換單格，按住拖曳（手機可直接用手指滑過格子）可整段刷選；
+          手機要左右捲動看週六週日時，請從<strong>最左邊的時間欄或表頭</strong>滑動；表格範圍（目前 ${shiftFmt(cfg.start)}–${shiftFmt(cfg.end)}、每格 ${cfg.step} 分鐘）
           與快填按鈕可於系統設定調整。不在格線上的時間請用「自訂時段」。
           已被預約或請假的時間會自動從可預約清單扣除，不必在這裡調整。<br>
           ${week
@@ -612,7 +613,8 @@ App.page('room-board', {
   title: '諮商室使用表',
   sub: '每間空間一週的使用狀況：時間、個案、心理師；視訊晤談不佔空間',
   help: [
-    '每一間諮商室一週的使用狀況，一格只寫時間、個案與心理師，用來確認空間有沒有撞、還有哪些時段空著。',
+    '「單日總覽」一列一個時段、各諮商室並排，一眼看得出同一時段三間有沒有人；空白就是沒人用。',
+    '「整週逐間」是每間諮商室一張整週表，適合看某一間的一週使用狀況。',
     '通訊（視訊）諮商不在所內進行，不會佔用諮商室，因此不會出現在這張表上。',
     '上方可切換週次。這頁只看不改，要調整請到「預約排程」。',
     '格子底色代表方案別（自費白底、市民方案藍底、國軍黃底、青壯粉紅底、EAP 綠底、馬太鞍／北捷土黃底），沒指定方案的以自費白底呈現。',
@@ -620,7 +622,11 @@ App.page('room-board', {
   ],
   module: 'schedule',
   async render(el, arg) {
-    const start = arg || UI.mondayOf(UI.today());
+    // 兩種看法：單日總覽（各諮商室並排，看同一時段誰有空）與整週逐間（原本的每間一張表）
+    const view = localStorage.getItem('mc-rb-view') || 'day';
+    const pickDay = (view === 'day' && arg) || localStorage.getItem('mc-rb-day') || UI.today();
+    const start = UI.mondayOf(view === 'day' ? pickDay : (arg || UI.today()));
+    if (view === 'day') localStorage.setItem('mc-rb-day', pickDay);
     const d = await GET(`/rooms/week?start=${start}`);
     const days = Array.from({ length: 7 }, (_, i) => UI.addDays(d.start, i));
     const toMin = t => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
@@ -639,9 +645,38 @@ App.page('room-board', {
     // 沒對到任何方案關鍵字（含沒指定方案）一律當自費白底，跟原本試算表一致
     const planColor = it => PLAN_COLORS.find(c => c.match && c.match.test(it.plan || '')) || PLAN_COLORS[0];
 
+    // 總覽只顯示姓名（items 的 client 是「編號 姓名」），編號留在 title 提示裡
+    const nameOnly = t => String(t || '').replace(/^\S+\s+/, '');
+
     // 每格找出佔用它的那筆晤談；跨多格的晤談每格都標，看得出整段被佔用
     const cellFor = (roomId, date, m) => d.items.find(it => it.room_id === roomId && it.date === date
       && toMin(it.start_time) <= m && toMin(it.end_time) > m);
+
+    // 單日總覽：一列一個時段，欄位是各諮商室，一眼看得出同一時段三間有沒有人。
+    // 資訊刻意精簡到「姓名＋心理師」，字級也縮小，整天塞在一個畫面裡。
+    const dayTable = date => {
+      const rows = [];
+      for (let m = from; m < to; m += step) {
+        const cells = d.rooms.map(room => {
+          const it = cellFor(room.id, date, m);
+          if (!it) return '<td class="rb-free"></td>';
+          const head = toMin(it.start_time) === m;
+          const pc = it.kind === 'group'
+            ? { bg: 'var(--warn-bg)', line: 'var(--warn)' }
+            : planColor(it);
+          return `<td class="rb-busy" style="background:${pc.bg};border-left:3px solid ${pc.line}${it.id ? ';cursor:pointer' : ''}"
+            ${it.id ? `data-appt="${it.id}" data-appt-date="${it.date}"` : ''}
+            title="${UI.esc(it.client)}／${UI.esc(it.counselor)}　${it.start_time}-${it.end_time}${it.plan ? '／' + UI.esc(it.plan) : ''}">
+            ${head ? `<div class="rb-name">${UI.esc(nameOnly(it.client))}</div>
+              <div class="rb-sub">${UI.esc(it.counselor)}</div>` : ''}</td>`;
+        }).join('');
+        rows.push(`<tr><td class="rb-time">${label(m)}</td>${cells}</tr>`);
+      }
+      return `<div class="card"><h3>${date.slice(5)}（${UI.weekdayName(date)}）${date === UI.today() ? ' ●今天' : ''}</h3>
+        <div class="table-wrap"><table class="list rb-table"><thead><tr><th>時段</th>
+          ${d.rooms.map(r => `<th>${UI.esc(r.name)}</th>`).join('')}</tr></thead>
+          <tbody>${rows.join('')}</tbody></table></div></div>`;
+    };
 
     const table = room => {
       const rows = [];
@@ -675,13 +710,21 @@ App.page('room-board', {
     };
 
     el.innerHTML = `<div class="toolbar">
-        <button class="btn secondary small" id="prev">上一週</button>
-        <button class="btn secondary small" id="this">本週</button>
-        <button class="btn secondary small" id="next">下一週</button>
-        <input type="date" id="pick" value="${d.start}" style="width:auto" title="選日期跳到該日所在的一週">
-        <strong style="margin-left:6px">${d.start} ~ ${d.end}</strong>
+        <button class="btn ${view === 'day' ? '' : 'secondary'} small" id="v-day">單日總覽</button>
+        <button class="btn ${view === 'day' ? 'secondary' : ''} small" id="v-week">整週逐間</button>
         <div class="spacer"></div>
-        <span style="font-size:12.5px;color:var(--muted)">每格由上而下為 時間／個案／心理師</span>
+        <span style="font-size:12.5px;color:var(--muted)">${view === 'day'
+    ? '一列一個時段，各諮商室並排，空白＝沒人用'
+    : '每格由上而下為 時間／個案／心理師'}</span>
+      </div>
+      <div class="toolbar">
+        <button class="btn secondary small" id="prev">${view === 'day' ? '前一天' : '上一週'}</button>
+        <button class="btn secondary small" id="this">${view === 'day' ? '今天' : '本週'}</button>
+        <button class="btn secondary small" id="next">${view === 'day' ? '後一天' : '下一週'}</button>
+        <input type="date" id="pick" value="${view === 'day' ? pickDay : d.start}" style="width:auto"
+          title="${view === 'day' ? '選日期' : '選日期跳到該日所在的一週'}">
+        <strong style="margin-left:6px">${view === 'day'
+    ? `${pickDay}（${UI.weekdayName(pickDay)}）` : `${d.start} ~ ${d.end}`}</strong>
       </div>
       <div class="card" style="padding:10px 12px">
         <div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:12.5px">
@@ -700,7 +743,8 @@ App.page('room-board', {
     `<button type="button" class="linkish" data-un="${u.id}" data-un-date="${u.date}">${u.date.slice(5)}
       ${u.start_time} ${UI.esc(u.client)}（${UI.esc(u.counselor)}）</button>`).join('、')}
         　沒指定諮商室就不會出現在這張表上。</div>` : ''}
-      ${d.rooms.length ? d.rooms.map(table).join('') : '<div class="empty">尚未建立諮商室，請至系統設定新增</div>'}`;
+      ${!d.rooms.length ? '<div class="empty">尚未建立諮商室，請至系統設定新增</div>'
+    : view === 'day' ? dayTable(pickDay) : d.rooms.map(table).join('')}`;
 
     // 提醒列的每一筆都可以直接點開該預約，不必自己翻到那一週再找
     el.querySelectorAll('[data-un]').forEach(b => {
@@ -722,12 +766,17 @@ App.page('room-board', {
       };
     });
 
-    el.querySelector('#prev').onclick = () => App.go('room-board/' + UI.addDays(d.start, -7));
-    el.querySelector('#next').onclick = () => App.go('room-board/' + UI.addDays(d.start, 7));
-    el.querySelector('#this').onclick = () => App.go('room-board/' + UI.mondayOf(UI.today()));
+    el.querySelector('#v-day').onclick = () => { localStorage.setItem('mc-rb-view', 'day'); App.go('room-board/' + pickDay); };
+    el.querySelector('#v-week').onclick = () => { localStorage.setItem('mc-rb-view', 'week'); App.go('room-board/' + d.start); };
+    const step2 = n => (view === 'day' ? UI.addDays(pickDay, n) : UI.addDays(d.start, n * 7));
+    el.querySelector('#prev').onclick = () => App.go('room-board/' + step2(-1));
+    el.querySelector('#next').onclick = () => App.go('room-board/' + step2(1));
+    el.querySelector('#this').onclick = () => App.go('room-board/'
+      + (view === 'day' ? UI.today() : UI.mondayOf(UI.today())));
     // 選任一天都跳到該日所在的整週，不必自己算週一是幾號
     el.querySelector('#pick').onchange = e => {
-      if (e.target.value) App.go('room-board/' + UI.mondayOf(e.target.value));
+      if (!e.target.value) return;
+      App.go('room-board/' + (view === 'day' ? e.target.value : UI.mondayOf(e.target.value)));
     };
   }
 });
