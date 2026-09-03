@@ -833,8 +833,9 @@ ensureColumns('invoices', {
     // 心理師介紹頁：印在預約表單「預約之心理師」欄位下方，讓民眾先看介紹再選人
     booking_counselor_intro_url: 'https://www.goodmoodpsy.com.tw/3',
     // 另一道門檻：晤談開始前至少幾小時才收得到線上預約（0＝不設）。
+    // 預設 24：櫃檯至少有一天看得到並準備，也避免「開放 12:00、客人 11:55 還約得到」。
     // 與上面的「前一天幾點截止」同時生效，兩者取較嚴格的那個。
-    booking_cutoff_hours: '0',
+    booking_cutoff_hours: '24',
     // 個案端「傳訊息給諮商所」：所內以 LINE 為主要對話管道，專區預設只讀，
     // 避免櫃檯要盯兩個地方而漏看。要開放個案在專區留言時把這裡改成 1。
     portal_messages_write: '0',

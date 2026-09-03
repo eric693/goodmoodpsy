@@ -525,12 +525,25 @@ router.get('/messages', requireStaff('messages'), (req, res) => {
     FROM clients c WHERE EXISTS (SELECT 1 FROM messages m WHERE m.client_id = c.id)
     ORDER BY unread DESC, last_at DESC`).all());
 });
-router.post('/messages', requireStaff('messages'), (req, res) => {
+// 櫃檯回覆：寫進系統紀錄，並直接推回個案的 LINE（沒綁定的人就只留在系統，
+// 由個案下次登入專區時看到；推播失敗也不影響訊息已存下來這件事）。
+router.post('/messages', requireStaff('messages'), async (req, res) => {
   const { client_id, content = '' } = req.body || {};
   if (!content.trim()) return res.status(400).json({ error: '請輸入內容' });
+  const client = db.prepare('SELECT * FROM clients WHERE id = ?').get(Number(client_id));
+  if (!client) return res.status(400).json({ error: '找不到此個案' });
   const info = db.prepare("INSERT INTO messages (client_id, sender, user_id, content) VALUES (?, 'staff', ?, ?)")
-    .run(Number(client_id), req.user.id, content.trim());
-  res.json({ id: info.lastInsertRowid });
+    .run(client.id, req.user.id, content.trim());
+  let push = null;
+  if (client.line_user_id) {
+    const line = require('../line');
+    push = await line.pushText({
+      to: client.line_user_id,
+      text: `${getSetting('center_name', '諮商所')}：\n${content.trim()}`,
+      kind: 'message', client_id: client.id, user: req.user
+    }).catch(e => ({ status: 'failed', message: e.message }));
+  }
+  res.json({ id: info.lastInsertRowid, line: push });
 });
 
 // ---- 統計報表 ----

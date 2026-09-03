@@ -98,9 +98,29 @@ async function handleEvent(ev) {
         await line.replyMessages(ev.replyToken, [bindingWelcome(name || '您', bind.client_id)]);
         return;
       }
-      await line.replyMessages(ev.replyToken, [line.textMessage('綁定碼不正確或已失效，請向諮商所索取新的綁定碼。')]);
-      return;
+      // 6 碼但不是有效綁定碼：可能是個案在講電話號碼或金額，不要當成綁定失敗就結束，
+      // 已綁定的個案照樣把內容轉給櫃檯（下方共用流程）。
+      if (!db.prepare("SELECT 1 FROM clients WHERE line_user_id = ? AND active = 1").get(lineUserId)) {
+        await line.replyMessages(ev.replyToken, [line.textMessage('綁定碼不正確或已失效，請向諮商所索取新的綁定碼。')]);
+        return;
+      }
     }
+    // 已綁定的個案傳文字進來：存成「個案訊息」讓櫃檯在系統裡看到並回覆，
+    // 不然個案在 LINE 講的話沒人看得到（只會收到自動說明）。
+    {
+      const client = db.prepare('SELECT * FROM clients WHERE line_user_id = ? AND active = 1').get(lineUserId);
+      if (client && text) {
+        db.prepare("INSERT INTO messages (client_id, sender, content) VALUES (?, 'client', ?)")
+          .run(client.id, text.slice(0, 1000));
+        audit('client', client.id, client.name, '由 LINE 傳訊息給諮商所', client.code);
+        const phone = getSetting('center_phone', '');
+        await line.replyMessages(ev.replyToken, [line.textMessage(
+          '已收到您的訊息，我們會於上班時間回覆（本帳號非即時客服）。'
+          + (phone ? `\n急需協助請來電 ${phone}；` : '\n') + '如遇立即危機請撥 1925 或 119。')]);
+        return;
+      }
+    }
+    // 還沒綁定的人：給預約入口與綁定說明
     await line.replyMessages(ev.replyToken, [helpFlex(lineUserId)]);
     return;
   }
