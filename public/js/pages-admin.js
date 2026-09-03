@@ -781,6 +781,8 @@ App.page('messages', {
             // 有綁定 LINE 就會直接推過去，推不出去要讓櫃檯知道（例如對方封鎖了官方帳號）
             if (r.line && r.line.status === 'sent') UI.toast('已送出並推播到 LINE');
             else if (r.line && r.line.status === 'failed') UI.toast('已存入系統，但 LINE 推播失敗：' + r.line.message, true);
+            // status 'manual' 是所方還沒設定 LINE 權杖，不是對方沒綁定，兩者要分清楚
+            else if (r.line && r.line.status === 'manual') UI.toast('已存入系統（尚未設定 LINE 權杖，需人工通知）');
             else UI.toast('已送出（對方未綁定 LINE，將於個案專區顯示）');
             m.close();
             App.go('messages');

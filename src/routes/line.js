@@ -109,6 +109,14 @@ async function handleEvent(ev) {
     // 不然個案在 LINE 講的話沒人看得到（只會收到自動說明）。
     {
       const client = db.prepare('SELECT * FROM clients WHERE line_user_id = ? AND active = 1').get(lineUserId);
+      // 已綁定的舊個案要再約下一次時，多半就是直接打「預約」；
+      // 全部一律當留言收下的話，他永遠拿不到預約連結，只能打電話。
+      if (client && /預約|約診|掛號|改期|時段|booking/i.test(text)) {
+        db.prepare("INSERT INTO messages (client_id, sender, content) VALUES (?, 'client', ?)")
+          .run(client.id, text.slice(0, 1000));
+        await line.replyMessages(ev.replyToken, [helpFlex(lineUserId)]);
+        return;
+      }
       if (client && text) {
         db.prepare("INSERT INTO messages (client_id, sender, content) VALUES (?, 'client', ?)")
           .run(client.id, text.slice(0, 1000));

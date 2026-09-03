@@ -94,6 +94,9 @@ router.get('/appointments', requireClient, (req, res) => {
   }));
 });
 
+// 專區的「最早可約幾天後」自成一個設定，日期範圍與時段門檻都要用同一個值
+const portalLead = () => getSetting('portal_book_lead_days', '1');
+
 // 可預約時段：僅開放主責心理師（未指定則全所心理師）
 router.get('/slots', requireClient, (req, res) => {
   const date = req.query.date || today();
@@ -121,7 +124,7 @@ router.get('/slots', requireClient, (req, res) => {
     counselors: counselors.map(u => ({
       // 「晤談前至少幾小時」這道門檻在這裡就先濾掉，否則畫面照樣列出 12:00，
       // 個案按下去才被擋，看起來像系統壞掉
-      ...u, is_mine: u.id === mine, slots: freeSlots(u.id, date).filter(s => !plans.bookingCutoffReason(date, s.start_time))
+      ...u, is_mine: u.id === mine, slots: freeSlots(u.id, date).filter(s => !plans.bookingCutoffReason(date, s.start_time, portalLead()))
     }))
   });
 });
@@ -152,7 +155,7 @@ router.post('/appointments', requireClient, (req, res) => {
       return res.status(400).json({ error: '此心理師未開放線上預約，請來電洽詢' });
     }
   }
-  const cutoffReason = plans.bookingCutoffReason(date, start_time);
+  const cutoffReason = plans.bookingCutoffReason(date, start_time, portalLead());
   if (cutoffReason) return res.status(400).json({ error: `${cutoffReason}，請改約其他時間或來電洽詢。` });
   const slot = freeSlots(cid, date).find(s => s.start_time === start_time);
   if (!slot) return res.status(400).json({ error: '此時段已被預約或非開放時段，請重新選擇' });
@@ -191,7 +194,7 @@ router.post('/appointments/:id/reschedule', requireClient, (req, res) => {
   })();
   const maxDate = addDays(today(), Number(getSetting('portal_book_max_days', '60')));
   if (!date || date < minDate || date > maxDate) return res.status(400).json({ error: `可改期範圍為 ${minDate} 至 ${maxDate}` });
-  const cutoffReason = plans.bookingCutoffReason(date, start_time);
+  const cutoffReason = plans.bookingCutoffReason(date, start_time, portalLead());
   if (cutoffReason) return res.status(400).json({ error: `${cutoffReason}，請改約其他時間或來電洽詢。` });
   const slot = freeSlots(a.counselor_id, date).find(s => s.start_time === start_time);
   if (!slot) return res.status(400).json({ error: '此時段已被預約或非開放時段，請重新選擇' });

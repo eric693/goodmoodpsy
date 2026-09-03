@@ -182,8 +182,10 @@ function earliestBookableDate(leadDays) {
 
 // 某個時段是否還收得到線上預約：除了「最早可約日」，再加一道「晤談前至少幾小時」。
 // 兩個門檻同時生效，取較嚴格者；回傳空字串表示可以，否則回傳擋下的理由。
-function bookingCutoffReason(date, startTime) {
-  const min = earliestBookableDate();
+// leadDays：個案專區有自己的「最早可約幾天後」，不帶就用對外表單的設定，
+// 否則專區的日期挑選器與這裡各用一套值，會出現「選得到卻永遠沒有時段」的日子。
+function bookingCutoffReason(date, startTime, leadDays) {
+  const min = earliestBookableDate(leadDays);
   if (date < min) {
     const cutoff = getSetting('booking_cutoff_time', '');
     return `此時段已截止線上預約（最早可約 ${min}`

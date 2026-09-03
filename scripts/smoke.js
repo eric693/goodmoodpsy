@@ -555,15 +555,17 @@ function startServer() {
   });
   await test('「晤談前 X 小時」在個案專區也生效', async () => {
     // 專區以前只在送出時才擋，畫面照樣列出時段，個案按下去才被退——看起來像系統壞掉
-    const day = addDays(ymd(new Date()), 2);
-    await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: '96' });
+    // 用有排班的日子（週一起算的第 14 天）當基準；改抓「今天+2」會在週末踩到沒排班的空日，
+    // 第一個斷言就會空過、第二個必掛。門檻改用足夠大的時數把這一天蓋進去。
+    const day = addDays(monday, 14);
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: String(24 * 60) });
     const s2 = await portal.ok('GET', `/api/portal/slots?date=${day}`);
     assert((s2.counselors || []).every(c => !c.slots.length), '未達門檻的時段就不該列出來');
     await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: '0' });
     const s3 = await portal.ok('GET', `/api/portal/slots?date=${day}`);
     assert((s3.counselors || []).some(c => c.slots.length), '關掉門檻後應恢復顯示');
     // 改期也要擋，否則等於留一個後門
-    await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: '96' });
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: String(24 * 60) });
     const t = (s3.counselors.find(c => c.slots.length)).slots[0].start_time;
     await portal.fails('POST', `/api/portal/appointments/${portalAppt}/reschedule`, { date: day, start_time: t }, '截止');
     await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: '0' });

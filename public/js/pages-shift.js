@@ -55,6 +55,7 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
     ]);
     const reload = w => renderShiftPanel(el, cid, onChange, w === undefined ? week : w);
 
+    App.markDirty(false);   // 重繪＝畫面已回到伺服器上的狀態，清掉可能殘留的未存標記
     const cfg = shiftCfg();
     const picked = new Set();
     // custom：不對齊格線的時段，以清單方式維護，存檔時與格子時段一起送出
@@ -118,6 +119,10 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
     // mousedown／touchstart 已經切過一次，瀏覽器隨後補送的 click 若再切一次就等於白點，
     // 因此標記「這一下已經處理過」，讓後面那個 click 略過。
     let handledByPointer = false;
+    // 手機點一下，瀏覽器會補送一整串相容事件（mousedown → click）。
+    // touchstart 已經切換過了，這些補送的都要略過，否則又被切回去。
+    let lastTouch = 0;
+    const fromTouch = () => Date.now() - lastTouch < 800;
     // 改過還沒存就切走，刷了半天的班表會整個不見，因此記錄有無未存變更
     let dirty = false;
     const toggle = (td, on) => {
@@ -135,7 +140,7 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
     };
     table.addEventListener('mousedown', e => {
       const td = e.target.closest('.shift-cell');
-      if (!td) return;
+      if (!td || fromTouch()) return;
       e.preventDefault();
       dragging = true;
       handledByPointer = true;
@@ -158,6 +163,7 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
     // 同時擋掉預設捲動，否則一拖就變成整頁上下滑，格子選不動。
     let touching = false, touchMode = true;
     table.addEventListener('touchstart', e => {
+      lastTouch = Date.now();
       const td = e.target.closest('.shift-cell');
       if (!td) return;
       touching = true;
@@ -172,7 +178,7 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
       const td = el2 && el2.closest && el2.closest('.shift-cell');
       if (td) { e.preventDefault(); toggle(td, touchMode); }
     }, { passive: false });
-    const endTouch = () => { touching = false; };
+    const endTouch = () => { touching = false; lastTouch = Date.now(); };
     table.addEventListener('touchend', endTouch);
     table.addEventListener('touchcancel', endTouch);
 

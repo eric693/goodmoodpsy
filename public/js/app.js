@@ -196,9 +196,10 @@ const App = {
     // 取消離開後把 hash 復原，那一下會再觸發一次 go()；直接略過，
     // 否則同一頁重繪，未存的變更照樣消失（等於守門白做）
     if (App.restoring) { App.restoring = false; return; }
-    if (App.dirty && key !== App.dirtyAt) {
+    // 同一頁重新進入也要問：那一樣會把面板重繪掉，未存的格子照樣不見
+    if (App.dirty) {
       if (!window.confirm('有尚未儲存的變更（例如排班表），離開這一頁就會失效。確定離開？')) {
-        if (location.hash.slice(1) !== App.dirtyAt) { App.restoring = true; location.hash = App.dirtyAt; }
+        if (App.dirtyAt && location.hash.slice(1) !== App.dirtyAt) { App.restoring = true; location.hash = App.dirtyAt; }
         return;
       }
       App.markDirty(false);

@@ -15,7 +15,7 @@ const UI = {
   err(e) { UI.toast(e && e.message ? e.message : String(e), true); },
 
   // 開啟 Modal；onSubmit 回傳 false 可阻止關閉
-  modal({ title, body, wide, submitText = '儲存', onSubmit, onOpen, hideFooter }) {
+  modal({ title, body, wide, submitText = '儲存', onSubmit, onOpen, onClose, hideFooter }) {
     const mask = document.createElement('div');
     mask.className = 'modal-mask';
     mask.innerHTML = `
@@ -29,7 +29,10 @@ const UI = {
       </div>`;
     const bodyEl = mask.querySelector('.modal-body');
     if (typeof body === 'string') bodyEl.innerHTML = body; else bodyEl.appendChild(body);
-    const close = () => mask.remove();
+    // onClose：不論用哪一種方式關閉都會被呼叫一次，confirm 靠它在按 × 或點背景時回 false，
+    // 否則 await UI.confirm(...) 永遠不會結束，呼叫端就整個卡住
+    let closed = false;
+    const close = () => { if (closed) return; closed = true; mask.remove(); if (onClose) onClose(); };
     mask.querySelector('.close').onclick = close;
     mask.addEventListener('mousedown', e => { if (e.target === mask) close(); });
     if (!hideFooter) {
@@ -53,14 +56,17 @@ const UI = {
     return new Promise(resolve => {
       const m = UI.modal({
         title: '確認操作', hideFooter: true,
+        // 按 × 或點背景關掉＝沒有答應，一律回 false，呼叫端才不會卡在 await
+        onClose: () => resolve(false),
         body: `<p style="font-size:15px">${UI.esc(msg)}</p>
           <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
             <button class="btn secondary" data-c="no" type="button">取消</button>
             <button class="btn" data-c="yes" type="button">確定</button>
           </div>`
       });
-      m.body.querySelector('[data-c=no]').onclick = () => { m.close(); resolve(false); };
-      m.body.querySelector('[data-c=yes]').onclick = () => { m.close(); resolve(true); };
+      // 先 resolve 再 close：close 會觸發上面的 onClose（回 false），順序反了就永遠得不到 true
+      m.body.querySelector('[data-c=no]').onclick = () => { resolve(false); m.close(); };
+      m.body.querySelector('[data-c=yes]').onclick = () => { resolve(true); m.close(); };
     });
   },
 
