@@ -224,15 +224,19 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
     });
   }
 
+  const friendUrl = require('../line').addFriendUrl();
   res.json({
     ok: true, id,
     require_review: !!plan.require_review,
-    // 送出只是「申請」：櫃檯在 LINE 回覆確認之後才算完成預約，這句話要講死，
+    // 送出只是「申請」：櫃檯確認之後才算完成預約，這句話要講死，
     // 否則個案會以為填完就有位子，時間到直接來所裡。
+    // 沒設 LINE 的所別不能叫人去加，否則畫面上是一句加不到的話。
     message: '已收到您的預約申請，這時候還沒有完成預約。'
-      + '請加入本所 LINE 官方帳號，我們確認後會在 LINE 回覆您；收到我們的確認才算預約成立。',
+      + (friendUrl
+        ? '請加入本所 LINE 官方帳號，我們確認後會在 LINE 回覆您；收到我們的確認才算預約成立。'
+        : '我們確認後會盡快與您聯繫，收到我們的確認才算預約成立。'),
     fee: quote.fee, self_pay: quote.self_pay,
-    line_add_friend_url: require('../line').addFriendUrl(),
+    line_add_friend_url: friendUrl,
     line_official_name: getSetting('line_official_name'),
     portal_url: require('../line').portalUrl(),
     center_phone: getSetting('center_phone')

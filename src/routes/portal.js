@@ -101,11 +101,8 @@ const portalLead = () => getSetting('portal_book_lead_days', '1');
 router.get('/slots', requireClient, (req, res) => {
   const date = req.query.date || today();
   // 與對外表單同一套：最快幾天後 + 前一天幾點截止
-  const minDate = (() => {
-    const byLead = addDays(today(), Number(getSetting('portal_book_lead_days', '1')));
-    const byCutoff = plans.earliestBookableDate(getSetting('portal_book_lead_days', '1'));
-    return byLead > byCutoff ? byLead : byCutoff;
-  })();
+  // earliestBookableDate 已經含「今天 + 最早可約幾天」，再比一次 addDays 是多餘的
+  const minDate = plans.earliestBookableDate(portalLead());
   const maxDate = addDays(today(), Number(getSetting('portal_book_max_days', '60')));
   if (date < minDate || date > maxDate) return res.json({ min_date: minDate, max_date: maxDate, counselors: [] });
   // 開放換心理師時列出所有可線上預約的心理師（主責排在最前面），否則只給主責
@@ -134,11 +131,8 @@ router.post('/appointments', requireClient, (req, res) => {
   if (getSetting('portal_booking_enabled', '1') !== '1') return res.status(403).json({ error: '目前未開放線上預約，請來電預約' });
   const { date = '', start_time = '', counselor_id, note = '' } = req.body || {};
   // 與對外表單同一套：最快幾天後 + 前一天幾點截止
-  const minDate = (() => {
-    const byLead = addDays(today(), Number(getSetting('portal_book_lead_days', '1')));
-    const byCutoff = plans.earliestBookableDate(getSetting('portal_book_lead_days', '1'));
-    return byLead > byCutoff ? byLead : byCutoff;
-  })();
+  // earliestBookableDate 已經含「今天 + 最早可約幾天」，再比一次 addDays 是多餘的
+  const minDate = plans.earliestBookableDate(portalLead());
   const maxDate = addDays(today(), Number(getSetting('portal_book_max_days', '60')));
   if (!date || date < minDate || date > maxDate) return res.status(400).json({ error: `可預約範圍為 ${minDate} 至 ${maxDate}` });
   const cid = Number(counselor_id) || req.client.counselor_id;
@@ -187,11 +181,8 @@ router.post('/appointments/:id/reschedule', requireClient, (req, res) => {
   }
   const { date = '', start_time = '' } = req.body || {};
   // 與對外表單同一套：最快幾天後 + 前一天幾點截止
-  const minDate = (() => {
-    const byLead = addDays(today(), Number(getSetting('portal_book_lead_days', '1')));
-    const byCutoff = plans.earliestBookableDate(getSetting('portal_book_lead_days', '1'));
-    return byLead > byCutoff ? byLead : byCutoff;
-  })();
+  // earliestBookableDate 已經含「今天 + 最早可約幾天」，再比一次 addDays 是多餘的
+  const minDate = plans.earliestBookableDate(portalLead());
   const maxDate = addDays(today(), Number(getSetting('portal_book_max_days', '60')));
   if (!date || date < minDate || date > maxDate) return res.status(400).json({ error: `可改期範圍為 ${minDate} 至 ${maxDate}` });
   const cutoffReason = plans.bookingCutoffReason(date, start_time, portalLead());
@@ -364,7 +355,7 @@ router.get('/line', requireClient, (req, res) => {
     bound: !!c.line_user_id,
     official_name: getSetting('line_official_name', ''),
     official_id: getSetting('line_official_id', ''),
-    add_friend_url: getSetting('line_add_friend_url', ''),
+    add_friend_url: require('../line').addFriendUrl(),
     reminder_hours: Number(getSetting('line_reminder_hours', '24'))
   };
   if (!enabled || out.bound) return res.json(out);

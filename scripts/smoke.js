@@ -1121,7 +1121,9 @@ function startServer() {
     const d = await r.json();
     assert(r.ok, '送出失敗：' + JSON.stringify(d));
     // 送出只是申請：回覆要講清楚還沒完成，並給加官方帳號的連結
-    assert(/尚未|還沒/.test(d.message) && /LINE/.test(d.message), '完成頁文案應說明尚未完成：' + d.message);
+    // 有設 LINE 才叫人去加；沒設的所別要改講「我們會與您聯繫」，不能出現加不到的指示
+    assert(/還沒有完成預約/.test(d.message), '完成頁文案應說明尚未完成：' + d.message);
+    equal(/LINE/.test(d.message), !!d.line_add_friend_url, '有無 LINE 連結要與文案一致');
     bookingId = d.id;
   });
   await test('沒設加好友連結時，用官方帳號 ID 自動組一組', async () => {

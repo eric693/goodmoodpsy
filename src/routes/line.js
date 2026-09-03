@@ -111,9 +111,12 @@ async function handleEvent(ev) {
       const client = db.prepare('SELECT * FROM clients WHERE line_user_id = ? AND active = 1').get(lineUserId);
       // 已綁定的舊個案要再約下一次時，多半就是直接打「預約」；
       // 全部一律當留言收下的話，他永遠拿不到預約連結，只能打電話。
-      if (client && /預約|約診|掛號|改期|時段|booking/i.test(text)) {
+      // 只認「要再約一次」；改期／取消不放進來——那要走提醒卡片的「需要改期」，
+      // 給預約連結只會多開一筆新申請，原本那筆還留在那裡。
+      if (client && /預約|約診|掛號|booking/i.test(text) && !/改期|取消|延|換時間/.test(text)) {
         db.prepare("INSERT INTO messages (client_id, sender, content) VALUES (?, 'client', ?)")
           .run(client.id, text.slice(0, 1000));
+        audit('client', client.id, client.name, '由 LINE 傳訊息給諮商所', client.code);
         await line.replyMessages(ev.replyToken, [helpFlex(lineUserId)]);
         return;
       }
@@ -330,7 +333,7 @@ router.post('/line/bind-code', requireStaff(), (req, res) => {
   db.prepare(`INSERT INTO line_bindings (code, client_id, user_id, expires_at) VALUES (?,?,?,?)`)
     .run(code, clientId, userId, addDays(today(), 1));
   audit('staff', req.user.id, req.user.name, '產生 LINE 綁定碼', String(clientId || userId));
-  res.json({ code, expires_at: addDays(today(), 1), add_friend_url: getSetting('line_add_friend_url') });
+  res.json({ code, expires_at: addDays(today(), 1), add_friend_url: line.addFriendUrl() });
 });
 
 // 心理師自助綁定：加好友後若沒綁定，系統只把他當一般民眾回覆預約說明，
@@ -342,7 +345,7 @@ router.get('/my/line', requireStaff(), (req, res) => {
     enabled,
     bound: !!u.line_user_id,
     official_name: getSetting('line_official_name', ''),
-    add_friend_url: getSetting('line_add_friend_url', ''),
+    add_friend_url: line.addFriendUrl(),
     daily_time: getSetting('line_counselor_daily_time', '20:00'),
     daily_enabled: getSetting('line_counselor_daily_enabled', '1') === '1'
   };
@@ -408,7 +411,7 @@ router.get('/line/status', requireStaff(), (req, res) => {
   res.json({
     enabled: line.lineEnabled(),
     official_name: getSetting('line_official_name'),
-    add_friend_url: getSetting('line_add_friend_url'),
+    add_friend_url: line.addFriendUrl(),
     reminder_hours: Number(getSetting('line_reminder_hours', '24')),
     daily_enabled: getSetting('line_counselor_daily_enabled', '1') === '1',
     daily_time: getSetting('line_counselor_daily_time', '20:00'),
