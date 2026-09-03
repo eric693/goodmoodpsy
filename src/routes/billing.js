@@ -404,3 +404,4 @@ router.delete('/refunds/:id', requireStaff('billing'), (req, res) => {
 });
 
 module.exports = router;
+module.exports.nextReceiptNo = nextReceiptNo;

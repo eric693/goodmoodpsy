@@ -253,6 +253,8 @@ router.post('/appointments/:id/status', requireStaff('schedule'), (req, res) => 
   const a = db.prepare('SELECT * FROM appointments WHERE id = ?').get(req.params.id);
   if (!a) return res.status(404).json({ error: '找不到此預約' });
   const { status, cancel_reason = '' } = req.body || {};
+  // 完成／未到當下多半就收了錢，讓櫃檯在同一個視窗選現金或轉帳，不必再繞去收費頁
+  const payMethod = String((req.body || {}).payment_method || '').trim();
   if (!['booked', 'arrived', 'done', 'cancelled', 'no_show'].includes(status)) {
     return res.status(400).json({ error: '狀態不正確' });
   }
@@ -322,21 +324,39 @@ router.post('/appointments/:id/status', requireStaff('schedule'), (req, res) => 
     }
   };
 
+  // 當下收款：把這筆預約剛產生（仍未收款）的收費單標記為已收，並給收據號碼
+  let paid = null;
+  const markPaid = () => {
+    if (!payMethod || status !== 'done') return;
+    const { nextReceiptNo } = require('./billing');
+    const rows = db.prepare("SELECT * FROM invoices WHERE appointment_id = ? AND status = 'unpaid'").all(a.id);
+    for (const inv of rows) {
+      db.prepare("UPDATE invoices SET status = 'paid', method = ?, paid_at = ?, receipt_no = ? WHERE id = ?")
+        .run(payMethod, nowStamp(), inv.receipt_no || nextReceiptNo(), inv.id);
+      paid = { amount: (paid ? paid.amount : 0) + inv.amount, method: payMethod };
+    }
+  };
+
   const tx = db.transaction(() => {
     db.prepare('UPDATE appointments SET status = ?, cancel_reason = ? WHERE id = ?').run(status, cancel_reason, a.id);
     // 先全部回沖再依新狀態重算，狀態任意來回切換都不會重複計費或漏退次數
     if (a.charged) reverseCharge();
     if (willCharge) applyCharge();
+    markPaid();
     db.prepare('UPDATE appointments SET charged = ? WHERE id = ?').run(willCharge ? 1 : 0, a.id);
   });
   tx();
+  if (paid) {
+    audit('staff', req.user.id, req.user.name, '完成晤談並收款',
+      client ? client.code : String(a.id), { amount: paid.amount, method: paid.method });
+  }
   audit('staff', req.user.id, req.user.name, '預約狀態異動', client ? client.code : String(a.id), { status });
   // 取消／未到會把時段空出來，順手回報候補名單中可遞補的人選，讓櫃檯當下就能通知
   const opening = (status === 'cancelled' || status === 'no_show') && a.date >= today()
     ? { date: a.date, start_time: a.start_time, end_time: a.end_time, counselor_id: a.counselor_id,
       candidates: matchWaitlist(a.counselor_id, a.date, a.start_time) }
     : null;
-  res.json({ ok: true, warnings, opening });
+  res.json({ ok: true, warnings, opening, paid });
 });
 
 router.delete('/appointments/:id', requireStaff('schedule'), (req, res) => {

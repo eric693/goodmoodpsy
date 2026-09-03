@@ -1136,11 +1136,32 @@ function startServer() {
 
   section('收據');
   let receiptId, receiptNo;
+  await test('完成晤談時可當下選現金或轉帳收款', async () => {
+    // 櫃檯多半在按「完成」的同時就收了錢，不必再繞到收費頁按一次收款
+    const day = addDays(monday, 77);
+    const made = await lin.ok('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: day, start_time: '09:00', fee: 1800 });
+    const r = await admin.ok('POST', `/api/appointments/${made.id}/status`,
+      { status: 'done', payment_method: '轉帳' });
+    assert(r.paid, '應回報已收款');
+    equal(r.paid.amount, 1800, '收款金額');
+    equal(r.paid.method, '轉帳', '收款方式');
+    const inv = (await admin.ok('GET', '/api/invoices?status=paid')).rows.find(i => i.appointment_id === made.id);
+    assert(inv, '應有對應的已收款收費單');
+    equal(inv.method, '轉帳', '收費單的付款方式');
+    assert(inv.receipt_no, '收款時應取得收據號碼');
+    // 不給收款方式時維持原本行為：只開帳、不收款
+    const made2 = await lin.ok('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: day, start_time: '11:00', fee: 1800 });
+    const r2 = await admin.ok('POST', `/api/appointments/${made2.id}/status`, { status: 'done' });
+    assert(!r2.paid, '沒選收款方式就不該收款');
+    const inv2 = (await admin.ok('GET', '/api/invoices?status=unpaid')).rows.find(i => i.appointment_id === made2.id);
+    assert(inv2, '應留一張未收款的收費單');
+  });
   await test('收款方式選錯可更正，並分別統計現金與轉帳', async () => {
     const list = await admin.ok('GET', '/api/invoices');
-    const inv = list.rows.find(i => i.status === 'paid');
-    assert(inv, '需要一筆已收款的收費單');
-    equal(inv.method, '現金', '前置：這筆應為現金');
+    const inv = list.rows.find(i => i.status === 'paid' && i.method === '現金');
+    assert(inv, '需要一筆以現金收款的收費單');
     // 誤選現金，事後更正為轉帳（不必作廢重開）
     await admin.ok('PUT', `/api/invoices/${inv.id}`, { method: '轉帳' });
     const after = (await admin.ok('GET', '/api/invoices')).rows.find(i => i.id === inv.id);

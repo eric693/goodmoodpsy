@@ -171,17 +171,32 @@ async function apptStatusDialog(a, onDone) {
         系統會依未到比例開立收費單。</span></div>` : ''}
       <div class="form-row full"><label>取消／未到原因（選填）</label><input id="rsn"${a.cancel_requested_at
     ? ` value="${UI.esc(a.cancel_request_reason || '個案申請取消')}"` : ''}></div>
+      ${a.package_id ? '' : `<div class="form-row full"><label>完成晤談時的收款方式</label>
+        <select id="pay">
+          <option value="">稍後收款（先開帳，之後在收費頁收）</option>
+          ${App.listOptions('pay_methods', ['現金']).map(o =>
+    `<option value="${UI.esc(o[0])}">當下收款：${UI.esc(o[1])}</option>`).join('')}
+        </select>
+        <div style="font-size:12.5px;color:var(--muted);margin-top:4px">
+          選了收款方式，按「完成晤談」時就直接收款並取得收據號碼${a.fee ? `（本次應收 ${UI.fmtMoney(a.fee)}）` : ''}。</div></div>`}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
         ${acts.map(x => `<button class="btn ${x[2]}" data-st="${x[0]}" type="button">${x[1]}</button>`).join('')}
       </div>
       <div style="font-size:12.5px;color:var(--muted);margin-top:12px">
         標記「完成晤談」會依方案扣次或產生收費單；「未到」依系統設定比例計費。
+        ${a.package_id ? '本次由方案扣抵次數，不會產生收費單。' : ''}
         若把已完成的晤談改回其他狀態，系統會自動退回方案次數並移除尚未收款的收費單。</div>`
   });
   m.body.querySelectorAll('[data-st]').forEach(b => {
     b.onclick = async () => {
       try {
-        const r = await POST(`/appointments/${a.id}/status`, { status: b.dataset.st, cancel_reason: m.body.querySelector('#rsn').value.trim() });
+        const paySel = m.body.querySelector('#pay');
+        const r = await POST(`/appointments/${a.id}/status`, {
+          status: b.dataset.st,
+          cancel_reason: m.body.querySelector('#rsn').value.trim(),
+          // 收款方式只在「完成晤談」時送出，其他狀態不該產生收款
+          payment_method: b.dataset.st === 'done' && paySel ? paySel.value : ''
+        });
         m.close();
         // 已收款的收費單不會自動刪除，需提醒人工處理退費
         if (r.warnings && r.warnings.length) {
@@ -191,6 +206,8 @@ async function apptStatusDialog(a, onDone) {
               <div style="font-size:13px;color:var(--muted);margin-top:10px">
                 需退還已收款項時，請至「收費與方案」找到該筆收費單按「退費」開立退費單。</div>`
           });
+        } else if (r.paid) {
+          UI.toast(`已完成並收款 ${UI.fmtMoney(r.paid.amount)}（${r.paid.method}）`);
         } else {
           UI.toast('已更新');
         }
