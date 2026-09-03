@@ -121,9 +121,23 @@ router.get('/clients/:id', requireStaff('clients'), (req, res) => {
   });
 });
 
+// 個案專區以手機號碼當帳號，兩位個案填同一支號碼會登入到別人的資料，
+// 因此建檔與修改時都擋下重複（家人共用號碼的情形請留空，改由櫃檯代為操作）。
+function phoneTaken(phone, excludeId) {
+  const p = String(phone || '').trim();
+  if (!p) return null;
+  return db.prepare(`SELECT name, code FROM clients WHERE phone = ? AND active = 1 AND id != ?`)
+    .get(p, Number(excludeId) || 0);
+}
+
 router.post('/clients', requireStaff('clients'), (req, res) => {
   const data = pick(req.body);
   if (!data.name) return res.status(400).json({ error: '請填寫姓名' });
+  const dup = phoneTaken(data.phone);
+  if (dup) {
+    return res.status(400).json({ error: `手機 ${data.phone} 已是「${dup.name}（${dup.code}）」的號碼；`
+      + '個案專區以手機登入，重複會登入到別人的資料。如為家人共用，請將此欄留空。' });
+  }
   data.code = req.body.code || nextClientCode();
   if (db.prepare('SELECT 1 FROM clients WHERE code = ?').get(data.code)) {
     return res.status(400).json({ error: '個案編號重複' });
@@ -146,6 +160,13 @@ router.put('/clients/:id', requireStaff('clients'), (req, res) => {
   if (!c) return res.status(404).json({ error: '找不到此個案' });
   const data = pick(req.body);
   if (!Object.keys(data).length) return res.json({ ok: true });
+  if (data.phone !== undefined) {
+    const dup = phoneTaken(data.phone, c.id);
+    if (dup) {
+      return res.status(400).json({ error: `手機 ${data.phone} 已是「${dup.name}（${dup.code}）」的號碼；`
+        + '個案專區以手機登入，重複會登入到別人的資料。如為家人共用，請將此欄留空。' });
+    }
+  }
   if (data.status === 'closed' && !data.close_date) data.close_date = today();
   applyMinor(data, c.birth_date);
   const warn = idNoWarning(data.id_no);

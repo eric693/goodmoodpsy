@@ -276,6 +276,43 @@ function startServer() {
     await admin.ok('DELETE', `/api/appointments/${a.id}`);
     await admin.ok('DELETE', `/api/service-plans/${plan.id}`);
   });
+  await test('明顯打錯的日期時間會被擋下', async () => {
+    // 年份打錯（2062）、時間顛倒這類輸入，若讓它成立會變成永遠不會發生卻佔著額度的預約
+    await lin.fails('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: '2062-01-05', start_time: '14:00' }, '兩年');
+    await lin.fails('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: addDays(ymd(new Date()), -400), start_time: '14:00' }, '一年前');
+    await lin.fails('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: '2026-13-45', start_time: '14:00' }, '日期');
+    await lin.fails('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: addDays(monday, 49), start_time: '14:00', end_time: '13:00' },
+      '結束時間');
+  });
+  await test('同一個案同時段不會被排兩筆', async () => {
+    const day = addDays(monday, 56);
+    const first = await lin.ok('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: day, start_time: '09:00' });
+    // 換一位心理師也不行：個案分身乏術，多半是重複建單
+    await admin.fails('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 3, date: day, start_time: '09:00' }, '已有另一筆預約');
+    await admin.ok('DELETE', `/api/appointments/${first.id}`);
+  });
+  await test('個案手機重複會被擋下（個案專區以手機登入）', async () => {
+    const dupPhone = '0912000777';
+    const a = await admin.ok('POST', '/api/clients', { name: '防呆測試甲', phone: dupPhone });
+    await admin.fails('POST', '/api/clients', { name: '防呆測試乙', phone: dupPhone }, '已是');
+    const b2 = await admin.ok('POST', '/api/clients', { name: '防呆測試乙', phone: '0912000778' });
+    await admin.fails('PUT', `/api/clients/${b2.id}`, { phone: dupPhone }, '已是');
+    // 留空不受限（家人共用號碼的情形）
+    await admin.ok('PUT', `/api/clients/${b2.id}`, { phone: '' });
+    await admin.ok('DELETE', `/api/clients/${a.id}/purge`);
+    await admin.ok('DELETE', `/api/clients/${b2.id}/purge`);
+  });
+  await test('收費單金額明顯有誤會被擋下', async () => {
+    await admin.fails('POST', '/api/invoices', { client_id: clientId, item: '測試', amount: -100 }, '負數');
+    await admin.fails('POST', '/api/invoices', { client_id: clientId, item: '測試', amount: 20000000 }, '100 萬');
+    await admin.fails('POST', '/api/invoices', { client_id: clientId, item: '測試', amount: 0 }, '請填寫金額');
+  });
   await test('視訊晤談不佔用諮商室', async () => {
     // 通訊諮商在線上進行，若也被指派空間，諮商室使用表會被塞滿看不出空檔
     const day = addDays(monday, 42);

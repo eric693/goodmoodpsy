@@ -69,6 +69,10 @@ router.post('/invoices', requireStaff('billing'), (req, res) => {
   if (!b.item) return res.status(400).json({ error: '請填寫項目' });
   const amount = Number(b.amount) || 0;
   const subsidy = Number(b.subsidy_amount) || 0;
+  // 金額打成負數或漏打單位（例如 20000000）都先擋下來問一次，開錯了要作廢重開很麻煩
+  if (amount < 0 || subsidy < 0) return res.status(400).json({ error: '金額不可為負數' });
+  if (amount > 1000000) return res.status(400).json({ error: `金額 ${amount} 超過 100 萬，請確認是否多打了 0` });
+  if (!amount && !subsidy) return res.status(400).json({ error: '請填寫金額（全額補助者請填方案補助金額）' });
   const info = db.prepare(`INSERT INTO invoices (client_id, appointment_id, package_id, date, item, amount, payer, note,
       buyer_tax_id, buyer_title, invoice_no, invoice_date, carrier, love_code,
       subsidy_program, subsidy_no, subsidy_amount, self_pay)

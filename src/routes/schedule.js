@@ -9,7 +9,7 @@ const { endTime, defaultSessionMinutes } = plans;
 const router = express.Router();
 
 // 時段重疊判定：同一諮商師或同一諮商室在同日不得有時間交疊的有效預約
-function conflictOf({ id, date, start_time, end_time, counselor_id, room_id }) {
+function conflictOf({ id, date, start_time, end_time, counselor_id, room_id, client_id }) {
   const args = [date, end_time, start_time];
   const rows = db.prepare(`SELECT a.*, c.name AS client_name, u.name AS counselor_name, r.name AS room_name
     FROM appointments a
@@ -22,8 +22,23 @@ function conflictOf({ id, date, start_time, end_time, counselor_id, room_id }) {
     if (id && r.id === Number(id)) continue;
     if (r.counselor_id === Number(counselor_id)) return { row: r, kind: '心理師' };
     if (room_id && r.room_id === Number(room_id)) return { row: r, kind: '諮商室' };
+    // 同一位個案同時段被排兩筆（多半是重複建檔或櫃檯重按），個案分身乏術，一併擋下
+    if (client_id && r.client_id === Number(client_id)) return { row: r, kind: '個案' };
   }
   return null;
+}
+
+// 日期與時間的基本檢查：格式錯、時間顛倒、年份打錯（2062 之類）都在這裡擋掉，
+// 避免變成一筆永遠不會發生、卻一直佔著時段與額度的預約。
+function checkDateTime({ date, start_time, end_time }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return '日期格式有誤';
+  if (!/^\d{2}:\d{2}$/.test(start_time || '')) return '時間格式有誤';
+  if (Number.isNaN(new Date(date + 'T00:00:00').getTime())) return '日期不存在，請重新選擇';
+  if (end_time && end_time <= start_time) return '結束時間需晚於開始時間';
+  const min = addDays(today(), -365), max = addDays(today(), 730);
+  if (date < min) return `日期 ${date} 早於一年前，請確認是否打錯年份`;
+  if (date > max) return `日期 ${date} 超過兩年後，請確認是否打錯年份`;
+  return '';
 }
 
 // 請假衝突：全天假擋整日，時段假只擋交疊的時間
@@ -98,12 +113,18 @@ router.post('/appointments', requireStaff('schedule'), (req, res) => {
   if (!client) return res.status(400).json({ error: '請選擇個案' });
   if (!b.counselor_id) return res.status(400).json({ error: '請選擇心理師' });
   if (!b.date || !b.start_time) return res.status(400).json({ error: '請填寫日期與時間' });
+  const dtErr = checkDateTime({ date: b.date, start_time: b.start_time, end_time: b.end_time });
+  if (dtErr) return res.status(400).json({ error: dtErr });
   // 方案可有自己的時長（40／50／80 分鐘），未指定結束時間時依方案推算
   const planMinutes = b.plan_id ? plans.resolveFee({ plan_id: b.plan_id }).session_minutes : 0;
   const end_time = b.end_time || endTime(b.start_time, planMinutes || defaultSessionMinutes());
-  const hit = conflictOf({ ...b, end_time });
+  const hit = conflictOf({ ...b, end_time, client_id: client.id });
   if (hit) {
-    return res.status(400).json({ error: `${hit.kind}時段衝突：${hit.row.date} ${hit.row.start_time}-${hit.row.end_time} 已有預約` });
+    return res.status(400).json({
+      error: hit.kind === '個案'
+        ? `${client.name} 在 ${hit.row.date} ${hit.row.start_time}-${hit.row.end_time} 已有另一筆預約（${hit.row.counselor_name || ''}），請確認是否重複`
+        : `${hit.kind}時段衝突：${hit.row.date} ${hit.row.start_time}-${hit.row.end_time} 已有預約`
+    });
   }
   const off = timeOffOf(b.counselor_id, b.date, b.start_time, end_time);
   if (off) return res.status(400).json({ error: `該心理師於 ${off.start_date}~${off.end_date} 請假（${off.reason || '不可預約'}）` });
@@ -179,8 +200,16 @@ router.put('/appointments/:id', requireStaff('schedule'), (req, res) => {
     const planMinutes = b.plan_id ? plans.resolveFee({ plan_id: b.plan_id }).session_minutes : 0;
     b.end_time = endTime(b.start_time, planMinutes || defaultSessionMinutes());
   }
-  const hit = conflictOf({ ...b, id: a.id });
-  if (hit) return res.status(400).json({ error: `${hit.kind}時段衝突：${hit.row.start_time}-${hit.row.end_time} 已有預約` });
+  const dtErr = checkDateTime({ date: b.date, start_time: b.start_time, end_time: b.end_time });
+  if (dtErr) return res.status(400).json({ error: dtErr });
+  const hit = conflictOf({ ...b, id: a.id, client_id: a.client_id });
+  if (hit) {
+    return res.status(400).json({
+      error: hit.kind === '個案'
+        ? `這位個案在 ${hit.row.date} ${hit.row.start_time}-${hit.row.end_time} 已有另一筆預約，請確認是否重複`
+        : `${hit.kind}時段衝突：${hit.row.start_time}-${hit.row.end_time} 已有預約`
+    });
+  }
   let meeting_url;
   try { meeting_url = cleanMeetingUrl(b.meeting_url); } catch (e) { return res.status(400).json({ error: e.message }); }
   if (b.mode === 'online') {
@@ -874,6 +903,7 @@ module.exports = router;
 module.exports.freeSlots = freeSlots;
 module.exports.endTime = endTime;
 module.exports.conflictOf = conflictOf;
+module.exports.checkDateTime = checkDateTime;
 module.exports.matchWaitlist = matchWaitlist;
 module.exports.availabilityOn = availabilityOn;
 module.exports.mondayOf = mondayOf;

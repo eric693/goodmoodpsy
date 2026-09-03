@@ -114,10 +114,15 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
 
     const table = el.querySelector('.shift-table');
     let dragging = false, mode = true;
+    // 改過還沒存就切走，刷了半天的班表會整個不見，因此記錄有無未存變更
+    let dirty = false;
     const toggle = (td, on) => {
       const key = `${td.dataset.wd}|${td.dataset.min}`;
+      const was = picked.has(key);
       if (on) { picked.add(key); td.classList.add('on'); } else { picked.delete(key); td.classList.remove('on'); }
+      if (was !== on) dirty = true;
     };
+    const leaveOk = async () => !dirty || UI.confirm('排班有尚未儲存的變更，離開會失效。確定不儲存就離開？');
     table.addEventListener('mousedown', e => {
       const td = e.target.closest('.shift-cell');
       if (!td) return;
@@ -168,7 +173,11 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
       const q = cfg.quick[Number(b.dataset.q)];
       b.onclick = () => fill(q.weekdays, q.ranges);
     });
-    el.querySelector('#q-clear').onclick = () => {
+    el.querySelector('#q-clear').onclick = async () => {
+      // 清空是整份班表歸零，誤按代價很大（線上預約會變成沒有任何時段）
+      if (!await UI.confirm(week
+        ? `清空 ${week} 這一週的所有時段？（存檔後這一週將完全不開放預約）`
+        : '清空整份固定班？存檔後線上預約與櫃檯排約都會找不到任何可預約時段。')) return;
       el.querySelectorAll('.shift-cell').forEach(td => toggle(td, false));
       custom = [];
       drawCustom();
@@ -185,7 +194,7 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
           <td>${UI.esc(c.note || '')}</td>
           <td><button class="btn tiny danger" data-cx="${i}">刪除</button></td></tr>`))}`;
       box.querySelectorAll('[data-cx]').forEach(b => {
-        b.onclick = () => { custom.splice(Number(b.dataset.cx), 1); drawCustom(); };
+        b.onclick = () => { custom.splice(Number(b.dataset.cx), 1); dirty = true; drawCustom(); };
       });
     };
     drawCustom();
@@ -220,15 +229,21 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
           }
         }
         drawCustom();
+        dirty = true;
         UI.toast('已加入，記得按「儲存排班」');
       }
     });
-    if (canPickOther) el.querySelector('#sc').onchange = e => renderShiftPanel(el, e.target.value, onChange, week);
+    if (canPickOther) el.querySelector('#sc').onchange = async e => {
+      const to = e.target.value;
+      if (!await leaveOk()) { e.target.value = String(cid); return; }
+      renderShiftPanel(el, to, onChange, week);
+    };
     const thisMonday = UI.mondayOf(UI.today());
-    el.querySelector('#w-fixed').onclick = () => reload('');
-    el.querySelector('#w-this').onclick = () => reload(thisMonday);
-    el.querySelector('#w-prev').onclick = () => reload(UI.addDays(week || thisMonday, -7));
-    el.querySelector('#w-next').onclick = () => reload(UI.addDays(week || thisMonday, 7));
+    const goWeek = async w => { if (await leaveOk()) reload(w); };
+    el.querySelector('#w-fixed').onclick = () => goWeek('');
+    el.querySelector('#w-this').onclick = () => goWeek(thisMonday);
+    el.querySelector('#w-prev').onclick = () => goWeek(UI.addDays(week || thisMonday, -7));
+    el.querySelector('#w-next').onclick = () => goWeek(UI.addDays(week || thisMonday, 7));
     const wReset = el.querySelector('#w-reset');
     if (wReset) wReset.onclick = async () => {
       if (!await UI.confirm(`取消 ${week} 這一週的單獨排班，改回沿用固定班？`)) return;
@@ -240,9 +255,13 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
     };
 
     el.querySelector('#save').onclick = async () => {
+      const blocks = shiftBlocks(picked, cfg).concat(custom);
+      if (!blocks.length && !await UI.confirm(week
+        ? `這一週沒有任何時段，存檔後 ${week} 當週將完全不開放預約，確定嗎？`
+        : '固定班沒有任何時段，存檔後所有週次都不會開放預約，確定嗎？')) return;
       try {
-        const blocks = shiftBlocks(picked, cfg).concat(custom);
         const r = await POST('/availability/bulk', { counselor_id: cid, blocks, week_start: week });
+        dirty = false;
         UI.toast(week ? `已儲存 ${week} 當週的 ${r.count} 個時段` : `已儲存固定班 ${r.count} 個時段`);
         reload(week);
       } catch (e) { UI.err(e); }
