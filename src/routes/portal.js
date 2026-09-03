@@ -130,6 +130,8 @@ router.post('/appointments', requireClient, (req, res) => {
   if (req.client.counselor_id && cid !== req.client.counselor_id) {
     return res.status(400).json({ error: '如需更換心理師請來電洽詢' });
   }
+  const cutoffReason = plans.bookingCutoffReason(date, start_time);
+  if (cutoffReason) return res.status(400).json({ error: `${cutoffReason}，請改約其他時間或來電洽詢。` });
   const slot = freeSlots(cid, date).find(s => s.start_time === start_time);
   if (!slot) return res.status(400).json({ error: '此時段已被預約或非開放時段，請重新選擇' });
   const type = db.prepare("SELECT 1 FROM appointments WHERE client_id = ? AND status = 'done'").get(req.client.id) ? 'individual' : 'intake';

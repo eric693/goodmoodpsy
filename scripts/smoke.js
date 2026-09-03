@@ -516,6 +516,14 @@ function startServer() {
     })();
     await admin.ok('PUT', '/api/settings', { booking_cutoff_time: '21:00' });
   });
+  await test('也可改用「晤談前 X 小時」截止', async () => {
+    // 兩道門檻同時生效：前一天固定時間、以及晤談前至少幾小時
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_time: '', booking_cutoff_hours: '72' });
+    const d = await (await fetch(`${BASE}/api/public/booking-slots?counselor_id=2&days=4`)).json();
+    const soon = (d.days || []).filter(x => x.date < addDays(ymd(new Date()), 3));
+    assert(soon.every(x => !x.slots.length), '三天內的時段應被 72 小時門檻濾掉');
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: '0', booking_cutoff_time: '21:00' });
+  });
   await test('個案專區訊息預設只讀，聯繫走 LINE', async () => {
     await portal.fails('POST', '/api/portal/messages', { content: '測試留言' }, 'LINE');
     await admin.ok('PUT', '/api/settings', { portal_messages_write: '1' });

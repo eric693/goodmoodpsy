@@ -180,6 +180,25 @@ function earliestBookableDate(leadDays) {
   return min;
 }
 
+// 某個時段是否還收得到線上預約：除了「最早可約日」，再加一道「晤談前至少幾小時」。
+// 兩個門檻同時生效，取較嚴格者；回傳空字串表示可以，否則回傳擋下的理由。
+function bookingCutoffReason(date, startTime) {
+  const min = earliestBookableDate();
+  if (date < min) {
+    const cutoff = getSetting('booking_cutoff_time', '');
+    return `此時段已截止線上預約（最早可約 ${min}`
+      + (cutoff ? `；前一天 ${cutoff} 後即關閉隔天時段` : '') + '）';
+  }
+  const hours = Number(getSetting('booking_cutoff_hours', '0')) || 0;
+  if (hours > 0 && /^\d{2}:\d{2}$/.test(String(startTime || ''))) {
+    const startAt = new Date(`${date}T${startTime}:00`);
+    if (startAt.getTime() - Date.now() < hours * 3600 * 1000) {
+      return `線上預約須於晤談開始前 ${hours} 小時完成，此時段已截止`;
+    }
+  }
+  return '';
+}
+
 // 未到（no_show）要收多少：所內同意書多半寫「行政規費 X 元」這種固定金額，
 // 但也有依比例收的做法。設定了固定金額就以它為準，否則回到比例。
 // 回傳 { amount, note, fixed }，各處共用同一套算法，畫面與帳才不會各算各的。
@@ -314,5 +333,5 @@ module.exports = {
   defaultSessionMinutes, sessionMinutes, endTime,
   COUNTED_STATUSES, getPlan, getTopic, getRate, parseOptions, resolveFee,
   clientUsage, clientUsageAll, counselorLoad, nextWeekHint, weekRange, checkBooking, pickRoom, noShowCharge,
-  earliestBookableDate
+  earliestBookableDate, bookingCutoffReason
 };

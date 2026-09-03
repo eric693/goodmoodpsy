@@ -1116,6 +1116,7 @@ App.page('settings', {
         ['booking_public_url', '預約表單對外網址（LINE 卡片的預約按鈕會用到）'],
         ['booking_lead_days', '最早可約幾天後'], ['booking_max_days', '最晚可約幾天內'],
         ['booking_cutoff_time', '前一天幾點後關閉隔天時段（HH:MM，留空不設）'],
+        ['booking_cutoff_hours', '晤談前至少幾小時才收線上預約（0 不設，與上一項同時生效）'],
         ['booking_slot_step', '時段間隔（分鐘）'], ['booking_require_birth', '是否必填生日（1/0，補助方案需驗年齡）'],
         ['booking_notice', '表單注意事項'], ['booking_privacy', '個資告知文字']]],
       ['諮商室指派', [['room_auto_assign', '成立預約時自動指派空房（1/0）'],

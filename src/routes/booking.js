@@ -91,7 +91,8 @@ router.get('/public/booking-slots', publicRead, (req, res) => {
   for (let i = 0; i < days; i++) {
     const date = addDays(from, i);
     if (date > addDays(today(), max)) break;
-    let slots = schedule.freeSlots(counselorId, date, minutes);
+    let slots = schedule.freeSlots(counselorId, date, minutes)
+      .filter(sl => !plans.bookingCutoffReason(date, sl.start_time));
     let full = null;
     if (plan && slots.length) {
       const load = plans.counselorLoad(counselorId, plan.id, date);
@@ -151,11 +152,8 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
   if (date) {
     const minDate = plans.earliestBookableDate();
     const max = Number(getSetting('booking_max_days', '45'));
-    if (date < minDate) {
-      const cutoff = getSetting('booking_cutoff_time', '');
-      return res.status(400).json({ error: `此時段已截止線上預約（最早可約 ${minDate}`
-        + (cutoff ? `；前一天 ${cutoff} 後即關閉隔天時段` : '') + '），請改約其他時間或直接來電。' });
-    }
+    const cutoffReason = plans.bookingCutoffReason(date, startTime);
+    if (cutoffReason) return res.status(400).json({ error: `${cutoffReason}，請改約其他時間或直接來電。` });
     if (date > addDays(today(), max)) return res.status(400).json({ error: `最遠只能預約 ${max} 天內的時段` });
     const check = plans.checkBooking({ plan_id: plan.id, client, counselor_id: counselorId, date, birth_date: birth });
     if (check.errors.length && getSetting('plan_quota_enforce', '1') === '1') {
