@@ -1096,6 +1096,7 @@ App.page('settings', {
         ['portal_change_counselor', '個案可自選其他心理師（1/0；換人會標註待櫃檯確認）'],
         ['portal_booking_enabled', '開放線上預約（1/0）'], ['portal_reschedule_enabled', '開放線上改期（1/0）'],
         ['portal_book_lead_days', '最早可約幾天後'], ['portal_book_max_days', '最晚可約幾天內']]],
+      // 「晤談前至少幾小時」設在下面的線上預約表單區，個案專區與對外表單共用同一個值
       ['專業管理', [['supervision_required_hours', '年度督導時數目標'], ['audit_retention_days', '稽核軌跡保留天數'],
         ['record_retention_years', '心理紀錄保存年限'], ['ce_cycle_years', '繼續教育週期（年）'],
         ['ce_required_credits', '週期應完成積分'], ['ce_required_special', '特定類別積分下限'],
@@ -1117,7 +1118,7 @@ App.page('settings', {
         ['booking_public_url', '預約表單對外網址（LINE 卡片的預約按鈕會用到）'],
         ['booking_lead_days', '最早可約幾天後'], ['booking_max_days', '最晚可約幾天內'],
         ['booking_cutoff_time', '前一天幾點後關閉隔天時段（HH:MM，留空不設）'],
-        ['booking_cutoff_hours', '晤談前至少幾小時才收線上預約（0 不設，與上一項同時生效）'],
+        ['booking_cutoff_hours', '晤談前至少幾小時才收線上預約（0 不設；對外表單與個案專區皆適用，與上一項同時生效）'],
         ['booking_counselor_intro_url', '心理師介紹頁網址（顯示在「預約之心理師」欄位下方）'],
         ['booking_slot_step', '時段間隔（分鐘）'], ['booking_require_birth', '是否必填生日（1/0，補助方案需驗年齡）'],
         ['booking_notice', '表單注意事項'], ['booking_privacy', '個資告知文字']]],

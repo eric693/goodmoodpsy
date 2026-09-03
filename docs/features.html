@@ -135,7 +135,7 @@
     <li><a href="#how"><span class="tocnum">00</span>整套系統怎麼運作</a></li>
     <li><a href="#line"><span class="tocnum">01</span>LINE 怎麼開始預約</a></li>
     <li><a href="#notify"><span class="tocnum">02</span>系統會主動送出的通知</a></li>
-    <li><a href="#form"><span class="tocnum">03</span>線上預約表單</a></li>
+    <li><a href="#form"><span class="tocnum">03</span>線上預約表單</a>（含<a href="#booking-gap">多久以前才能約</a>）</li>
     <li><a href="#gform"><span class="tocnum">04</span>Google 表單同步</a></li>
     <li><a href="#plan"><span class="tocnum">05</span>方案、額度與收支</a></li>
     <li><a href="#receipt"><span class="tocnum">06</span>收據</a></li>
@@ -273,6 +273,29 @@
     <div class="card"><h4>彈性選項</h4><p>主題選「其他」可自填；心理師選「由諮商所安排」時不列時段，改請個案填可配合時段，由櫃檯排定後回覆。</p></div>
     <div class="card"><h4>文字都能改</h4><p>表單欄位、注意事項與個資告知文字皆在系統設定可改，不必動程式。</p></div>
   </div>
+
+  <h3 id="booking-gap">多久以前才能約：三道門檻</h3>
+  <p>不能「開放 12:00 的時段，客人 11:55 還約得到 12:00」。系統有三道門檻，<strong>同時生效、取最嚴格的那一道</strong>，對外表單與個案專區共用同一組設定。</p>
+  <table>
+    <thead><tr><th>設定欄位</th><th>意思</th><th>目前值</th><th>例子</th></tr></thead>
+    <tbody>
+      <tr><td>最早可約幾天後</td><td>今天起算幾天內都不開放</td><td>1</td><td>填 1：今天是 9/3，最早只能約 9/4</td></tr>
+      <tr><td>前一天幾點後關閉隔天時段</td><td>過了這個時間，隔天就整天關掉</td><td>21:00</td><td>20:59 還約得到明天，21:00 之後明天全關，最早變後天</td></tr>
+      <tr><td>晤談前至少幾小時才收線上預約</td><td>離晤談開始不足這個時數的時段一律不開放（0＝不設）</td><td>0</td><td>填 24：現在是 9/3 10:00，9/4 09:00 那格就不會出現</td></tr>
+    </tbody>
+  </table>
+  <h4>怎麼設定</h4>
+  <ol class="steps">
+    <li>後台左側「<strong>系統</strong>」→「<strong>系統設定</strong>」，找到「<strong>線上預約表單（對外）</strong>」這一區。</li>
+    <li>三個欄位分別是「最早可約幾天後」「前一天幾點後關閉隔天時段（HH:MM，留空不設）」「晤談前至少幾小時才收線上預約」。<strong>你要的「保留多久緩衝」就是第三個</strong>，直接填小時數，例如 <code>24</code>。</li>
+    <li>按儲存即生效，不必重開系統。個案專區的預約與改期、對外表單的時段列表都會同步依新值過濾。</li>
+  </ol>
+  <ul>
+    <li>不足門檻的時段<strong>直接不顯示</strong>，不是按下去才被退——個案不會看到約不到的時間。</li>
+    <li>個案專區的「改期」也走同一道檢查，不會變成後門。</li>
+    <li><strong>只擋線上</strong>：櫃檯與心理師在後台排約完全不受限，臨時要加當天的約照樣排得進去（後台的「開始時間」本來就能自己打，不限於開放時段）。</li>
+    <li>個案專區另有自己的「最早可約幾天後／最晚可約幾天內」（系統設定 →「個案專區」區），與上面三道一併取最嚴格者。</li>
+  </ul>
 </section>
 
 <section id="gform">

@@ -119,7 +119,9 @@ router.get('/slots', requireClient, (req, res) => {
     allow_change_counselor: allowOther,
     my_counselor_id: mine || null,
     counselors: counselors.map(u => ({
-      ...u, is_mine: u.id === mine, slots: freeSlots(u.id, date)
+      // 「晤談前至少幾小時」這道門檻在這裡就先濾掉，否則畫面照樣列出 12:00，
+      // 個案按下去才被擋，看起來像系統壞掉
+      ...u, is_mine: u.id === mine, slots: freeSlots(u.id, date).filter(s => !plans.bookingCutoffReason(date, s.start_time))
     }))
   });
 });
@@ -189,6 +191,8 @@ router.post('/appointments/:id/reschedule', requireClient, (req, res) => {
   })();
   const maxDate = addDays(today(), Number(getSetting('portal_book_max_days', '60')));
   if (!date || date < minDate || date > maxDate) return res.status(400).json({ error: `可改期範圍為 ${minDate} 至 ${maxDate}` });
+  const cutoffReason = plans.bookingCutoffReason(date, start_time);
+  if (cutoffReason) return res.status(400).json({ error: `${cutoffReason}，請改約其他時間或來電洽詢。` });
   const slot = freeSlots(a.counselor_id, date).find(s => s.start_time === start_time);
   if (!slot) return res.status(400).json({ error: '此時段已被預約或非開放時段，請重新選擇' });
   const original = `${a.date} ${a.start_time}`;

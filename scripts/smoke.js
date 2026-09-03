@@ -553,6 +553,21 @@ function startServer() {
     assert(soon.every(x => !x.slots.length), '三天內的時段應被 72 小時門檻濾掉');
     await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: '0', booking_cutoff_time: '21:00' });
   });
+  await test('「晤談前 X 小時」在個案專區也生效', async () => {
+    // 專區以前只在送出時才擋，畫面照樣列出時段，個案按下去才被退——看起來像系統壞掉
+    const day = addDays(ymd(new Date()), 2);
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: '96' });
+    const s2 = await portal.ok('GET', `/api/portal/slots?date=${day}`);
+    assert((s2.counselors || []).every(c => !c.slots.length), '未達門檻的時段就不該列出來');
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: '0' });
+    const s3 = await portal.ok('GET', `/api/portal/slots?date=${day}`);
+    assert((s3.counselors || []).some(c => c.slots.length), '關掉門檻後應恢復顯示');
+    // 改期也要擋，否則等於留一個後門
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: '96' });
+    const t = (s3.counselors.find(c => c.slots.length)).slots[0].start_time;
+    await portal.fails('POST', `/api/portal/appointments/${portalAppt}/reschedule`, { date: day, start_time: t }, '截止');
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_hours: '0' });
+  });
   await test('個案專區訊息預設只讀，聯繫走 LINE', async () => {
     await portal.fails('POST', '/api/portal/messages', { content: '測試留言' }, 'LINE');
     await admin.ok('PUT', '/api/settings', { portal_messages_write: '1' });
