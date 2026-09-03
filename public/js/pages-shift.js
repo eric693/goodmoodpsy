@@ -101,7 +101,7 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
     : ''}</th>`).join('')}</tr></thead>
           <tbody>${rows.join('')}</tbody></table></div>
         <div style="font-size:12.5px;color:var(--muted);margin-top:10px">
-          點一下切換單格，按住拖曳可整段刷選；表格範圍（目前 ${shiftFmt(cfg.start)}–${shiftFmt(cfg.end)}、每格 ${cfg.step} 分鐘）
+          點一下切換單格，按住拖曳（手機可直接用手指滑過）可整段刷選；表格範圍（目前 ${shiftFmt(cfg.start)}–${shiftFmt(cfg.end)}、每格 ${cfg.step} 分鐘）
           與快填按鈕可於系統設定調整。不在格線上的時間請用「自訂時段」。
           已被預約或請假的時間會自動從可預約清單扣除，不必在這裡調整。<br>
           ${week
@@ -137,6 +137,26 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
       const td = e.target.closest('.shift-cell');
       if (td && !dragging) toggle(td, !td.classList.contains('on'));
     });
+    // 手機刷選：touchmove 只給座標，要自己找出手指下的格子；
+    // 同時擋掉預設捲動，否則一拖就變成整頁上下滑，格子選不動。
+    let touching = false, touchMode = true;
+    table.addEventListener('touchstart', e => {
+      const td = e.target.closest('.shift-cell');
+      if (!td) return;
+      touching = true;
+      touchMode = !td.classList.contains('on');
+      toggle(td, touchMode);
+    }, { passive: true });
+    table.addEventListener('touchmove', e => {
+      if (!touching) return;
+      const t = e.touches[0];
+      const el2 = document.elementFromPoint(t.clientX, t.clientY);
+      const td = el2 && el2.closest && el2.closest('.shift-cell');
+      if (td) { e.preventDefault(); toggle(td, touchMode); }
+    }, { passive: false });
+    const endTouch = () => { touching = false; };
+    table.addEventListener('touchend', endTouch);
+    table.addEventListener('touchcancel', endTouch);
 
     const fill = (wds, ranges) => {
       el.querySelectorAll('.shift-cell').forEach(td => {
@@ -571,9 +591,10 @@ App.page('waitlist', {
 // 標明「個案」與「使用心理師」，兩者用顏色與標籤區分，不會看混。
 App.page('room-board', {
   title: '諮商室使用表',
-  sub: '每間空間一週的使用狀況；每格標明個案與使用心理師',
+  sub: '每間空間一週的使用狀況：時間、個案、心理師；視訊晤談不佔空間',
   help: [
-    '每一間諮商室一週的使用狀況，每格標明個案與使用心理師，用來確認空間有沒有撞、還有哪些時段空著。',
+    '每一間諮商室一週的使用狀況，一格只寫時間、個案與心理師，用來確認空間有沒有撞、還有哪些時段空著。',
+    '通訊（視訊）諮商不在所內進行，不會佔用諮商室，因此不會出現在這張表上。',
     '上方可切換週次。這頁只看不改，要調整請到「預約排程」。',
     '格子底色代表方案別（自費白底、市民方案藍底、國軍黃底、青壯粉紅底、EAP 綠底、馬太鞍／北捷土黃底），沒指定方案的以自費白底呈現。',
     '點任一格晤談可直接開啟修改預約，改完方案底色就會跟著變。',
@@ -618,11 +639,10 @@ App.page('room-board', {
     return `<td style="background:${pc.bg};border-left:3px solid ${pc.line}${it.id ? ';cursor:pointer' : ''}"
         ${it.id ? `data-appt="${it.id}" data-appt-date="${it.date}"` : ''}
         title="${UI.esc(it.plan || (it.kind === 'group' ? '團體' : '未指定方案（以自費白底呈現）'))}${it.id ? '　點一下可改方案' : ''}">
-      ${head ? `<div style="font-size:12.5px;line-height:1.6;color:#1f2430">
-        <div><span class="tag" style="font-size:11px">個案</span> <strong>${UI.esc(it.client)}</strong></div>
-        <div><span class="tag ok" style="font-size:11px">心理師</span> ${UI.esc(it.counselor)}</div>
-        <div style="opacity:.7">${it.start_time}-${it.end_time}${it.mode === 'online' ? '／視訊' : ''}</div>
-        ${it.plan ? `<div style="opacity:.7">${UI.esc(it.plan)}</div>` : ''}
+      ${head ? `<div style="font-size:12.5px;line-height:1.55;color:#1f2430">
+        <div style="opacity:.75">${it.start_time}-${it.end_time}</div>
+        <div><strong>${UI.esc(it.client)}</strong></div>
+        <div style="opacity:.85">${UI.esc(it.counselor)}</div>
       </div>` : ''}</td>`;
   }).join('')}
         </tr>`);
@@ -642,9 +662,7 @@ App.page('room-board', {
         <input type="date" id="pick" value="${d.start}" style="width:auto" title="選日期跳到該日所在的一週">
         <strong style="margin-left:6px">${d.start} ~ ${d.end}</strong>
         <div class="spacer"></div>
-        <span style="font-size:12.5px;color:var(--muted)">
-          <span class="tag" style="font-size:11px">個案</span> 來談者　
-          <span class="tag ok" style="font-size:11px">心理師</span> 使用心理師</span>
+        <span style="font-size:12.5px;color:var(--muted)">每格由上而下為 時間／個案／心理師</span>
       </div>
       <div class="card" style="padding:10px 12px">
         <div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:12.5px">

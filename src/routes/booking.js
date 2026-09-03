@@ -386,8 +386,12 @@ router.post('/bookings/:id/confirm', requireStaff('bookings'), async (req, res) 
   const hit = schedule.conflictOf({ date, start_time: startTime, end_time: endT, counselor_id: counselorId });
   if (hit) return res.status(400).json({ error: `${hit.kind}時段衝突：${hit.row.start_time}-${hit.row.end_time} 已有預約` });
 
-  // 諮商室由系統指派；個案端與表單自始至終都看不到空間配置
-  const roomId = Number(body.room_id) || plans.pickRoom({ date, start_time: startTime, end_time: endT });
+  // 諮商室由系統指派；個案端與表單自始至終都看不到空間配置。
+  // 視訊晤談不佔空間（通訊諮商在線上進行），諮商室使用表才不會被灌爆。
+  const mode = b.mode || (quote.plan && quote.plan.default_mode) || 'onsite';
+  const roomId = mode === 'online'
+    ? null
+    : (Number(body.room_id) || plans.pickRoom({ date, start_time: startTime, end_time: endT }));
 
   const info = db.prepare(`INSERT INTO appointments
     (client_id, counselor_id, room_id, date, start_time, end_time, type, mode, status, fee, subsidy_amount,
@@ -395,7 +399,7 @@ router.post('/bookings/:id/confirm', requireStaff('bookings'), async (req, res) 
     VALUES (?,?,?,?,?,?,?,?,'booked',?,?,?,?,?,'portal',?,?,?)`).run(
     client.id, counselorId, roomId, date, startTime, endT,
     (quote.plan && quote.plan.appt_type) || 'individual',
-    b.mode || (quote.plan && quote.plan.default_mode) || 'onsite', quote.fee, quote.subsidy_amount,
+    mode, quote.fee, quote.subsidy_amount,
     b.plan_id || null, b.topic_id || null, quote.counselor_share,
     b.main_issue ? `線上預約：${b.main_issue}`.slice(0, 300) : '線上預約', b.id, req.user.id);
 

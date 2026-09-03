@@ -276,6 +276,24 @@ function startServer() {
     await admin.ok('DELETE', `/api/appointments/${a.id}`);
     await admin.ok('DELETE', `/api/service-plans/${plan.id}`);
   });
+  await test('視訊晤談不佔用諮商室', async () => {
+    // 通訊諮商在線上進行，若也被指派空間，諮商室使用表會被塞滿看不出空檔
+    const day = addDays(monday, 42);
+    const on = await lin.ok('POST', '/api/appointments', {
+      client_id: clientId, counselor_id: 2, date: day, start_time: '10:00', mode: 'online'
+    });
+    const list = await admin.ok('GET', `/api/appointments?date=${day}`);
+    const a = list.find(x => x.id === on.id);
+    assert(!a.room_id, '視訊預約不應有諮商室：' + JSON.stringify(a.room_id));
+    // 改回到所要重新拿到空間，改成視訊則退掉
+    await admin.ok('PUT', `/api/appointments/${on.id}`, { mode: 'onsite' });
+    const onsite = (await admin.ok('GET', `/api/appointments?date=${day}`)).find(x => x.id === on.id);
+    assert(onsite.room_id, '改為到所後應指派諮商室');
+    await admin.ok('PUT', `/api/appointments/${on.id}`, { mode: 'online' });
+    const back = (await admin.ok('GET', `/api/appointments?date=${day}`)).find(x => x.id === on.id);
+    assert(!back.room_id, '改回視訊後應退掉諮商室');
+    await admin.ok('DELETE', `/api/appointments/${on.id}`);
+  });
   await test('同一心理師時段衝突被擋', () =>
     lin.fails('POST', '/api/appointments',
       { client_id: clientId, counselor_id: 2, date: monday, start_time: '14:00' }, '心理師'));

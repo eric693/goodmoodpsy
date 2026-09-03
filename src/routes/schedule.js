@@ -142,8 +142,11 @@ router.post('/appointments', requireStaff('schedule'), (req, res) => {
     });
   }
 
-  // 諮商室：櫃檯可指定，未指定則自動挑一間空的（個案端不顯示空間配置）
-  const roomId = Number(b.room_id) || plans.pickRoom({ date: b.date, start_time: b.start_time, end_time });
+  // 諮商室：櫃檯可指定，未指定則自動挑一間空的（個案端不顯示空間配置）。
+  // 視訊晤談不在所內進行，一律不佔空間，否則諮商室使用表會被視訊塞滿看不出真正的空檔。
+  const roomId = b.mode === 'online'
+    ? null
+    : (Number(b.room_id) || plans.pickRoom({ date: b.date, start_time: b.start_time, end_time }));
 
   const info = db.prepare(`INSERT INTO appointments
     (client_id, counselor_id, room_id, date, start_time, end_time, type, mode, status, fee, subsidy_amount, package_id,
@@ -203,8 +206,9 @@ router.put('/appointments/:id', requireStaff('schedule'), (req, res) => {
     return res.status(400).json({ error: check.errors.join('；'), errors: check.errors,
       next_week: check.next_week, can_override: true });
   }
-  const roomId = Number(b.room_id)
-    || plans.pickRoom({ date: b.date, start_time: b.start_time, end_time: b.end_time, exclude_appointment_id: a.id });
+  // 改成視訊就把空間退掉，改回到所才重新指派
+  const roomId = b.mode === 'online' ? null : (Number(b.room_id)
+    || plans.pickRoom({ date: b.date, start_time: b.start_time, end_time: b.end_time, exclude_appointment_id: a.id }));
   db.prepare(`UPDATE appointments SET counselor_id = ?, room_id = ?, date = ?, start_time = ?, end_time = ?,
     type = ?, mode = ?, fee = ?, subsidy_amount = ?, plan_id = ?, topic_id = ?, counselor_share = ?,
     note = ?, meeting_url = ? WHERE id = ?`).run(

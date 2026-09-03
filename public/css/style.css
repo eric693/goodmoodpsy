@@ -377,6 +377,15 @@ table.list tr:hover td { background: #f8fbfb; }
 .shift-cell:hover { background: var(--primary-light); }
 .shift-cell.on { background: var(--primary); border-color: var(--primary); }
 .shift-cell.on:hover { filter: brightness(1.08); }
+/* 手機：格子太小按不準、左右滑又會整頁跑掉。加大點擊高度、時間欄固定在左邊，
+   刷選時由 JS 擋掉頁面捲動（touch-action），才不會一拖就換頁。 */
+.shift-table { touch-action: pan-y; }
+.shift-table .shift-time { position: sticky; left: 0; z-index: 1; background: var(--card); }
+@media (max-width: 720px) {
+  .shift-cell { height: 30px; }
+  .shift-table th, .shift-table td { padding: 2px 3px; font-size: 12px; }
+  .shift-table .shift-time { width: 46px; font-size: 11px; }
+}
 
 /* ---- 行事曆月檢視 ---- */
 .cal-table td { vertical-align: top; }
