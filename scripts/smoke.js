@@ -1546,6 +1546,32 @@ function startServer() {
     assert(d.ok, '簽章正確時應處理事件');
     await admin.ok('PUT', '/api/line/settings', { line_channel_secret: '' });
   });
+  await test('個案在 LINE 傳的話會進到「個案訊息」，櫃檯回覆會推回去', async () => {
+    // 原本個案在 LINE 打字只會收到自動說明，內容沒人看得到，等於無法聊
+    await admin.ok('PUT', '/api/line/settings', { line_channel_secret: 'smoke-secret' });
+    const target = { id: clientId };
+    // 用綁定碼完成綁定（走真實流程）
+    const code = (await admin.ok('POST', '/api/line/bind-code', { client_id: target.id })).code;
+    const post = async payload => {
+      const body = JSON.stringify(payload);
+      const sig = require('crypto').createHmac('sha256', 'smoke-secret').update(body).digest('base64');
+      return fetch(BASE + '/api/line/webhook', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-line-signature': sig }, body
+      });
+    };
+    await post({ events: [{ type: 'message', replyToken: 'r1', source: { userId: 'U-chat-001' },
+      message: { type: 'text', text: code } }] });
+    await post({ events: [{ type: 'message', replyToken: 'r2', source: { userId: 'U-chat-001' },
+      message: { type: 'text', text: '想問下週可以改時間嗎' } }] });
+    const thread = await admin.ok('GET', `/api/messages?client_id=${target.id}`);
+    assert(thread.some(m => m.sender === 'client' && m.content === '想問下週可以改時間嗎'),
+      '個案在 LINE 說的話應出現在個案訊息：' + JSON.stringify(thread));
+    // 櫃檯回覆：訊息存下來並回報推播結果（測試環境沒有真 token，會記為待人工）
+    const r = await admin.ok('POST', '/api/messages', { client_id: target.id, content: '可以，請問您想改到哪一天？' });
+    assert(r.line, '已綁定者應回報推播結果：' + JSON.stringify(r));
+    await admin.ok('DELETE', `/api/line/binding?client_id=${target.id}`);
+    await admin.ok('PUT', '/api/line/settings', { line_channel_secret: '' });
+  });
   await test('偽造簽章的訊息不會被處理', async () => {
     await admin.ok('PUT', '/api/line/settings', { line_channel_secret: 'smoke-secret' });
     const body = JSON.stringify({ events: [{ type: 'message', source: { userId: 'U-bad' }, message: { type: 'text', text: '預約' } }] });

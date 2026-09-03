@@ -296,6 +296,11 @@ async function pushFlex({ to, flex, kind = 'line', client_id = null, appointment
   return r.ok ? { status: 'sent', message: '已以 LINE 推播' } : { status: 'failed', message: r.error };
 }
 
+// 推播純文字（櫃檯在系統回覆個案訊息時用）：與 pushFlex 同一套紀錄與失敗處理
+async function pushText({ to, text, kind = 'message', client_id = null, user = null }) {
+  return pushFlex({ to, flex: textMessage(text), kind, client_id, user, summary: text.slice(0, 120) });
+}
+
 async function replyMessages(replyToken, messages) {
   if (!lineEnabled() || !replyToken) return { ok: false };
   return callLine(REPLY_URL, { replyToken, messages });
@@ -316,5 +321,5 @@ module.exports = {
   card, kv, noteBox, actionButton, textMessage,
   bookingReceivedFlex, bookingConfirmedFlex, reminderFlex, portalUrl, portalLoginUrl,
   counselorScheduleFlex, counselorBookingFlex, receiptFlex,
-  pushFlex, replyMessages, verifySignature, logNotification
+  pushFlex, pushText, replyMessages, verifySignature, logNotification
 };
