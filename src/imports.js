@@ -293,6 +293,81 @@ const IMPORTS = [
   },
 
   {
+    key: 'client_phones',
+    module: 'clients',
+    // 這張表只補既有個案的手機，永遠不新增，因此匯入時固定走「更新」
+    updateOnly: true,
+    title: '個案手機（只更新手機欄）',
+    description: '舊資料匯入時沒帶手機的個案，用這張表把手機補上——手機是個案專區的登入帳號，'
+      + '沒有手機就沒有帳號、也收不到 LINE 綁定引導。只會覆蓋手機欄，其他資料一律不動；'
+      + '個案原本沒有密碼時，一併設定預設密碼（手機末 6 碼，首次登入強制更換）。'
+      + '只需要「個案編號、姓名（選填核對用）、手機」三欄。',
+    columns: [
+      { key: 'code', label: '個案編號', required: true, hint: '如 G20261234，用來對到系統裡的個案' },
+      { key: 'name', label: '姓名', hint: '選填；有填就會與系統資料核對，不符即擋下，避免對錯人' },
+      { key: 'phone', label: '手機', required: true, hint: '09 開頭共 10 碼；請將欄位設為文字格式，否則開頭的 0 會消失' }
+    ],
+    sample: [
+      { code: 'G20261234', name: '王小美', phone: '0912345678' },
+      { code: 'G20261235', name: '陳大明', phone: '0922333444' }
+    ],
+
+    parse(row, ctx) {
+      const errors = [], warnings = [];
+      const code = trim(row.code);
+      const name = trim(row.name);
+      const phone = toPhone(row.phone);
+      if (!code) errors.push('缺少個案編號');
+      if (phone.warning) warnings.push(phone.warning);
+      if (!phone.value) errors.push('缺少手機');
+      else if (!/^09\d{8}$/.test(phone.value)) errors.push(`手機格式有誤：${phone.value}`);
+
+      const c = code ? ctx.clientsByCode.get(code) : null;
+      if (code && !c) errors.push(`系統中找不到個案編號「${code}」`);
+      // 對到人但姓名不符：多半是編號抄錯，寧可擋下也不要把手機寫到別人身上
+      if (c && name && c.name !== name) errors.push(`編號 ${code} 在系統中是「${c.name}」，與檔案的「${name}」不符`);
+      // 手機被別人用了：個案專區以手機登入，重複會登入到別人的資料
+      if (!errors.length && phone.value) {
+        const taken = db.prepare("SELECT code, name FROM clients WHERE phone = ? AND active = 1 AND code != ?")
+          .get(phone.value, code);
+        if (taken) errors.push(`手機 ${phone.value} 已是「${taken.name}（${taken.code}）」的號碼`);
+      }
+      if (c && c.phone && c.phone !== phone.value) warnings.push(`原本的手機 ${c.phone} 將被覆蓋`);
+      return { errors, warnings, data: { code, name, phone: phone.value } };
+    },
+
+    conflict(d, seen) {
+      for (const [k, v] of [['個案編號', d.code], ['手機', d.phone]]) {
+        if (!v) continue;
+        const token = `${k}:${v}`;
+        if (seen.has(token)) return `檔案中有其他列使用相同的${k}「${v}」`;
+        seen.add(token);
+      }
+      return null;
+    },
+
+    findExisting(d) {
+      const c = db.prepare('SELECT id, name, code, phone FROM clients WHERE code = ?').get(d.code);
+      return c ? { ...c, matched_by: '個案編號' } : null;
+    },
+
+    // 這張表只補既有個案的手機，不建檔；對不到人在 parse 就已擋下
+    insert() {
+      throw new Error('此匯入只更新既有個案的手機，請在匯入時選擇「更新既有資料」');
+    },
+
+    update(existing, d) {
+      const cur = db.prepare('SELECT * FROM clients WHERE id = ?').get(existing.id);
+      // 沒有密碼的個案順便開通專區帳號；已有密碼者不動，避免把人家改過的密碼洗掉
+      const hash = cur.password_hash ? cur.password_hash : bcrypt.hashSync(d.phone.slice(-6), 10);
+      const mustChange = cur.password_hash ? cur.must_change_password : 1;
+      db.prepare('UPDATE clients SET phone = ?, password_hash = ?, must_change_password = ? WHERE id = ?')
+        .run(d.phone, hash, mustChange, cur.id);
+      return cur.id;
+    }
+  },
+
+  {
     key: 'appointments',
     module: 'schedule',
     title: '晤談紀錄（排程與出席）',
@@ -684,7 +759,7 @@ const BY_KEY = Object.fromEntries(IMPORTS.map(i => [i.key, i]));
 function listImports() {
   return IMPORTS.map(i => ({
     key: i.key, module: i.module, title: i.title, description: i.description,
-    columns: i.columns, updatable: !!i.update
+    columns: i.columns, updatable: !!i.update, update_only: !!i.updateOnly
   }));
 }
 
@@ -702,7 +777,7 @@ function buildContext() {
   for (const r of db.prepare('SELECT id, name FROM rooms WHERE active = 1').all()) rooms.set(r.name, r);
 
   const clientsByCode = new Map(), clientsByIdNo = new Map();
-  for (const c of db.prepare('SELECT id, code, name, id_no FROM clients WHERE active = 1').all()) {
+  for (const c of db.prepare('SELECT id, code, name, id_no, phone FROM clients WHERE active = 1').all()) {
     clientsByCode.set(c.code, c);
     if (c.id_no) clientsByIdNo.set(c.id_no, c);
   }

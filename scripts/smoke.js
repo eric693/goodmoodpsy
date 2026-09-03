@@ -297,6 +297,35 @@ function startServer() {
       { client_id: clientId, counselor_id: 3, date: day, start_time: '09:00' }, '已有另一筆預約');
     await admin.ok('DELETE', `/api/appointments/${first.id}`);
   });
+  await test('可用 CSV 只補個案手機，並開通個案專區帳號', async () => {
+    // 舊資料匯入時沒帶手機的個案，用這張表補上；只動手機欄，其他資料不變
+    const c = await admin.ok('POST', '/api/clients', { name: '匯入手機測試', phone: '' });
+    const before = await admin.ok('GET', `/api/clients/${c.id}`);
+    const csv = `個案編號,姓名,手機\n${before.code},匯入手機測試,0955123456\n`;
+    const send = async (path) => {
+      const fd = new FormData();
+      fd.append('file', new Blob([csv], { type: 'text/csv' }), 'phones.csv');
+      fd.append('mode', 'update');
+      const r = await fetch(`${BASE}/api/imports/client_phones/${path}`, {
+        method: 'POST', headers: { Cookie: admin.cookie }, body: fd
+      });
+      return { status: r.status, body: await r.json() };
+    };
+    const pv = await send('preview');
+    assert(pv.status === 200, '預覽失敗：' + JSON.stringify(pv.body));
+    equal(pv.body.summary.error, 0, '預覽不應有錯誤列');
+    equal(pv.body.summary.duplicate, 1, '應對到 1 位既有個案');
+    const done = await send('commit');
+    assert(done.status === 200, '匯入失敗：' + JSON.stringify(done.body));
+    equal(done.body.updated, 1, '應更新 1 筆');
+    const after = await admin.ok('GET', `/api/clients/${c.id}`);
+    equal(after.phone, '0955123456', '手機應已補上');
+    equal(after.name, before.name, '其他欄位不應變動');
+    // 補了手機就有專區帳號可用（預設密碼為末 6 碼）
+    const login = await session().post('/api/portal/login', { phone: '0955123456', password: '123456' });
+    equal(login.status, 200, '應可用手機末 6 碼登入個案專區：' + JSON.stringify(login.data));
+    await admin.ok('DELETE', `/api/clients/${c.id}/purge`);
+  });
   await test('個案手機重複會被擋下（個案專區以手機登入）', async () => {
     const dupPhone = '0912000777';
     const a = await admin.ok('POST', '/api/clients', { name: '防呆測試甲', phone: dupPhone });

@@ -64,7 +64,10 @@ function importDialog(def) {
     body: `<div class="form-grid">
         <div class="form-row full"><label>檔案 *</label>
           <input name="file" type="file" accept=".xlsx,.csv,.txt"></div>
-        ${def.updatable ? `<div class="form-row full">
+        ${def.update_only ? `<div class="form-row full">
+          <label>處理方式</label>
+          <select name="mode"><option value="update">更新既有個案（這張表不會新增個案）</option></select></div>`
+    : def.updatable ? `<div class="form-row full">
           <label>已存在的資料如何處理</label>
           <select name="mode">
             <option value="skip">略過不動（預設）</option>
