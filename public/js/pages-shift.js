@@ -124,9 +124,15 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
       const key = `${td.dataset.wd}|${td.dataset.min}`;
       const was = picked.has(key);
       if (on) { picked.add(key); td.classList.add('on'); } else { picked.delete(key); td.classList.remove('on'); }
-      if (was !== on) dirty = true;
+      if (was !== on) { dirty = true; App.markDirty(true); }
     };
-    const leaveOk = async () => !dirty || UI.confirm('排班有尚未儲存的變更，離開會失效。確定不儲存就離開？');
+    const leaveOk = async () => {
+      if (!dirty) return true;
+      if (!await UI.confirm('排班有尚未儲存的變更，離開會失效。確定不儲存就離開？')) return false;
+      dirty = false;
+      App.markDirty(false);   // 面板內換週／換人是自己重繪，要先解除守門才不會被 App.go 再問一次
+      return true;
+    };
     table.addEventListener('mousedown', e => {
       const td = e.target.closest('.shift-cell');
       if (!td) return;
@@ -201,7 +207,7 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
           <td>${UI.esc(c.note || '')}</td>
           <td><button class="btn tiny danger" data-cx="${i}">刪除</button></td></tr>`))}`;
       box.querySelectorAll('[data-cx]').forEach(b => {
-        b.onclick = () => { custom.splice(Number(b.dataset.cx), 1); dirty = true; drawCustom(); };
+        b.onclick = () => { custom.splice(Number(b.dataset.cx), 1); dirty = true; App.markDirty(true); drawCustom(); };
       });
     };
     drawCustom();
@@ -237,7 +243,8 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
         }
         drawCustom();
         dirty = true;
-        UI.toast('已加入，記得按「儲存排班」');
+        App.markDirty(true);
+        UI.toast(`已加入，記得按「${week ? '儲存這一週' : '儲存固定班'}」`);
       }
     });
     if (canPickOther) el.querySelector('#sc').onchange = async e => {
@@ -269,6 +276,7 @@ async function renderShiftPanel(el, arg, onChange, weekArg) {
       try {
         const r = await POST('/availability/bulk', { counselor_id: cid, blocks, week_start: week });
         dirty = false;
+        App.markDirty(false);
         UI.toast(week ? `已儲存 ${week} 當週的 ${r.count} 個時段` : `已儲存固定班 ${r.count} 個時段`);
         reload(week);
       } catch (e) { UI.err(e); }

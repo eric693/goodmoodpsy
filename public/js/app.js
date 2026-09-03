@@ -16,6 +16,8 @@ const App = {
       App.renderLogin();
     }
     window.addEventListener('hashchange', () => App.go(location.hash.slice(1) || 'dashboard'));
+    // 關掉分頁或重新整理也要提醒，這是瀏覽器唯一允許的攔截方式（訊息文字由瀏覽器決定）
+    window.addEventListener('beforeunload', e => { if (App.dirty) { e.preventDefault(); e.returnValue = ''; } });
   },
 
   onUnauthorized() { if (App.me) { App.me = null; App.renderLogin(); } },
@@ -182,7 +184,25 @@ const App = {
     });
   },
 
+  // 未存變更的守門：目前只有排班表會標記（刷了半天的格子換頁就沒了）。
+  // markDirty(true) 記下當時的頁面，離開前先問；同一頁重複進入時不重繪，
+  // 否則「取消離開」把 hash 復原的那一下就會把畫面重畫、變更照樣消失。
+  dirty: false,
+  dirtyAt: '',
+  restoring: false,
+  markDirty(on, at) { App.dirty = !!on; App.dirtyAt = on ? (at || location.hash.slice(1)) : ''; },
+
   async go(key) {
+    // 取消離開後把 hash 復原，那一下會再觸發一次 go()；直接略過，
+    // 否則同一頁重繪，未存的變更照樣消失（等於守門白做）
+    if (App.restoring) { App.restoring = false; return; }
+    if (App.dirty && key !== App.dirtyAt) {
+      if (!window.confirm('有尚未儲存的變更（例如排班表），離開這一頁就會失效。確定離開？')) {
+        if (location.hash.slice(1) !== App.dirtyAt) { App.restoring = true; location.hash = App.dirtyAt; }
+        return;
+      }
+      App.markDirty(false);
+    }
     // 個案詳情以 hash 帶 id：#client/12
     const [k, arg] = key.split('/');
     const def = App.pages[k];

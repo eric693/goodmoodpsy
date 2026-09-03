@@ -278,7 +278,13 @@ const UI = {
       const r = canvas.getBoundingClientRect();
       return [(p.clientX - r.left) * (canvas.width / r.width), (p.clientY - r.top) * (canvas.height / r.height)];
     };
-    const start = e => { drawing = true; drawn = true; ctx.beginPath(); ctx.moveTo(...pos(e)); e.preventDefault(); };
+    // 只點一下（不移動）也要留下一個點，否則畫面空白卻算已簽名，簽出來是一張白圖
+    const start = e => {
+      drawing = true; drawn = true;
+      const p = pos(e);
+      ctx.beginPath(); ctx.moveTo(...p); ctx.lineTo(p[0] + 0.01, p[1]); ctx.stroke();
+      e.preventDefault();
+    };
     const move = e => { if (drawing) { ctx.lineTo(...pos(e)); ctx.stroke(); e.preventDefault(); } };
     canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move);
     window.addEventListener('mouseup', () => { drawing = false; });
