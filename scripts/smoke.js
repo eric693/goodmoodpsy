@@ -1190,6 +1190,22 @@ function startServer() {
     equal(cur.status, 'booked', '應可改回已預約');
     await admin.ok('DELETE', `/api/appointments/${made.id}`);
   });
+  await test('重按「完成晤談（收款）」不會開出第二張收費單', async () => {
+    // 櫃檯手滑按兩次轉帳，實務上就會變成同一次晤談兩張已收款的單
+    const day = addDays(monday, 91);
+    const made = await lin.ok('POST', '/api/appointments',
+      { client_id: clientId, counselor_id: 2, date: day, start_time: '10:00', fee: 3000 });
+    const done = () => admin.ok('POST', `/api/appointments/${made.id}/status`,
+      { status: 'done', payment_method: '轉帳' });
+    await done();
+    await done();
+    const mine = (await admin.ok('GET', '/api/invoices')).rows.filter(i => i.appointment_id === made.id);
+    equal(mine.length, 1, '同一筆預約只該有一張收費單');
+    equal(mine[0].status, 'paid', '該張應為已收款');
+    // 重複開立時要能作廢（已收款者也可以，否則只能記一筆假的退費）
+    await admin.ok('POST', `/api/invoices/${mine[0].id}/void`, { reason: '重複開立' });
+    equal((await admin.ok('GET', '/api/invoices')).rows.find(i => i.id === mine[0].id).status, 'void', '應可作廢');
+  });
   await test('完成晤談時可當下選現金或轉帳收款', async () => {
     // 櫃檯多半在按「完成」的同時就收了錢，不必再繞到收費頁按一次收款
     const day = addDays(monday, 77);

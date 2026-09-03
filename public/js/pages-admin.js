@@ -441,7 +441,8 @@ App.page('billing', {
             ${i.status === 'unpaid' ? `<button class="btn tiny" data-pay="${i.id}">收款</button>
             <button class="btn tiny danger" data-void="${i.id}">作廢</button>`
             : (i.status === 'paid' || i.status === 'refunded') ? `<button class="btn tiny secondary" data-r="${i.id}">收據</button>
-            <button class="btn tiny danger" data-refund="${i.id}">退費</button>` : ''}</td></tr>`),
+            <button class="btn tiny danger" data-refund="${i.id}">退費</button>
+            <button class="btn tiny danger" data-void="${i.id}">作廢</button>` : ''}</td></tr>`),
           '沒有符合條件的收費單')}`;
       el.querySelectorAll('[data-edit]').forEach(b => {
         b.onclick = () => invoiceDialog(d.rows.find(x => x.id === Number(b.dataset.edit)), null, draw);
@@ -520,9 +521,15 @@ App.page('billing', {
         };
       });
       el.querySelectorAll('[data-void]').forEach(b => {
+        // 已收款者也給作廢：重複開立（例如收款按了兩次）用退費會記下一筆根本沒發生的退款，
+        // 帳面反而更難看懂；真的收了錢又要退回去才走「退費」。
+        const paid = d.rows.find(x => String(x.id) === b.dataset.void && x.status !== 'unpaid');
         b.onclick = () => UI.modal({
           title: '作廢收費單',
-          body: `<div class="form-grid">${UI.input('reason', '作廢原因', { full: true })}</div>`,
+          body: `${paid ? `<div class="notice warn" style="margin-bottom:12px;font-size:13.5px">
+              這張是<strong>已收款</strong>的單。只有<strong>重複開立或開錯</strong>才作廢；
+              真的收了錢、要把錢退回個案，請改用「退費」。</div>` : ''}
+            <div class="form-grid">${UI.input('reason', '作廢原因', { full: true, value: paid ? '重複開立' : '' })}</div>`,
           onSubmit: async e => { await POST(`/invoices/${b.dataset.void}/void`, UI.formData(e)); UI.toast('已作廢'); draw(); }
         });
       });

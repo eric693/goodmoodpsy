@@ -284,13 +284,19 @@ router.post('/appointments/:id/status', requireStaff('schedule'), (req, res) => 
     }
   };
 
+  // 已經有一張沒作廢的收費單就不再開第二張。
+  // 櫃檯重按「完成晤談（收款）」時，reverseCharge 會保留已收款那張（金流已發生），
+  // 若這裡照樣再開一張，就會變成同一次晤談有兩張已收款的單。
+  const liveInvoice = () => db.prepare(
+    "SELECT * FROM invoices WHERE appointment_id = ? AND status != 'void' LIMIT 1").get(a.id);
+
   const applyCharge = () => {
     if (status === 'done') {
       if (a.package_id) {
         // 由方案扣次；扣完自動標記用畢
         db.prepare('UPDATE packages SET sessions_used = sessions_used + 1 WHERE id = ?').run(a.package_id);
         db.prepare(`UPDATE packages SET status = 'used_up' WHERE id = ? AND sessions_used >= sessions_total`).run(a.package_id);
-      } else if (a.fee > 0 || a.subsidy_amount > 0) {
+      } else if ((a.fee > 0 || a.subsidy_amount > 0) && !liveInvoice()) {
         // 收費單只跟個案收「他要付的錢」（補助方案就是場地費），
         // 由方案給付的部分另記在 subsidy_amount 供核銷，不會讓個案看到一張 1800 的帳單
         const q = plans.resolveFee({ plan_id: a.plan_id, topic_id: a.topic_id,
@@ -315,7 +321,7 @@ router.post('/appointments/:id/status', requireStaff('schedule'), (req, res) => 
     // 未到：依設定收取固定行政規費或原費用的比例
     if (status === 'no_show') {
       const charge = plans.noShowCharge(a.fee);
-      if (charge.amount > 0) {
+      if (charge.amount > 0 && !liveInvoice()) {
         db.prepare(`INSERT INTO invoices (client_id, appointment_id, date, item, amount, status, payer, note)
                     VALUES (?,?,?,?,?, 'unpaid', ?, ?)`).run(
           a.client_id, a.id, a.date, `${a.date} 未到收費`, charge.amount,
