@@ -157,6 +157,29 @@ function weekRange(dateStr) {
   return { start: f(start), end: f(end) };
 }
 
+// 線上預約的最早可約日：除了「最快幾天後」，再加一道「前一天幾點截止」。
+// 例如截止 21:00：20:59 還約得到明天，21:00 之後明天就整天關閉，
+// 避免有人深夜下訂隔天早上、櫃檯來不及看到，個案卻以為預約成立直接跑來。
+function earliestBookableDate(leadDays) {
+  const lead = Number(leadDays !== undefined ? leadDays : getSetting('booking_lead_days', '1')) || 0;
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  const addD = (d, n) => {
+    const x = new Date(d + 'T00:00:00');
+    x.setDate(x.getDate() + n);
+    return `${x.getFullYear()}-${pad(x.getMonth() + 1)}-${pad(x.getDate())}`;
+  };
+  let min = addD(todayStr, lead);
+  const cutoff = String(getSetting('booking_cutoff_time', '')).trim();
+  if (/^\d{2}:\d{2}$/.test(cutoff)) {
+    const nowHm = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    // 已過今天的截止時間 → 最早只能約後天（即「隔天」已關閉）
+    if (nowHm >= cutoff && min <= addD(todayStr, 1)) min = addD(todayStr, 2);
+  }
+  return min;
+}
+
 // 未到（no_show）要收多少：所內同意書多半寫「行政規費 X 元」這種固定金額，
 // 但也有依比例收的做法。設定了固定金額就以它為準，否則回到比例。
 // 回傳 { amount, note, fixed }，各處共用同一套算法，畫面與帳才不會各算各的。
@@ -290,5 +313,6 @@ function pickRoom({ date, start_time, end_time, exclude_appointment_id }) {
 module.exports = {
   defaultSessionMinutes, sessionMinutes, endTime,
   COUNTED_STATUSES, getPlan, getTopic, getRate, parseOptions, resolveFee,
-  clientUsage, clientUsageAll, counselorLoad, nextWeekHint, weekRange, checkBooking, pickRoom, noShowCharge
+  clientUsage, clientUsageAll, counselorLoad, nextWeekHint, weekRange, checkBooking, pickRoom, noShowCharge,
+  earliestBookableDate
 };

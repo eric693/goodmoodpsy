@@ -58,6 +58,7 @@ router.get('/me', requireClient, (req, res) => {
     portal_note: getSetting('ui_portal_note'),
     crisis_note: getSetting('ui_crisis_note'),
     booking_enabled: getSetting('portal_booking_enabled', '1') === '1',
+    messages_write: getSetting('portal_messages_write', '0') === '1',
     reschedule_enabled: getSetting('portal_reschedule_enabled', '1') === '1',
     cancel_hours: Number(getSetting('cancel_hours', '24')),
     no_show_fee_rate: Number(getSetting('no_show_fee_rate', '0.5')),
@@ -95,7 +96,12 @@ router.get('/appointments', requireClient, (req, res) => {
 // 可預約時段：僅開放主責心理師（未指定則全所心理師）
 router.get('/slots', requireClient, (req, res) => {
   const date = req.query.date || today();
-  const minDate = addDays(today(), Number(getSetting('portal_book_lead_days', '1')));
+  // 與對外表單同一套：最快幾天後 + 前一天幾點截止
+  const minDate = (() => {
+    const byLead = addDays(today(), Number(getSetting('portal_book_lead_days', '1')));
+    const byCutoff = plans.earliestBookableDate(getSetting('portal_book_lead_days', '1'));
+    return byLead > byCutoff ? byLead : byCutoff;
+  })();
   const maxDate = addDays(today(), Number(getSetting('portal_book_max_days', '60')));
   if (date < minDate || date > maxDate) return res.json({ min_date: minDate, max_date: maxDate, counselors: [] });
   const counselors = req.client.counselor_id
@@ -111,7 +117,12 @@ router.get('/slots', requireClient, (req, res) => {
 router.post('/appointments', requireClient, (req, res) => {
   if (getSetting('portal_booking_enabled', '1') !== '1') return res.status(403).json({ error: '目前未開放線上預約，請來電預約' });
   const { date = '', start_time = '', counselor_id, note = '' } = req.body || {};
-  const minDate = addDays(today(), Number(getSetting('portal_book_lead_days', '1')));
+  // 與對外表單同一套：最快幾天後 + 前一天幾點截止
+  const minDate = (() => {
+    const byLead = addDays(today(), Number(getSetting('portal_book_lead_days', '1')));
+    const byCutoff = plans.earliestBookableDate(getSetting('portal_book_lead_days', '1'));
+    return byLead > byCutoff ? byLead : byCutoff;
+  })();
   const maxDate = addDays(today(), Number(getSetting('portal_book_max_days', '60')));
   if (!date || date < minDate || date > maxDate) return res.status(400).json({ error: `可預約範圍為 ${minDate} 至 ${maxDate}` });
   const cid = Number(counselor_id) || req.client.counselor_id;
@@ -145,7 +156,12 @@ router.post('/appointments/:id/reschedule', requireClient, (req, res) => {
     return res.status(400).json({ error: `距晤談時間已不足 ${hours} 小時，請直接來電改期` });
   }
   const { date = '', start_time = '' } = req.body || {};
-  const minDate = addDays(today(), Number(getSetting('portal_book_lead_days', '1')));
+  // 與對外表單同一套：最快幾天後 + 前一天幾點截止
+  const minDate = (() => {
+    const byLead = addDays(today(), Number(getSetting('portal_book_lead_days', '1')));
+    const byCutoff = plans.earliestBookableDate(getSetting('portal_book_lead_days', '1'));
+    return byLead > byCutoff ? byLead : byCutoff;
+  })();
   const maxDate = addDays(today(), Number(getSetting('portal_book_max_days', '60')));
   if (!date || date < minDate || date > maxDate) return res.status(400).json({ error: `可改期範圍為 ${minDate} 至 ${maxDate}` });
   const slot = freeSlots(a.counselor_id, date).find(s => s.start_time === start_time);
@@ -284,6 +300,9 @@ router.get('/messages', requireClient, (req, res) => {
   res.json(rows);
 });
 router.post('/messages', requireClient, (req, res) => {
+  if (getSetting('portal_messages_write', '0') !== '1') {
+    return res.status(403).json({ error: '本所以 LINE 官方帳號聯繫，請由 LINE 與我們聯絡；緊急事項請直接來電。' });
+  }
   const content = String((req.body && req.body.content) || '').trim();
   if (!content) return res.status(400).json({ error: '請輸入內容' });
   if (content.length > 1000) return res.status(400).json({ error: '訊息過長' });

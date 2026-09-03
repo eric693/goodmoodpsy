@@ -815,6 +815,12 @@ ensureColumns('invoices', {
     google_form_secret: '',
     google_form_url: '',
     booking_lead_days: '1',             // 最快可約幾天後
+    // 前一天幾點之後就不再開放隔天的時段（HH:MM，留空表示不設這道關卡）。
+    // 避免有人半夜預約隔天早上、櫃檯來不及看到，個案卻以為預約成立直接跑來。
+    booking_cutoff_time: '21:00',
+    // 個案端「傳訊息給諮商所」：所內以 LINE 為主要對話管道，專區預設只讀，
+    // 避免櫃檯要盯兩個地方而漏看。要開放個案在專區留言時把這裡改成 1。
+    portal_messages_write: '0',
     booking_max_days: '45',             // 最遠可約幾天後
     booking_slot_step: '30',            // 表單上時段間隔（分鐘）
     booking_require_birth: '1',         // 是否必填生日（補助方案需驗年齡）

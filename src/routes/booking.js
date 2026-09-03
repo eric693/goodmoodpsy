@@ -63,6 +63,7 @@ router.get('/public/booking-config', publicRead, (req, res) => {
     crisis_note: getSetting('ui_crisis_note'),
     line_add_friend_url: getSetting('line_add_friend_url'),
     line_official_id: getSetting('line_official_id'),
+    portal_url: require('../line').portalUrl(),
     lead_days: Number(getSetting('booking_lead_days', '1')),
     max_days: Number(getSetting('booking_max_days', '45')),
     require_birth: getSetting('booking_require_birth', '1') === '1',
@@ -79,9 +80,10 @@ router.get('/public/booking-slots', publicRead, (req, res) => {
   if (!counselorId) return res.status(400).json({ error: '請選擇心理師' });
   const plan = planId ? plans.getPlan(planId) : null;
   const minutes = plans.sessionMinutes(plan);
-  const lead = Number(getSetting('booking_lead_days', '1'));
   const max = Number(getSetting('booking_max_days', '45'));
-  const from = req.query.from && req.query.from > addDays(today(), lead) ? req.query.from : addDays(today(), lead);
+  // 最早可約日已含「前一天幾點截止」的規則
+  const minDate = plans.earliestBookableDate();
+  const from = req.query.from && req.query.from > minDate ? req.query.from : minDate;
   const days = Math.min(Number(req.query.days) || 21, max);
 
   const out = [];
@@ -104,7 +106,8 @@ router.get('/public/booking-slots', publicRead, (req, res) => {
     }
     out.push({ date, slots, full });
   }
-  res.json({ days: out, notes: [...weekNotes.values()] });
+  // 一併回報可預約區間，表單與測試都看得出「今天到底能不能約明天」
+  res.json({ min_date: minDate, max_date: addDays(today(), max), days: out, notes: [...weekNotes.values()] });
 });
 
 // ---- 公開：送出預約申請 ----
@@ -146,9 +149,13 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
   // 已建檔的舊個案（以手機比對）：一併檢查年度額度與心理師人次上限
   const client = db.prepare('SELECT * FROM clients WHERE phone = ? AND active = 1 ORDER BY id DESC LIMIT 1').get(phone) || null;
   if (date) {
-    const lead = Number(getSetting('booking_lead_days', '1'));
+    const minDate = plans.earliestBookableDate();
     const max = Number(getSetting('booking_max_days', '45'));
-    if (date < addDays(today(), lead)) return res.status(400).json({ error: `最快只能預約 ${lead} 天後的時段` });
+    if (date < minDate) {
+      const cutoff = getSetting('booking_cutoff_time', '');
+      return res.status(400).json({ error: `此時段已截止線上預約（最早可約 ${minDate}`
+        + (cutoff ? `；前一天 ${cutoff} 後即關閉隔天時段` : '') + '），請改約其他時間或直接來電。' });
+    }
     if (date > addDays(today(), max)) return res.status(400).json({ error: `最遠只能預約 ${max} 天內的時段` });
     const check = plans.checkBooking({ plan_id: plan.id, client, counselor_id: counselorId, date, birth_date: birth });
     if (check.errors.length && getSetting('plan_quota_enforce', '1') === '1') {

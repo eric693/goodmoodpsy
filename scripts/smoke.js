@@ -493,6 +493,36 @@ function startServer() {
     assert(dash.cancel_requests.some(c => c.id === r.id), '總覽應列出取消申請');
     await admin.ok('POST', `/api/appointments/${r.id}/status`, { status: 'cancelled' });
   });
+  await test('前一天截止時間一到，隔天的線上預約就關閉', async () => {
+    const t = ymd(new Date());
+    const minDate = async () => (await (await fetch(`${BASE}/api/public/booking-slots?counselor_id=2&days=3`)).json()).min_date;
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_time: '', booking_lead_days: '1' });
+    equal(await minDate(), addDays(t, 1), '沒設截止時間時就是最快 1 天後');
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_time: '00:00' });
+    equal(await minDate(), addDays(t, 2), '已過截止時間，隔天應關閉');
+    // 直接送出隔天的申請也要被擋
+    await (async () => {
+      const cfg = await (await fetch(BASE + '/api/public/booking-config')).json();
+      const anyPlan = (cfg.plans || [])[0];
+      const r = await fetch(BASE + '/api/public/bookings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '截止測試', phone: '0911666555', consent: true,
+          plan_id: anyPlan && anyPlan.id, birth_date: '2000-01-01',
+          counselor_id: 2, date: addDays(t, 1), start_time: '14:00' })
+      });
+      const d = await r.json();
+      equal(r.status, 400, '隔天的時段應被擋下');
+      assert(/截止/.test(d.error || ''), '錯誤訊息應說明已截止：' + d.error);
+    })();
+    await admin.ok('PUT', '/api/settings', { booking_cutoff_time: '21:00' });
+  });
+  await test('個案專區訊息預設只讀，聯繫走 LINE', async () => {
+    await portal.fails('POST', '/api/portal/messages', { content: '測試留言' }, 'LINE');
+    await admin.ok('PUT', '/api/settings', { portal_messages_write: '1' });
+    const r = await portal.ok('POST', '/api/portal/messages', { content: '開放後可留言' });
+    assert(r.id, '開放後應可留言');
+    await admin.ok('PUT', '/api/settings', { portal_messages_write: '0' });
+  });
   await test('個案端可自助取得 LINE 綁定碼', async () => {
     // 加好友只能由本人在 LINE 點下去，系統能做的是把綁定碼給個案、讓他傳進官方帳號；
     // 傳送後由 Webhook 完成綁定（另有測試涵蓋）。
@@ -994,19 +1024,13 @@ function startServer() {
     assert(r.ok, '送出失敗：' + JSON.stringify(d));
     bookingId = d.id;
   });
-  await test('預約完成頁帶出個案專區網址（未設定時由表單網址推得）', async () => {
+  await test('預約表單與完成頁都帶出個案專區網址（未設定時由表單網址推得）', async () => {
     // 個案要知道專區在哪，才會去看預約、綁 LINE
+    const cfg = () => fetch(BASE + '/api/public/booking-config').then(r => r.json());
     await admin.ok('PUT', '/api/settings', { booking_public_url: 'https://example.tw/booking.html', portal_public_url: '' });
-    const send = () => fetch(BASE + '/api/public/bookings', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: '連結測試', phone: '0911777889', birth_date: '2000-05-05',
-        plan_id: youthPlanId, consent: true })
-    }).then(r => r.json());
-    const d1 = await send();
-    equal(d1.portal_url, 'https://example.tw/portal.html', '未設定時由預約表單網址推得');
+    equal((await cfg()).portal_url, 'https://example.tw/portal.html', '未設定時由預約表單網址推得');
     await admin.ok('PUT', '/api/settings', { portal_public_url: 'https://example.tw/mine' });
-    const d2 = await send();
-    equal(d2.portal_url, 'https://example.tw/mine', '有設定就以設定為準');
+    equal((await cfg()).portal_url, 'https://example.tw/mine', '有設定就以設定為準');
     await admin.ok('PUT', '/api/settings', { portal_public_url: '', booking_public_url: '' });
   });
   await test('櫃檯看得到待處理申請', async () => {
