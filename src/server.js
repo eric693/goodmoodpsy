@@ -6,7 +6,7 @@ const bcrypt = require('bcryptjs');
 const { db, audit, getSetting, UI_TEXT_KEYS, DATA_DIR, UPLOAD_DIR } = require('./db');
 const { buildCalendar } = require('./ics');
 const {
-  STAFF_COOKIE, signToken, setAuthCookie, clearAuthCookie,
+  STAFF_COOKIE, CLIENT_COOKIE, signToken, setAuthCookie, clearAuthCookie,
   requireStaff, requireAdmin, parsePermissions, MODULE_KEYS,
   loginLockedMinutes, loginFailed, loginSucceeded, rateLimit
 } = require('./auth');
@@ -64,6 +64,28 @@ app.get('/api/me', requireStaff(), (req, res) => {
     modules: req.user.role === 'admin' ? MODULE_KEYS : parsePermissions(req.user.permissions),
     center_name: getSetting('center_name', '好心情心理諮商所')
   });
+});
+
+// ---- 從 LINE 一鍵進個案專區（一次性連結）----
+// 連結只透過 LINE 推給已綁定的本人，30 分鐘內有效、用過即失效；
+// 舊個案多半沒登錄手機、記不住密碼，這是他們最實際的入口。
+app.get('/portal-login/:token', (req, res) => {
+  const token = String(req.params.token || '');
+  const row = db.prepare(`SELECT t.*, c.name, c.code FROM portal_login_tokens t
+    JOIN clients c ON c.id = t.client_id
+    WHERE t.token = ? AND t.used_at = '' AND t.expires_at >= datetime('now','localtime')
+      AND c.active = 1`).get(token);
+  if (!row) {
+    return res.status(400).type('html').send(`<meta charset="utf-8">
+      <div style="font-family:system-ui;padding:32px;line-height:1.9;max-width:520px;margin:0 auto">
+      <h2 style="color:#0e7c7b">連結已失效</h2>
+      <p>這個一鍵登入連結已過期或已使用過（每個連結 30 分鐘內有效、僅能用一次）。</p>
+      <p>請回到 LINE 開啟最新一則通知裡的按鈕，或直接<a href="/portal.html">用手機號碼登入</a>。</p></div>`);
+  }
+  db.prepare("UPDATE portal_login_tokens SET used_at = datetime('now','localtime') WHERE token = ?").run(token);
+  setAuthCookie(res, CLIENT_COOKIE, signToken({ t: 'client', id: row.client_id }));
+  audit('client', row.client_id, row.name, '由 LINE 一鍵登入個案專區', row.code);
+  res.redirect('/portal.html');
 });
 
 // ---- 行事曆訂閱（.ics，免登入以 token 驗證）----

@@ -58,6 +58,7 @@ router.get('/me', requireClient, (req, res) => {
     portal_note: getSetting('ui_portal_note'),
     crisis_note: getSetting('ui_crisis_note'),
     booking_enabled: getSetting('portal_booking_enabled', '1') === '1',
+    change_counselor: getSetting('portal_change_counselor', '1') === '1',
     messages_write: getSetting('portal_messages_write', '0') === '1',
     reschedule_enabled: getSetting('portal_reschedule_enabled', '1') === '1',
     cancel_hours: Number(getSetting('cancel_hours', '24')),
@@ -104,12 +105,22 @@ router.get('/slots', requireClient, (req, res) => {
   })();
   const maxDate = addDays(today(), Number(getSetting('portal_book_max_days', '60')));
   if (date < minDate || date > maxDate) return res.json({ min_date: minDate, max_date: maxDate, counselors: [] });
-  const counselors = req.client.counselor_id
-    ? db.prepare('SELECT id, name FROM users WHERE id = ? AND active = 1').all(req.client.counselor_id)
-    : db.prepare("SELECT id, name FROM users WHERE active = 1 AND role IN ('counselor','supervisor') ORDER BY id").all();
+  // 開放換心理師時列出所有可線上預約的心理師（主責排在最前面），否則只給主責
+  const allowOther = getSetting('portal_change_counselor', '1') === '1';
+  const mine = req.client.counselor_id;
+  const counselors = (allowOther || !mine)
+    ? db.prepare(`SELECT id, name, title, license_type FROM users
+        WHERE active = 1 AND portal_bookable = 1 AND role IN ('counselor','supervisor','admin')
+        ORDER BY id`).all()
+    : db.prepare('SELECT id, name, title, license_type FROM users WHERE id = ? AND active = 1').all(mine);
+  counselors.sort((a, b) => (b.id === mine ? 1 : 0) - (a.id === mine ? 1 : 0));
   res.json({
     min_date: minDate, max_date: maxDate,
-    counselors: counselors.map(u => ({ ...u, slots: freeSlots(u.id, date) }))
+    allow_change_counselor: allowOther,
+    my_counselor_id: mine || null,
+    counselors: counselors.map(u => ({
+      ...u, is_mine: u.id === mine, slots: freeSlots(u.id, date)
+    }))
   });
 });
 
@@ -127,8 +138,17 @@ router.post('/appointments', requireClient, (req, res) => {
   if (!date || date < minDate || date > maxDate) return res.status(400).json({ error: `可預約範圍為 ${minDate} 至 ${maxDate}` });
   const cid = Number(counselor_id) || req.client.counselor_id;
   if (!cid) return res.status(400).json({ error: '請選擇心理師' });
-  if (req.client.counselor_id && cid !== req.client.counselor_id) {
+  const switching = !!(req.client.counselor_id && cid !== req.client.counselor_id);
+  if (switching && getSetting('portal_change_counselor', '1') !== '1') {
     return res.status(400).json({ error: '如需更換心理師請來電洽詢' });
+  }
+  // 換人的預約要讓櫃檯看得出來（是否更換主責、方案與費率是否要調整都要人判斷）
+  if (switching) {
+    const u = db.prepare('SELECT name FROM users WHERE id = ?').get(cid);
+    if (!u) return res.status(400).json({ error: '請選擇心理師' });
+    if (!db.prepare("SELECT 1 FROM users WHERE id = ? AND active = 1 AND portal_bookable = 1").get(cid)) {
+      return res.status(400).json({ error: '此心理師未開放線上預約，請來電洽詢' });
+    }
   }
   const cutoffReason = plans.bookingCutoffReason(date, start_time);
   if (cutoffReason) return res.status(400).json({ error: `${cutoffReason}，請改約其他時間或來電洽詢。` });
@@ -136,10 +156,13 @@ router.post('/appointments', requireClient, (req, res) => {
   if (!slot) return res.status(400).json({ error: '此時段已被預約或非開放時段，請重新選擇' });
   const type = db.prepare("SELECT 1 FROM appointments WHERE client_id = ? AND status = 'done'").get(req.client.id) ? 'individual' : 'intake';
   const fee = Number(getSetting(type === 'intake' ? 'intake_fee' : 'default_fee', '2000'));
+  const noteFull = switching
+    ? [note, '個案於專區改選非主責心理師，請櫃檯確認'].filter(Boolean).join('；')
+    : note;
   const info = db.prepare(`INSERT INTO appointments
     (client_id, counselor_id, date, start_time, end_time, type, status, fee, source, note)
     VALUES (?,?,?,?,?,?, 'booked', ?, 'portal', ?)`).run(
-    req.client.id, cid, date, start_time, slot.end_time, type, fee, note);
+    req.client.id, cid, date, start_time, slot.end_time, type, fee, noteFull);
   audit('client', req.client.id, req.client.name, '個案端預約', req.client.code, { date, start_time });
   res.json({ id: info.lastInsertRowid });
 });

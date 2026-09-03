@@ -26,7 +26,9 @@ router.post('/line/webhook', express.json({ verify: (req, res, buf) => { req.raw
   res.json({ ok: true });
 });
 
-function bindingWelcome(name) {
+function bindingWelcome(name, clientId) {
+  // 綁定完成當下就給一次性登入連結，個案不必記手機末 6 碼即可進專區看自己的預約
+  const portal = clientId ? line.portalLoginUrl(clientId) : '';
   return line.card({
     title: '綁定完成',
     subtitle: getSetting('center_name'),
@@ -35,7 +37,10 @@ function bindingWelcome(name) {
       { type: 'text', size: 'sm', wrap: true, color: '#3b4a55',
         text: `${name} 您好，之後預約成立與晤談提醒都會透過這裡通知您。` },
       line.noteBox('本帳號僅提供預約與行政通知，不處理晤談內容；如遇立即危機請撥 1925 或 119。')
-    ]
+    ],
+    footer: portal
+      ? [line.actionButton('開啟個案專區', { type: 'uri', label: '開啟個案專區', uri: portal }, 'secondary')]
+      : []
   });
 }
 
@@ -90,7 +95,7 @@ async function handleEvent(ev) {
         db.prepare("UPDATE line_bindings SET status = 'done', line_user_id = ?, bound_at = ? WHERE id = ?")
           .run(lineUserId, nowStamp(), bind.id);
         audit('system', null, 'LINE', '完成 LINE 綁定', String(bind.client_id || bind.user_id || ''));
-        await line.replyMessages(ev.replyToken, [bindingWelcome(name || '您')]);
+        await line.replyMessages(ev.replyToken, [bindingWelcome(name || '您', bind.client_id)]);
         return;
       }
       await line.replyMessages(ev.replyToken, [line.textMessage('綁定碼不正確或已失效，請向諮商所索取新的綁定碼。')]);

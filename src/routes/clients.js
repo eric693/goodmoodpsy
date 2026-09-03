@@ -95,6 +95,19 @@ router.get('/clients/options', requireStaff('clients'), (req, res) => {
 
 // 重複個案：舊資料匯入時同一個人被開了兩個以上案號，排約時要挑很久，
 // 統計與額度也會被拆開算。這支把疑似重複的整理出來，附各自的預約與紀錄筆數供人工判斷。
+// 產生個案專區的一次性登入連結：個案忘記密碼、或舊資料沒登錄手機（沒有帳號）時，
+// 櫃檯可直接把連結傳給本人；30 分鐘內有效、用過即失效，與 LINE 卡片上的按鈕同一套。
+router.post('/clients/:id/portal-link', requireStaff('clients'), (req, res) => {
+  const c = db.prepare('SELECT id, name, code FROM clients WHERE id = ? AND active = 1').get(req.params.id);
+  if (!c) return res.status(404).json({ error: '找不到此個案' });
+  const url = require('../line').portalLoginUrl(c.id);
+  if (!url || !url.includes('/portal-login/')) {
+    return res.status(400).json({ error: '尚未設定個案專區網址（系統設定 → 個案端）' });
+  }
+  audit('staff', req.user.id, req.user.name, '產生個案專區一次性登入連結', c.code);
+  res.json({ url, expires_minutes: 30 });
+});
+
 router.get('/clients/duplicates', requireStaff('clients'), (req, res) => {
   const rows = db.prepare(`SELECT c.id, c.code, c.name, c.phone, c.birth_date, c.status,
       c.counselor_id, u.name AS counselor_name,

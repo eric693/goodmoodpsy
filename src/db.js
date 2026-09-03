@@ -770,6 +770,16 @@ ensureColumns('availability', {
 ensureColumns('appointments', {
   confirmed_at: "TEXT NOT NULL DEFAULT ''"
 });
+// LINE 卡片上的「個案專區」按鈕：帶一次性登入連結，個案點了直接進專區，
+// 不必記手機末 6 碼（很多舊個案連手機都沒登錄在系統裡）。
+// 連結只透過 LINE 推給本人、30 分鐘內有效、用過即失效。
+db.exec(`CREATE TABLE IF NOT EXISTS portal_login_tokens (
+  token TEXT PRIMARY KEY,
+  client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  expires_at TEXT NOT NULL,
+  used_at TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+)`);
 ensureColumns('invoices', {
   plan_id: 'INTEGER REFERENCES service_plans(id)',
   topic_id: 'INTEGER REFERENCES plan_topics(id)'
@@ -818,12 +828,16 @@ ensureColumns('invoices', {
     // 前一天幾點之後就不再開放隔天的時段（HH:MM，留空表示不設這道關卡）。
     // 避免有人半夜預約隔天早上、櫃檯來不及看到，個案卻以為預約成立直接跑來。
     booking_cutoff_time: '21:00',
+    // 心理師介紹頁：印在預約表單「預約之心理師」欄位下方，讓民眾先看介紹再選人
+    booking_counselor_intro_url: 'https://www.goodmoodpsy.com.tw/3',
     // 另一道門檻：晤談開始前至少幾小時才收得到線上預約（0＝不設）。
     // 與上面的「前一天幾點截止」同時生效，兩者取較嚴格的那個。
     booking_cutoff_hours: '0',
     // 個案端「傳訊息給諮商所」：所內以 LINE 為主要對話管道，專區預設只讀，
     // 避免櫃檯要盯兩個地方而漏看。要開放個案在專區留言時把這裡改成 1。
     portal_messages_write: '0',
+    // 個案端預約時是否可以選主責以外的心理師（1＝可以，換人的預約會標註待櫃檯確認）。
+    portal_change_counselor: '1',
     booking_max_days: '45',             // 最遠可約幾天後
     booking_slot_step: '30',            // 表單上時段間隔（分鐘）
     booking_require_birth: '1',         // 是否必填生日（補助方案需驗年齡）

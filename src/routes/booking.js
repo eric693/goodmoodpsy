@@ -64,6 +64,7 @@ router.get('/public/booking-config', publicRead, (req, res) => {
     line_add_friend_url: getSetting('line_add_friend_url'),
     line_official_id: getSetting('line_official_id'),
     portal_url: require('../line').portalUrl(),
+    counselor_intro_url: getSetting('booking_counselor_intro_url', ''),
     lead_days: Number(getSetting('booking_lead_days', '1')),
     max_days: Number(getSetting('booking_max_days', '45')),
     require_birth: getSetting('booking_require_birth', '1') === '1',

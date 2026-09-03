@@ -481,11 +481,39 @@ App.page('client', {
             ${c.is_minor ? g('法定代理人', `${c.guardian_name}（${c.guardian_relationship}）${c.guardian_phone}`) : ''}
             ${g('緊急聯絡人', `${c.emergency_name}（${c.emergency_relationship}）${c.emergency_phone}`)}
           </div>
-          <div style="margin-top:12px"><button class="btn small secondary" id="rst">重設個案端密碼</button></div></div>`;
+          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn small secondary" id="rst">重設個案端密碼</button>
+            <button class="btn small secondary" id="plink">產生一次性登入連結</button></div>
+          <div style="font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.8">
+            個案沒登錄手機（沒有帳號）或忘記密碼時，用「一次性登入連結」最快：
+            連結傳給本人後 30 分鐘內有效、用過即失效，點了直接進個案專區。</div></div>`;
         body.querySelector('#rst').onclick = async () => {
           if (!await UI.confirm('將個案端密碼重設為手機末 6 碼？')) return;
           try { const r = await POST(`/clients/${c.id}/reset-password`, {}); UI.toast('已重設為 ' + r.password); }
           catch (e) { UI.err(e); }
+        };
+        body.querySelector('#plink').onclick = async () => {
+          try {
+            const r = await POST(`/clients/${c.id}/portal-link`, {});
+            UI.modal({
+              title: '個案專區一次性登入連結', hideFooter: true,
+              body: `<div class="form-row full"><label>連結（${r.expires_minutes} 分鐘內有效，只能用一次）</label>
+                  <input id="pl-url" value="${UI.esc(r.url)}" readonly onclick="this.select()"></div>
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+                  <button class="btn small" id="pl-copy">複製連結</button></div>
+                <div style="font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.8">
+                  請以 LINE、簡訊等方式傳給<strong>個案本人</strong>；此連結等同一次登入權限，請勿轉傳他人。
+                  已綁定 LINE 的個案在預約成立與晤談提醒卡片上就有「個案專區」按鈕，不必另外發連結。</div>`,
+              onOpen: box => {
+                box.querySelector('#pl-copy').onclick = async () => {
+                  const input = box.querySelector('#pl-url');
+                  input.select();
+                  try { await navigator.clipboard.writeText(r.url); UI.toast('已複製'); }
+                  catch { document.execCommand('copy'); UI.toast('已複製'); }
+                };
+              }
+            });
+          } catch (e) { UI.err(e); }
         };
       }
 

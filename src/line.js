@@ -107,12 +107,27 @@ function portalUrl() {
   return /^https?:\/\//.test(u) ? u : '';
 }
 
+// LINE 卡片上的「個案專區」按鈕：能認出是哪位個案時，給一次性登入連結，
+// 點了直接進專區，不必記手機末 6 碼。連結只走 LINE 推給本人，30 分鐘內有效、用過即失效。
+function portalLoginUrl(clientId) {
+  const base = portalUrl();
+  if (!base || !clientId) return base;
+  const token = crypto.randomBytes(24).toString('base64url');
+  db.prepare("INSERT INTO portal_login_tokens (token, client_id, expires_at) VALUES (?,?,datetime('now','localtime','+30 minutes'))")
+    .run(token, Number(clientId));
+  // 專區網址可能帶路徑（如 /portal.html），一次性連結固定掛在網站根目錄
+  try {
+    const u = new URL(base);
+    return `${u.origin}/portal-login/${token}`;
+  } catch { return base; }
+}
+
 // 預約成立
 function bookingConfirmedFlex(a) {
   const c = centerInfo();
   const footer = [];
   if (a.meeting_url) footer.push(actionButton('進入視訊晤談', { type: 'uri', label: '進入視訊晤談', uri: a.meeting_url }));
-  const portal = a.portal_url || portalUrl();
+  const portal = a.portal_url || portalLoginUrl(a.client_id);
   if (portal) footer.push(actionButton('個案專區', { type: 'uri', label: '個案專區', uri: portal }, 'secondary'));
   if (c.phone) footer.push(actionButton('改期或取消請來電', { type: 'uri', label: '改期或取消請來電', uri: `tel:${c.phone}` }, 'secondary'));
   return card({
@@ -149,7 +164,7 @@ function reminderFlex(a) {
       data: `act=change&id=${a.id}`, displayText: '需要改期或取消' }, 'secondary'));
   }
   if (a.meeting_url) footer.push(actionButton('進入視訊晤談', { type: 'uri', label: '進入視訊晤談', uri: a.meeting_url }));
-  const rPortal = a.portal_url || portalUrl();
+  const rPortal = a.portal_url || portalLoginUrl(a.client_id);
   if (rPortal) footer.push(actionButton('個案專區', { type: 'uri', label: '個案專區', uri: rPortal }, 'secondary'));
   if (c.phone) footer.push(actionButton('聯絡諮商所', { type: 'uri', label: '聯絡諮商所', uri: `tel:${c.phone}` }, 'secondary'));
   return card({
@@ -299,7 +314,7 @@ function verifySignature(rawBody, signature) {
 module.exports = {
   lineEnabled, weekdayOf, centerInfo,
   card, kv, noteBox, actionButton, textMessage,
-  bookingReceivedFlex, bookingConfirmedFlex, reminderFlex, portalUrl,
+  bookingReceivedFlex, bookingConfirmedFlex, reminderFlex, portalUrl, portalLoginUrl,
   counselorScheduleFlex, counselorBookingFlex, receiptFlex,
   pushFlex, replyMessages, verifySignature, logNotification
 };

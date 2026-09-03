@@ -422,15 +422,29 @@ const Portal = {
       const inp = m.body.querySelector('[name=date]');
       inp.min = d.min_date; inp.max = d.max_date;
       const any = d.counselors.some(c => c.slots.length);
-      box.innerHTML = any ? d.counselors.map(c => `
-        <div style="margin-bottom:10px"><div style="font-size:13.5px;font-weight:600">${UI.esc(c.name)}</div>
-        ${c.slots.length ? c.slots.map(s => `<button class="btn small secondary slot-btn" type="button"
-          data-c="${c.id}" data-s="${s.start_time}">${s.start_time}</button>`).join('') : '<span style="color:var(--muted);font-size:13px">無開放時段</span>'}
-        </div>`).join('') : `<div style="color:var(--muted);font-size:14px">此日無可預約時段，請換一天或來電洽詢。
+      // 主責心理師排最前面並標示；開放換人時其他心理師也列出，選了會提醒需櫃檯確認
+      box.innerHTML = any ? `${d.allow_change_counselor && d.counselors.length > 1
+    ? '<div style="font-size:12.5px;color:var(--muted);line-height:1.8;margin-bottom:8px">'
+      + '可選擇其他心理師；<strong>更換心理師的預約會由櫃檯再與您確認</strong>。</div>' : ''}
+        ${d.counselors.filter(c => c.slots.length || c.is_mine).map(c => `
+        <div style="margin-bottom:10px">
+          <div style="font-size:13.5px;font-weight:600">${UI.esc(c.name)}
+            ${c.is_mine ? '<span class="tag ok" style="font-size:11px">我的主責</span>' : ''}
+            ${c.license_type ? `<span style="font-size:12px;font-weight:400;color:var(--muted)">${UI.esc(c.license_type)}</span>` : ''}</div>
+          ${c.slots.length ? c.slots.map(s => `<button class="btn small secondary slot-btn" type="button"
+            data-c="${c.id}" data-s="${s.start_time}" data-mine="${c.is_mine ? 1 : 0}"
+            data-name="${UI.esc(c.name)}">${s.start_time}</button>`).join('')
+    : '<span style="color:var(--muted);font-size:13px">無開放時段</span>'}
+        </div>`).join('')}`
+    : `<div style="color:var(--muted);font-size:14px">此日無可預約時段，請換一天或來電洽詢。
           <br>可預約範圍：${d.min_date} ~ ${d.max_date}</div>`;
       box.querySelectorAll('[data-s]').forEach(b => {
         b.onclick = async () => {
-          if (!await UI.confirm(`預約 ${m.body.querySelector('[name=date]').value} ${b.dataset.s}？`)) return;
+          const when = `${m.body.querySelector('[name=date]').value} ${b.dataset.s}`;
+          const msg = b.dataset.mine === '1'
+            ? `預約 ${when}？`
+            : `預約 ${when}，心理師為 ${b.dataset.name}（非您的主責心理師）？\n更換心理師的預約會由櫃檯再與您確認。`;
+          if (!await UI.confirm(msg)) return;
           try {
             await POST(PAPI('/appointments'), {
               date: m.body.querySelector('[name=date]').value,

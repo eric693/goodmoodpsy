@@ -560,6 +560,22 @@ function startServer() {
     assert(r.id, '開放後應可留言');
     await admin.ok('PUT', '/api/settings', { portal_messages_write: '0' });
   });
+  await test('一次性連結可直接登入個案專區，且用過即失效', async () => {
+    // 舊個案沒登錄手機、記不住密碼，這是他們最實際的入口（LINE 卡片與櫃檯用的是同一套）
+    await admin.ok('PUT', '/api/settings', { booking_public_url: `${BASE}/booking.html` });
+    const r = await admin.ok('POST', `/api/clients/${clientId}/portal-link`);
+    assert(/\/portal-login\//.test(r.url), '應產生一次性登入連結：' + r.url);
+    const path = '/portal-login/' + r.url.split('/portal-login/')[1];
+    const hit = () => fetch(BASE + path, { redirect: 'manual' });
+    const first = await hit();
+    equal(first.status, 302, '第一次點擊應導向專區');
+    const cookie = (first.headers.get('set-cookie') || '').split(';')[0];
+    assert(cookie, '應設下個案端登入 cookie');
+    const me = await fetch(BASE + '/api/portal/me', { headers: { Cookie: cookie } });
+    equal(me.status, 200, '導向後應已是登入狀態');
+    equal((await hit()).status, 400, '同一連結不可重複使用');
+    await admin.ok('PUT', '/api/settings', { booking_public_url: '' });
+  });
   await test('個案端可自助取得 LINE 綁定碼', async () => {
     // 加好友只能由本人在 LINE 點下去，系統能做的是把綁定碼給個案、讓他傳進官方帳號；
     // 傳送後由 Webhook 完成綁定（另有測試涵蓋）。
@@ -576,6 +592,34 @@ function startServer() {
     } finally {
       await admin.ok('PUT', '/api/line/settings', { line_channel_token: '', line_official_id: '' });
     }
+  });
+  await test('個案可在專區改選其他心理師，換人會標註待櫃檯確認', async () => {
+    await admin.ok('PUT', '/api/settings', { portal_change_counselor: '1' });
+    // 個案端最遠可約 60 天，日期要落在範圍內
+    const day = addDays(monday, 42);
+    // 讓另一位心理師（id 3）在那天有時段並開放線上預約
+    await admin.ok('PUT', '/api/users/3', { portal_bookable: 1 });
+    const wd = new Date(day + 'T00:00:00').getDay();
+    await admin.ok('POST', '/api/availability/bulk', {
+      counselor_id: 3, blocks: [{ weekday: wd, start_time: '09:00', end_time: '11:00' }]
+    });
+    const slots = await portal.ok('GET', `/api/portal/slots?date=${day}`);
+    assert(slots.allow_change_counselor, '應回報可換心理師');
+    const mine = slots.counselors.find(c => c.is_mine);
+    assert(mine, '清單應標出主責心理師');
+    const other = slots.counselors.find(c => c.id === 3 && c.slots.length);
+    assert(other, '應列出其他心理師的時段：' + JSON.stringify(slots.counselors.map(c => [c.id, c.slots.length])));
+    const r = await portal.ok('POST', '/api/portal/appointments',
+      { date: day, start_time: other.slots[0].start_time, counselor_id: 3 });
+    const made = (await admin.ok('GET', `/api/appointments?date=${day}`)).find(a => a.id === r.id);
+    equal(made.counselor_id, 3, '應排給個案選的心理師');
+    assert(/櫃檯確認/.test(made.note || ''), '換人的預約要標註待確認：' + made.note);
+    // 關閉設定後就不能換人
+    await admin.ok('PUT', '/api/settings', { portal_change_counselor: '0' });
+    await portal.fails('POST', '/api/portal/appointments',
+      { date: day, start_time: other.slots[1].start_time, counselor_id: 3 }, '來電洽詢');
+    await admin.ok('DELETE', `/api/appointments/${r.id}`);
+    await admin.ok('PUT', '/api/settings', { portal_change_counselor: '1' });
   });
   await test('個案端讀不到晤談紀錄類 API', async () => {
     const res = await fetch(BASE + `/api/clients/${clientId}/notes`);

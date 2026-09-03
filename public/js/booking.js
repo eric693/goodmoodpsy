@@ -81,6 +81,7 @@ const BK = {
         <div class="bk-field">
           <select id="counselor"><option value="">請選擇心理師</option></select>
           <div class="hint" id="counselor-hint">若沒有特別指定，可選「由諮商所安排合適之心理師」。</div>
+          <div class="hint" id="counselor-intro" style="display:none"></div>
         </div>
       </div>
 
@@ -135,6 +136,13 @@ const BK = {
 
     document.getElementById('plan').onchange = e => BK.pickPlan(Number(e.target.value));
     document.getElementById('submit').onclick = BK.submit;
+    // 心理師介紹頁：不確定要選誰的人，先看介紹再回來選（網址可於系統設定調整）
+    if (c.counselor_intro_url) {
+      const box = document.getElementById('counselor-intro');
+      box.innerHTML = `不知道要選誰？先看看
+        <a href="${UI.esc(c.counselor_intro_url)}" target="_blank" rel="noopener">心理師介紹</a>。`;
+      box.style.display = '';
+    }
   },
 
   pickPlan(id) {
