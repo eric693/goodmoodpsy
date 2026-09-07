@@ -1610,6 +1610,30 @@ function startServer() {
     await admin.ok('PUT', '/api/line/settings',
       { line_channel_secret: '', line_channel_token: '', line_official_id: '' });
   });
+  await test('未綁定者連傳三句，說明卡只回一次，內容全部收進後台', async () => {
+    // 每句話都回一張「線上預約與提醒」卡＝洗版；而且以前這些話沒有任何人看得到
+    await admin.ok('PUT', '/api/line/settings', { line_channel_secret: 'smoke-secret' });
+    const post = async text => {
+      const body = JSON.stringify({ events: [{ type: 'message', replyToken: 'ru', source: { userId: 'U-unbound-1' },
+        message: { type: 'text', text } }] });
+      const sig = require('crypto').createHmac('sha256', 'smoke-secret').update(body).digest('base64');
+      return fetch(BASE + '/api/line/webhook', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-line-signature': sig }, body
+      });
+    };
+    for (const t of ['你好', '近期身心狀況有些不佳', '想問價錢']) await post(t);
+    const rows = await admin.ok('GET', '/api/line-unbound-messages');
+    const mine = rows.filter(r => r.line_user_id === 'U-unbound-1');
+    equal(mine.length, 3, '三句話都要收進來');
+    assert(mine.some(r => /身心狀況/.test(r.content)), '內容要留得住');
+    // 說明卡只回一次無法從 API 觀察（未設權杖時本來就不會送出），這裡驗的是資料面：
+    // 訊息不會漏、可標記處理；卡片節流見 shouldSendHelpCard。
+    // 標記已處理後就不再列在待處理
+    await admin.ok('POST', `/api/line-unbound-messages/${mine[0].id}/handled`, {});
+    equal((await admin.ok('GET', '/api/line-unbound-messages'))
+      .filter(r => r.line_user_id === 'U-unbound-1').length, 2, '已處理的不再列出');
+    await admin.ok('PUT', '/api/line/settings', { line_channel_secret: '' });
+  });
   await test('個案在 LINE 傳的話會進到「個案訊息」，櫃檯回覆會推回去', async () => {
     // 原本個案在 LINE 打字只會收到自動說明，內容沒人看得到，等於無法聊
     await admin.ok('PUT', '/api/line/settings', { line_channel_secret: 'smoke-secret' });

@@ -77,6 +77,21 @@ function helpFlex(lineUserId) {
   });
 }
 
+// 同一個未綁定的 LINE，多久之內只發一次說明卡（小時）。
+// 每句話都回一張卡，對方的聊天室會被自己洗版，也看不出我們到底有沒有在聽。
+const HELP_CARD_HOURS = 12;
+function shouldSendHelpCard(lineUserId) {
+  if (!lineUserId) return true;
+  const row = db.prepare('SELECT sent_at FROM line_help_log WHERE line_user_id = ?').get(lineUserId);
+  if (row && row.sent_at) {
+    const since = Date.now() - new Date(row.sent_at.replace(' ', 'T')).getTime();
+    if (since >= 0 && since < HELP_CARD_HOURS * 3600 * 1000) return false;
+  }
+  db.prepare(`INSERT INTO line_help_log (line_user_id, sent_at) VALUES (?, ?)
+    ON CONFLICT(line_user_id) DO UPDATE SET sent_at = excluded.sent_at`).run(lineUserId, nowStamp());
+  return true;
+}
+
 async function handleEvent(ev) {
   const lineUserId = ev.source && ev.source.userId;
   if (!lineUserId) return;
@@ -130,15 +145,28 @@ async function handleEvent(ev) {
         db.prepare("INSERT INTO messages (client_id, sender, content) VALUES (?, 'client', ?)")
           .run(client.id, text.slice(0, 1000));
         audit('client', client.id, client.name, '由 LINE 傳訊息給諮商所', client.code);
-        const phone = getSetting('center_phone', '');
-        await line.replyMessages(ev.replyToken, [line.textMessage(
-          '已收到您的訊息，我們會於上班時間回覆（本帳號非即時客服）。'
-          + (phone ? `\n急需協助請來電 ${phone}；` : '\n') + '如遇立即危機請撥 1925 或 119。')]);
+        // 上班時間櫃檯看得到訊息、會親自回，再自動回一句只是洗版；
+        // 只在下班後（21:00～隔天 09:00）自動回，讓個案知道現在沒人看。
+        const h = new Date().getHours();
+        if (h >= 21 || h < 9) {
+          const phone = getSetting('center_phone', '');
+          await line.replyMessages(ev.replyToken, [line.textMessage(
+            '已收到您的訊息，我們會於上班時間回覆（本帳號非即時客服）。'
+            + (phone ? `\n急需協助請來電 ${phone}；` : `\n`) + '如遇立即危機請撥 1925 或 119。')]);
+        }
         return;
       }
     }
-    // 還沒綁定的人：給預約入口與綁定說明
-    await line.replyMessages(ev.replyToken, [helpFlex(lineUserId)]);
+    // 還沒綁定的人：給預約入口與綁定說明。
+    // 卡片只在第一次（或隔了 12 小時以上）發，之後保持安靜——
+    // 訊息還是進得來，櫃檯在「個案訊息」的未綁定來訊區看得到並可回覆。
+    if (text) {
+      db.prepare('INSERT INTO line_unbound_messages (line_user_id, content) VALUES (?,?)')
+        .run(lineUserId, text.slice(0, 1000));
+    }
+    if (shouldSendHelpCard(lineUserId)) {
+      await line.replyMessages(ev.replyToken, [helpFlex(lineUserId)]);
+    }
     return;
   }
 
@@ -183,6 +211,8 @@ async function handleEvent(ev) {
 
   // 加好友當下就給預約入口，個案不必再問「要怎麼預約」
   if (ev.type === 'follow') {
+    // 剛加好友一定要給一張；同時記時間，免得他馬上打招呼又收到第二張
+    shouldSendHelpCard(lineUserId);
     await line.replyMessages(ev.replyToken, [helpFlex(lineUserId)]);
   }
 }

@@ -509,6 +509,22 @@ router.delete('/announcements/:id', requireStaff('announcements'), (req, res) =>
 });
 
 // ---- 個案訊息（行政聯繫用，非晤談內容）----
+// 還沒綁定的 LINE 來訊：沒有 client_id，進不了個案對話，另外列給櫃檯看。
+// 處理方式通常是「查出是誰 → 產綁定碼請他貼上」，或直接來電聯繫。
+router.get('/line-unbound-messages', requireStaff('messages'), (req, res) => {
+  const all = String(req.query.all || '') === '1';
+  res.json(db.prepare(`SELECT * FROM line_unbound_messages
+    ${all ? '' : "WHERE handled_at = ''"} ORDER BY id DESC LIMIT 200`).all());
+});
+router.post('/line-unbound-messages/:id/handled', requireStaff('messages'), (req, res) => {
+  const m = db.prepare('SELECT * FROM line_unbound_messages WHERE id = ?').get(req.params.id);
+  if (!m) return res.status(404).json({ error: '找不到此訊息' });
+  db.prepare("UPDATE line_unbound_messages SET handled_at = datetime('now','localtime'), handled_by = ? WHERE id = ?")
+    .run(req.user.id, m.id);
+  audit('staff', req.user.id, req.user.name, '處理未綁定 LINE 來訊', String(m.id));
+  res.json({ ok: true });
+});
+
 router.get('/messages', requireStaff('messages'), (req, res) => {
   const { client_id = '' } = req.query;
   if (client_id) {

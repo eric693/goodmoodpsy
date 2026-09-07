@@ -723,6 +723,24 @@ ensureColumns('service_plans', {
   // 例：總額 1800 = 方案給付 1600（心理師依此抽成）+ 場地費 200（所方收入）。
   venue_fee: 'INTEGER NOT NULL DEFAULT 0'
 });
+// 未綁定的人每傳一句話就回一張「線上預約與提醒」卡片，等於洗版。
+// 這裡記下最後一次發卡時間，同一個 LINE 一段時間內只發一次。
+// 還沒綁定的人在 LINE 打的字：以前只回一張說明卡就丟掉，
+// 對方寫「最近狀況不太好」也沒有任何人看得到。先收進來讓櫃檯處理。
+db.exec(`CREATE TABLE IF NOT EXISTS line_unbound_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  line_user_id TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL DEFAULT '',
+  handled_at TEXT NOT NULL DEFAULT '',
+  handled_by INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);`);
+
+db.exec(`CREATE TABLE IF NOT EXISTS line_help_log (
+  line_user_id TEXT PRIMARY KEY,
+  sent_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+);`);
+
 // 線上預約送出後產生的綁定碼綁在「這筆申請」上：此時多半還沒建檔，沒有 client_id 可綁。
 // 個案加好友後把碼貼進聊天室，系統才認得出他是誰，櫃檯的確認卡片才推得出去。
 ensureColumns('line_bindings', {

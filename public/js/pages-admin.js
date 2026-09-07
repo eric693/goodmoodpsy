@@ -781,16 +781,40 @@ App.page('messages', {
     '與個案的行政聯繫（改期、繳費、提醒），點「開啟」進對話後送出訊息。',
     '個案在 LINE 官方帳號傳的文字會出現在這裡；你在這裡回覆會<strong>直接推回他的 LINE</strong>。',
     '個案沒綁定 LINE 時，回覆只會留在系統，他下次登入個案專區才看得到。',
+    '還沒綁定的人傳來的話會列在最上面的「未綁定的 LINE 來訊」；系統認不出是誰，無法在此回覆，請到 LINE 後台回或請對方貼綁定碼，處理完按「已處理」。',
+    '官方帳號的說明卡片對同一個未綁定的人 12 小時內只會發一次，不會每句話都回一張。',
     '<strong>晤談內容請勿在此討論</strong>，訊息內容會留在系統紀錄裡。',
   ],
   module: 'messages',
   async render(el) {
-    const list = await GET('/messages');
-    el.innerHTML = `<div class="card"><h3>對話</h3>
+    const [list, unbound] = await Promise.all([
+      GET('/messages'),
+      GET('/line-unbound-messages').catch(() => [])
+    ]);
+    // 還沒綁定的人在 LINE 打的字沒有 client_id，進不了下面的個案對話，
+    // 但內容常常很要緊（例如「最近狀況不太好」），所以獨立列在最上面
+    el.innerHTML = `${unbound.length ? `<div class="card"><h3>未綁定的 LINE 來訊
+        <span style="font-size:13px;font-weight:400;color:var(--muted)">${unbound.length} 則待處理</span></h3>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:10px">
+        對方還沒綁定，系統認不出是哪一位個案，無法在此直接回覆。
+        請在 LINE 官方帳號後台回覆，或查出是誰之後到該個案頁按「LINE 綁定碼」請他貼上；處理完按「已處理」。</div>
+      ${UI.table(['時間', '內容', 'LINE 使用者', ''], unbound.map(m => `<tr>
+        <td style="white-space:nowrap">${UI.esc(m.created_at)}</td>
+        <td>${UI.nl2br(m.content)}</td>
+        <td style="font-size:12px;color:var(--muted)">${UI.esc((m.line_user_id || '').slice(0, 10))}…</td>
+        <td><button class="btn tiny secondary" data-ub="${m.id}">已處理</button></td></tr>`))}</div>` : ''}
+      <div class="card"><h3>對話</h3>
       ${UI.table(['個案', '最後訊息', '時間', ''], list.map(m => `<tr>
         <td>${UI.esc(m.client_name)}（${m.client_code}）${m.unread ? UI.tag(m.unread + ' 未讀', 'danger') : ''}</td>
         <td>${UI.esc((m.last_content || '').slice(0, 30))}</td><td>${UI.esc(m.last_at || '')}</td>
         <td><button class="btn tiny" data-m="${m.client_id}">開啟</button></td></tr>`), '尚無訊息')}</div>`;
+    el.querySelectorAll('[data-ub]').forEach(b => {
+      b.onclick = async () => {
+        await POST(`/line-unbound-messages/${b.dataset.ub}/handled`, {});
+        UI.toast('已標記處理');
+        App.go('messages');
+      };
+    });
     el.querySelectorAll('[data-m]').forEach(b => {
       b.onclick = async () => {
         const cid = Number(b.dataset.m);
