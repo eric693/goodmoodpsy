@@ -77,9 +77,9 @@ function helpFlex(lineUserId) {
   });
 }
 
-// 同一個未綁定的 LINE，多久之內只發一次說明卡（小時）。
+// 同一個未綁定的 LINE，多久之內只發一次說明卡（小時）。目前 24＝一天最多一張。
 // 每句話都回一張卡，對方的聊天室會被自己洗版，也看不出我們到底有沒有在聽。
-const HELP_CARD_HOURS = 12;
+const HELP_CARD_HOURS = 24;
 function shouldSendHelpCard(lineUserId) {
   if (!lineUserId) return true;
   const row = db.prepare('SELECT sent_at FROM line_help_log WHERE line_user_id = ?').get(lineUserId);
