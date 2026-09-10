@@ -1126,14 +1126,30 @@ function startServer() {
     equal(/LINE/.test(d.message), !!d.line_add_friend_url, '有無 LINE 連結要與文案一致');
     bookingId = d.id;
   });
+  await test('不用官方帳號時，完成頁改導向所方平常在用的 LINE', async () => {
+    // 所方決定不走 Messaging API：系統不推播，完成頁請個案自己加一般 LINE，由櫃檯親自回覆
+    await admin.ok('PUT', '/api/line/settings', { line_channel_token: '', line_official_id: '@old' });
+    await admin.ok('PUT', '/api/settings', { contact_line_id: 'goodmood', contact_line_phone: '0909334443' });
+    const cfg = await (await fetch(BASE + '/api/public/booking-config')).json();
+    equal(cfg.line_add_friend_url, '', '沒啟用官方帳號就不該再給官方帳號連結');
+    equal(cfg.contact_line.id, 'goodmood', '應帶出所方的 LINE ID');
+    equal(cfg.contact_line.url, 'https://line.me/ti/p/~goodmood', '留空時由 ID 組出加好友連結');
+    equal(cfg.contact_line.phone, '0909334443', '完成頁要給可搜尋的電話');
+    // 送出後的完成頁文案與「不再給綁定碼」由「民眾送出預約申請」那一項一併驗；
+    // 這裡不再多送一筆，公開端有頻率限制，多送會擋到後面的測試。
+    await admin.ok('PUT', '/api/settings', { contact_line_id: '', contact_line_phone: '' });
+    await admin.ok('PUT', '/api/line/settings', { line_official_id: '' });
+  });
   await test('沒設加好友連結時，用官方帳號 ID 自動組一組', async () => {
     // 加不到好友就收不到櫃檯的確認，等於整條流程斷在這裡
     const cfg = () => fetch(BASE + '/api/public/booking-config').then(x => x.json());
+    await admin.ok('PUT', '/api/line/settings', { line_channel_token: 'smoke-token' });
     await admin.ok('PUT', '/api/settings', { line_add_friend_url: '', line_official_id: '@testline' });
     equal((await cfg()).line_add_friend_url, 'https://line.me/R/ti/p/%40testline', '應由官方帳號 ID 推得');
     await admin.ok('PUT', '/api/settings', { line_add_friend_url: 'https://lin.ee/abc' });
     equal((await cfg()).line_add_friend_url, 'https://lin.ee/abc', '有設定就以設定為準');
     await admin.ok('PUT', '/api/settings', { line_add_friend_url: '', line_official_id: '' });
+    await admin.ok('PUT', '/api/line/settings', { line_channel_token: '' });
   });
   await test('預約表單與完成頁都帶出個案專區網址（未設定時由表單網址推得）', async () => {
     // 個案要知道專區在哪，才會去看預約、綁 LINE

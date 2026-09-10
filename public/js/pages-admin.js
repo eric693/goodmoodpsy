@@ -1187,6 +1187,11 @@ App.page('settings', {
         ['booking_counselor_intro_url', '心理師介紹頁網址（顯示在「預約之心理師」欄位下方）'],
         ['booking_slot_step', '時段間隔（分鐘）'], ['booking_require_birth', '是否必填生日（1/0，補助方案需驗年齡）'],
         ['booking_notice', '表單注意事項'], ['booking_privacy', '個資告知文字']]],
+      ['諮商所的 LINE（一般帳號）', [
+        ['contact_line_id', 'LINE ID（印在預約完成頁，請個案搜尋加入）'],
+        ['contact_line_phone', '可用來搜尋的電話'],
+        ['contact_line_url', '加好友連結（留空時由 ID 自動組成 https://line.me/ti/p/~ID）'],
+        ['contact_line_note', '完成頁上請個案做的事（例如：加入後請傳姓名與預約時段）']]],
       ['諮商室指派', [['room_auto_assign', '成立預約時自動指派空房（1/0）'],
         ['room_hide_from_client', '個案端與表單不顯示諮商室（1/0）']]],
       ['其他開關', [['intern_review_enabled', '啟用實習生紀錄督導覆核（1/0）'],

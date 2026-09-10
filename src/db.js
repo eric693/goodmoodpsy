@@ -834,6 +834,13 @@ ensureColumns('invoices', {
     line_official_name: '',
     line_official_id: '',              // 官方帳號 ID（@ 開頭），用於加好友連結與對外說明
     line_add_friend_url: '',            // 加好友連結（印在預約完成頁）
+    // ---- 諮商所平常在用的一般 LINE 帳號 ----
+    // 所方不使用官方帳號（Messaging API）時，預約完成頁改請個案加這個帳號，
+    // 由櫃檯在 LINE 上親自回覆確認；系統不做任何自動推播。
+    contact_line_id: '',                // LINE ID（一般帳號，供對方搜尋）
+    contact_line_phone: '',             // 也可用這支電話在 LINE 搜尋
+    contact_line_url: '',               // 加好友連結（一般帳號通常是 https://line.me/ti/p/~你的ID）
+    contact_line_note: '加入後請傳一句「您的姓名＋預約時段」，我們確認後會在 LINE 回覆您。',
     line_reminder_hours: '24',          // 晤談前幾小時推提醒
     line_counselor_daily_time: '20:00', // 每日推播心理師隔日行程的時間
     line_counselor_daily_enabled: '1',

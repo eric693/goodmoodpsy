@@ -65,6 +65,7 @@ router.get('/public/booking-config', publicRead, (req, res) => {
     line_add_friend_url: require('../line').addFriendUrl(),
     line_official_id: getSetting('line_official_id'),
     line_official_name: getSetting('line_official_name'),
+    contact_line: require('../line').contactLine(),
     portal_url: require('../line').portalUrl(),
     counselor_intro_url: getSetting('booking_counselor_intro_url', ''),
     lead_days: Number(getSetting('booking_lead_days', '1')),
@@ -226,6 +227,7 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
   }
 
   const friendUrl = line.addFriendUrl();
+  const contact = line.contactLine();
   // 只加好友還不夠：官方帳號不知道這個 LINE 是誰，櫃檯確認的卡片就推不出去。
   // 沒有從 LINE 連結進來的人，給一組綁定碼請他貼進聊天室，之後的通知才走得通。
   let bindCode = '';
@@ -243,10 +245,13 @@ router.post('/public/bookings', publicWrite, async (req, res) => {
     message: '已收到您的預約申請，這時候還沒有完成預約。'
       + (friendUrl
         ? '請加入本所 LINE 官方帳號，我們確認後會在 LINE 回覆您；收到我們的確認才算預約成立。'
-        : '我們確認後會盡快與您聯繫，收到我們的確認才算預約成立。'),
+        : contact
+          ? '請加我們的 LINE，我們確認後會在 LINE 回覆您；收到我們的確認才算預約成立。'
+          : '我們確認後會盡快與您聯繫，收到我們的確認才算預約成立。'),
     fee: quote.fee, self_pay: quote.self_pay,
     line_add_friend_url: friendUrl,
     line_bind_code: bindCode,
+    contact_line: contact,
     line_official_name: getSetting('line_official_name'),
     portal_url: require('../line').portalUrl(),
     center_phone: getSetting('center_phone')

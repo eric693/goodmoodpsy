@@ -128,6 +128,9 @@ const BK = {
         <div class="bk-note">${UI.esc(c.notice || '')}</div>
         ${c.line_add_friend_url ? `<div class="bk-note" style="font-weight:700">
           送出後請加入本所 LINE 官方帳號${c.line_official_name ? `「${UI.esc(c.line_official_name)}」` : ''}，
+          我們會在 LINE 回覆確認，收到確認才算完成預約。</div>`
+    : c.contact_line ? `<div class="bk-note" style="font-weight:700">
+          送出後請加我們的 LINE${c.contact_line.id ? `（ID：${UI.esc(c.contact_line.id)}）` : ''}，
           我們會在 LINE 回覆確認，收到確認才算完成預約。</div>` : ''}
         <div class="bk-err" id="err"></div>
         <button class="btn bk-submit" id="submit">送出預約申請</button>
@@ -332,6 +335,15 @@ const BK = {
             ${UI.esc(r.line_bind_code)}</div>
           <div class="bk-note" style="margin:0">代碼 3 天內有效；沒傳也沒關係，我們會改用電話與您聯繫。</div>
         </div>` : ''}
+      </div>` : r.contact_line ? `<div style="margin-top:16px;padding:14px;border:2px solid var(--pri,#0e7c7b);border-radius:10px;text-align:left">
+        <div style="font-weight:700;margin-bottom:6px">最後一步：加我們的 LINE</div>
+        ${r.contact_line.id ? `<div style="margin:4px 0">LINE ID：<strong>${UI.esc(r.contact_line.id)}</strong></div>` : ''}
+        ${r.contact_line.phone ? `<div style="margin:4px 0">也可用電話搜尋：<strong>${UI.esc(r.contact_line.phone)}</strong></div>` : ''}
+        <div class="bk-note" style="margin:8px 0 10px">
+          ${UI.esc(r.contact_line.note || '加入後請傳一句「您的姓名＋預約時段」。')}
+          我們確認後會在 LINE 回覆您，<strong>收到確認才算完成預約</strong>。</div>
+        ${r.contact_line.url ? `<a class="btn" style="display:inline-block"
+          href="${UI.esc(r.contact_line.url)}" target="_blank" rel="noopener">開啟 LINE 加好友</a>` : ''}
       </div>` : `<div class="bk-note" style="margin-top:16px;text-align:left">
         我們確認後會與您聯繫，${r.center_phone ? `亦可來電 ${UI.esc(r.center_phone)} 確認。` : '請留意來電。'}
         收到我們的確認才算完成預約。</div>`}

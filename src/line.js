@@ -104,10 +104,24 @@ function bookingReceivedFlex(b) {
 // 加官方帳號好友的連結：優先用設定的連結，沒填就用官方帳號 ID 自動組。
 // 線上預約送出後要請個案加好友（櫃檯在 LINE 回覆確認才算完成預約），沒有連結就等於斷線。
 function addFriendUrl() {
+  // 沒啟用官方帳號（沒填 Channel access token）就不給官方帳號的連結——
+  // 所方改用一般 LINE 時，預約頁要導到那個帳號，不能還掛著沒人看的官方帳號。
+  if (!lineEnabled()) return '';
   const u = String(getSetting('line_add_friend_url', '')).trim();
   if (/^https?:\/\//.test(u)) return u;
   const id = String(getSetting('line_official_id', '')).trim();
   return id ? `https://line.me/R/ti/p/${encodeURIComponent(id.startsWith('@') ? id : '@' + id)}` : '';
+}
+
+// 所方平常在用的一般 LINE：預約完成頁請個案加這個，由櫃檯親自回覆確認。
+// 一般帳號沒有 Messaging API，系統不會、也不能自動推播任何訊息。
+function contactLine() {
+  const id = String(getSetting('contact_line_id', '')).trim();
+  const phone = String(getSetting('contact_line_phone', '')).trim();
+  let url = String(getSetting('contact_line_url', '')).trim();
+  if (!/^https?:\/\//.test(url)) url = id ? `https://line.me/ti/p/~${encodeURIComponent(id.replace(/^@/, ''))}` : '';
+  const note = String(getSetting('contact_line_note', '')).trim();
+  return (id || phone || url) ? { id, phone, url, note } : null;
 }
 
 function portalUrl() {
@@ -328,7 +342,7 @@ function verifySignature(rawBody, signature) {
 module.exports = {
   lineEnabled, weekdayOf, centerInfo,
   card, kv, noteBox, actionButton, textMessage,
-  bookingReceivedFlex, bookingConfirmedFlex, reminderFlex, portalUrl, portalLoginUrl, addFriendUrl,
+  bookingReceivedFlex, bookingConfirmedFlex, reminderFlex, portalUrl, portalLoginUrl, addFriendUrl, contactLine,
   counselorScheduleFlex, counselorBookingFlex, receiptFlex,
   pushFlex, pushText, replyMessages, verifySignature, logNotification
 };
