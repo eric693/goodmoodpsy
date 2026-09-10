@@ -217,6 +217,13 @@
 <section id="line">
   <h2><span class="num">01</span>LINE 怎麼開始預約</h2>
   <p class="sub">個案端最短的一條路：加好友、按按鈕、填表單。</p>
+  <div class="notice" style="border:2px solid #b45309;border-radius:10px;padding:12px 14px;margin:12px 0;background:#fff8ec">
+    <strong>2026-09-10 起：所方不使用 LINE 官方帳號。</strong>
+    系統改為心理師與櫃檯內部使用，<strong>所有自動推播（預約成立、晤談提醒、隔日行程）一律停止</strong>，提醒訊息由人工在
+    LINE 上傳送。線上預約流程照舊，完成頁改請個案<strong>用電話 0909334443 在 LINE 搜尋、加所方平常在用的帳號</strong>，
+    由櫃檯在 LINE 親自回覆確認，收到回覆才算完成預約。
+    本節與第 02 節描述的官方帳號功能仍在程式裡，日後在「系統 → LINE 串接」填回 Channel access token 即可恢復。
+  </div>
 
   <ol class="steps">
     <li>個案加入官方帳號 <code>@032cjyby</code> 的當下，系統就自動回一張 Flex 卡片，上面有<strong>「開始預約」</strong>和<strong>「打電話給諮商所」</strong>兩個按鈕。</li>
@@ -252,6 +259,7 @@
 
 <section id="notify">
   <h2><span class="num">02</span>系統會主動送出的通知</h2>
+  <p class="sub" style="color:#b45309"><strong>目前全部停用</strong>——所方不使用官方帳號，下列通知改由人工在 LINE 傳送；系統只保留紀錄與範本。</p>
   <p class="sub">全部是 Flex 卡片；未完成串接時只留下待發訊息，不外送。</p>
   <div class="tablewrap">
   <table>
@@ -772,6 +780,7 @@
   <h2><span class="num">10</span>目前關閉與待辦</h2>
   <p class="sub">功能與資料都還在，只是暫時不顯示；需要時改一個設定即回復。</p>
   <ul>
+    <li><span class="off">已關閉</span>——LINE 官方帳號（Messaging API）：所方改用平常在用的一般 LINE，系統不再自動推播任何訊息，預約完成頁改請個案自行加好友（電話 0909334443）。要恢復時在「系統 → LINE 串接」填回 Channel access token 即可。</li>
     <li><span class="off">已關閉</span>——實習心理師督導覆核：所內暫無實習生，「紀錄覆核」頁與帳號設定裡的實習生欄位都不出現。</li>
     <li><span class="off">已關閉</span>——團體諮商、請假與繼續教育、督導紀錄、合作單位請款、逾期催繳、危機事件與通報、安全計畫列管：不出現在導覽列、總覽看板與個案分頁。</li>
     <li><strong>待辦</strong>——視訊平台 API 串接（目前為貼上會議室連結，未自動開房）。</li>
