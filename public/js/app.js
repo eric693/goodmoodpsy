@@ -158,14 +158,31 @@ const App = {
     App.refreshBadges();
     clearInterval(App._badgeTimer);
     App._badgeTimer = setInterval(App.refreshBadges, 60000);
+    // 手機把背景分頁的計時器凍結後，上面的每分鐘輪詢會停掉，回到前景時紅點可能還停在
+    // 開頁時的隱藏狀態，所以切回這個畫面就立刻補抓一次。監聽只掛一次。
+    if (!App._badgeWake) {
+      App._badgeWake = () => { if (!document.hidden) App.refreshBadges(); };
+      document.addEventListener('visibilitychange', App._badgeWake);
+      window.addEventListener('focus', App._badgeWake);
+    }
   },
 
   // 導覽列紅點：有待處理的線上預約申請或未讀個案訊息時亮起。
   // 數字直接來自資料庫的待處理筆數，所以只有真的處理完（或被取消）才會消失，
   // 點過、看過都不會讓紅點消掉。
+  // 抓失敗時維持上一次的狀態並在 5 秒後補抓一次：開頁那次請求若剛好遇到斷線或後端重啟，
+  // 紅點會一直隱藏到下一輪（最久一分鐘），櫃檯就看不到待處理的預約。
   async refreshBadges() {
+    if (!App.me) return;
     let d;
-    try { d = await GET('/nav-badges'); } catch (e) { return; }
+    try {
+      d = await GET('/nav-badges');
+    } catch (e) {
+      clearTimeout(App._badgeRetry);
+      if (App.me) App._badgeRetry = setTimeout(App.refreshBadges, 5000);
+      return;
+    }
+    clearTimeout(App._badgeRetry);
     document.querySelectorAll('[data-badge]').forEach(sp => {
       const n = d[sp.dataset.badge] || 0;
       sp.textContent = n > 99 ? '99+' : n;
@@ -224,6 +241,9 @@ const App = {
     if (helpEl) helpEl.ontoggle = () => localStorage.setItem('mc-help-' + k, helpEl.open ? '1' : '0');
     try { await def.render(document.getElementById('page-body'), arg); }
     catch (e) { document.getElementById('page-body').innerHTML = `<div class="empty">${UI.esc(e.message)}</div>`; }
+    // 處理完一筆預約或讀完訊息都會回到頁面重繪（App.go），順手更新紅點，
+    // 不用等下一次每分鐘輪詢才看到數字降下來。不 await，不拖慢畫面。
+    App.refreshBadges();
   }
 };
 
