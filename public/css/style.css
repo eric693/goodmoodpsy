@@ -435,3 +435,10 @@ table.list tr:hover td { background: #f8fbfb; }
 .picker .pk-item:last-child { border-bottom: 0; }
 .picker .pk-item:hover, .picker .pk-item:focus { background: var(--primary-light); }
 .picker .pk-empty { padding: 10px 11px; font-size: 13px; color: var(--muted); }
+
+/* ---- 報表裡可點開明細的數字 ---- */
+/* 月底對帳最常問「這 9 筆是哪 9 筆」，所以筆數與金額都點得進去。
+   底線用虛線標示可點，但不搶走數字本身的顏色（未收是紅的、應繳回是橘的）。 */
+.dl { color: inherit; border-bottom: 1px dashed var(--muted); cursor: pointer; }
+.dl:hover { color: var(--primary); border-bottom-color: var(--primary); }
+@media print { .dl { border-bottom: 0; } }
