@@ -444,7 +444,8 @@ App.page('self-pay', {
     '自費款由心理師當場收走，這頁算出月底各人該繳回所方多少：應繳回＝實收 − 心理師報酬。',
     '現金與轉帳分開列，點鈔與對銀行帳可以分頭核對；退費已從實收扣除。',
     '按「明細／列印」可印出逐筆清單（含個案姓名）給心理師核對簽收。',
-    '未收款的自費另列一欄，錢還沒進到任何人手上，不列入繳回計算。',
+    '「已收 N 筆」只算錢已經收到的，未收款的另計在「未收」欄（也有筆數），兩者相加才是本月自費總筆數。',
+    '月份以收費單日期為準；補助方案不在這頁，請看「方案服務量」。',
   ],
   module: 'reports',
   async render(el) {
@@ -483,32 +484,37 @@ App.page('self-pay', {
       <div class="card"><h3>${month} 各心理師自費收款</h3>
         ${UI.table(['心理師'].concat(d.methods).concat(['實收合計', '心理師報酬', '應繳回所方', '未收']),
     d.rows.map(r => `<tr>
-          <td>${UI.esc(r.counselor_name)}<span style="font-size:12px;color:var(--muted)">　${r.count} 筆</span></td>
+          <td>${UI.esc(r.counselor_name)}<span style="font-size:12px;color:var(--muted)">　已收 ${r.count} 筆</span></td>
           ${d.methods.map(m => mcol(r.by_method, m)).join('')}
           <td style="text-align:right"><strong>${UI.fmtMoney(r.collected)}</strong></td>
           <td style="text-align:right">${UI.fmtMoney(r.share)}</td>
           <td style="text-align:right"><strong style="color:var(--warn)">${UI.fmtMoney(r.due_back)}</strong></td>
-          <td style="text-align:right">${r.unpaid ? `<span style="color:var(--danger)">${UI.fmtMoney(r.unpaid)}</span>` : '—'}</td>
+          <td style="text-align:right">${r.unpaid
+    ? `<span style="color:var(--danger)">${UI.fmtMoney(r.unpaid)}</span><span style="font-size:12px;color:var(--muted)">（${r.unpaid_count} 筆）</span>`
+    : '—'}</td>
         </tr>`).concat(d.rows.length > 1 ? [`<tr style="background:var(--primary-light);font-weight:700">
           <td>合計</td>${d.methods.map(m => mcol(t.by_method, m)).join('')}
           <td style="text-align:right">${UI.fmtMoney(t.collected)}</td>
           <td style="text-align:right">${UI.fmtMoney(t.share)}</td>
           <td style="text-align:right">${UI.fmtMoney(t.due_back)}</td>
-          <td style="text-align:right">${UI.fmtMoney(t.unpaid)}</td></tr>`] : []),
+          <td style="text-align:right">${UI.fmtMoney(t.unpaid)}<span style="font-size:12px;font-weight:400;color:var(--muted)">（${t.unpaid_count} 筆）</span></td></tr>`] : []),
     '本月尚無自費收款')}
         <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+          「已收 N 筆」只算錢已經收到的；還沒收到的另計在「未收」欄（也標了筆數），兩者相加才是本月自費的總筆數。
+          月份以收費單日期為準，跨月才收到的錢算在收款的那個月；補助方案不在這頁，請看「方案服務量」。<br>
           應繳回所方＝自費實收 − 心理師報酬；退費已從實收扣除。
           報酬金額於晤談按下「完成」時鎖定，事後改方案設定不會回頭變動此表。
           ${d.rows.some(r => (r.details || []).some(x => x.no_appointment))
     ? '標示「無對應晤談」者（如預付方案整筆收款）沒有可鎖定的報酬，報酬以 0 計，請自行核對。' : ''}</div></div>
-      ${d.rows.filter(r => r.count).map(r => `<div class="card"><h3>${UI.esc(r.counselor_name)}
+      ${d.rows.map(r => `<div class="card"><h3>${UI.esc(r.counselor_name)}
           <span style="font-size:13px;font-weight:400;color:var(--muted)">
-            實收 ${UI.fmtMoney(r.collected)}｜報酬 ${UI.fmtMoney(r.share)}｜應繳回 ${UI.fmtMoney(r.due_back)}</span></h3>
-        ${UI.table(['方案', '筆數', '實收', '心理師報酬', '應繳回所方'], byPlan(r).map(p => `<tr>
+            已收 ${r.count} 筆　實收 ${UI.fmtMoney(r.collected)}｜報酬 ${UI.fmtMoney(r.share)}｜應繳回 ${UI.fmtMoney(r.due_back)}
+            ${r.unpaid_count ? `｜另有未收 ${r.unpaid_count} 筆 ${UI.fmtMoney(r.unpaid)}` : ''}</span></h3>
+        ${UI.table(['方案', '已收筆數', '實收', '心理師報酬', '應繳回所方'], byPlan(r).map(p => `<tr>
           <td>${UI.esc(p.name)}</td><td>${p.n}</td>
           <td style="text-align:right">${UI.fmtMoney(p.net)}</td>
           <td style="text-align:right">${UI.fmtMoney(p.share)}</td>
-          <td style="text-align:right">${UI.fmtMoney(p.due_back)}</td></tr>`))}
+          <td style="text-align:right">${UI.fmtMoney(p.due_back)}</td></tr>`), '本月尚無已收款的自費，明細可看未收清單')}
         <div class="toolbar" style="margin-top:8px"><div class="spacer"></div>
           <button class="btn tiny secondary" data-detail="${r.counselor_id}">明細／列印</button></div></div>`).join('')}`;
 
