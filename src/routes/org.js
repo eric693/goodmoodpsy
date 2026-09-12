@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { db, audit, today, addDays, getSetting, setSetting, listSetting, UI_TEXT_KEYS } = require('../db');
 const { requireStaff, requireAdmin, MODULES, MODULE_KEYS, ROLE_DEFAULT_MODULES, parsePermissions } = require('../auth');
 const { SCALE_KEYS } = require('../scales');
+const { selfPaySettlement, planCounselorSummary } = require('../plans');
 const { withReportState } = require('./risk');
 
 const router = express.Router();
@@ -685,6 +686,8 @@ router.get('/reports', requireStaff('reports'), (req, res) => {
 });
 
 // ---- 報表匯出（CSV，含 BOM 供 Excel 直接開啟）----
+// 每張報表給 sql（直接查）或 rows（借用既有彙總函式，確保與畫面同一套算法）。
+const PLAN_KIND = { self: '自費', subsidy: '補助方案', partner: '合作單位' };
 const EXPORTS = {
   clients: {
     name: '個案清單',
@@ -697,8 +700,8 @@ const EXPORTS = {
   },
   appointments: {
     name: '晤談明細',
-    headers: ['日期', '時間', '個案編號', '心理師', '類型', '形式', '狀態', '費用', '諮商室'],
-    sql: `SELECT a.date, a.start_time, c.code, u.name AS counselor, a.type, a.mode, a.status, a.fee, r.name AS room
+    headers: ['日期', '時間', '個案編號', '個案姓名', '心理師', '類型', '形式', '狀態', '費用', '諮商室'],
+    sql: `SELECT a.date, a.start_time, c.code, c.name AS client, u.name AS counselor, a.type, a.mode, a.status, a.fee, r.name AS room
       FROM appointments a JOIN clients c ON c.id = a.client_id
       LEFT JOIN users u ON u.id = a.counselor_id LEFT JOIN rooms r ON r.id = a.room_id
       WHERE a.date BETWEEN ? AND ? ORDER BY a.date, a.start_time`,
@@ -706,8 +709,8 @@ const EXPORTS = {
   },
   invoices: {
     name: '收費明細',
-    headers: ['日期', '個案編號', '項目', '金額', '付款人別', '狀態', '付款方式', '收據號'],
-    sql: `SELECT i.date, c.code, i.item, i.amount, i.payer, i.status, i.method, i.receipt_no
+    headers: ['日期', '個案編號', '個案姓名', '項目', '金額', '付款人別', '狀態', '付款方式', '收據號'],
+    sql: `SELECT i.date, c.code, c.name AS client, i.item, i.amount, i.payer, i.status, i.method, i.receipt_no
       FROM invoices i JOIN clients c ON c.id = i.client_id
       WHERE i.date BETWEEN ? AND ? ORDER BY i.date`,
     range: true
@@ -725,10 +728,33 @@ const EXPORTS = {
       WHERE u.active = 1 AND u.role IN ('counselor','supervisor','admin') GROUP BY u.id`,
     range: true
   },
+  self_pay_by_counselor: {
+    name: '心理師自費收款明細',
+    headers: ['日期', '心理師', '個案姓名', '個案編號', '項目', '方案', '收款方式', '收款金額', '退費', '實收', '心理師報酬', '應繳回所方'],
+    // 自費款由心理師當場收走，月底繳回抽成。現金與轉帳同在「收款方式」一欄，可直接在 Excel 樞紐；
+    // 未收款者標為「未收款」，實收與繳回皆以 0 計。算法與「自費結算」畫面共用。
+    rows: (from, to) => selfPaySettlement(from, to).rows.flatMap(r => r.details.map(d => ({
+      date: d.date, counselor: r.counselor_name, client: d.client_name, code: d.client_code,
+      item: d.item, plan: d.plan_name + (d.topic_name ? '／' + d.topic_name : ''),
+      method: d.status === 'unpaid' ? '未收款' : d.method,
+      amount: d.amount, refunded: d.refunded, net: d.net, share: d.share, due: d.due_back
+    }))),
+    range: true
+  },
+  plan_counselor: {
+    name: '方案別心理師服務量',
+    headers: ['方案', '方案類別', '心理師', '完成場次', '未到', '服務人數', '服務總額', '個案自付', '方案給付', '心理師報酬', '所方淨收'],
+    rows: (from, to) => planCounselorSummary(from, to).flatMap(p => p.counselors.map(c => ({
+      plan: p.plan_name, kind: PLAN_KIND[p.plan_kind] || '', counselor: c.counselor_name,
+      sessions: c.sessions, no_shows: c.no_shows, clients: c.clients,
+      gross: c.gross, self_pay: c.self_pay, subsidy: c.subsidy, share: c.share, center: c.center
+    }))),
+    range: true
+  },
   risk_events: {
     name: '危機事件',
-    headers: ['日期', '個案編號', '類型', '嚴重度', '是否通報', '通報管道', '通報時間', '狀態'],
-    sql: `SELECT r.date, c.code, r.type, r.severity, r.reported, r.report_channel, r.report_at, r.status
+    headers: ['日期', '個案編號', '個案姓名', '類型', '嚴重度', '是否通報', '通報管道', '通報時間', '狀態'],
+    sql: `SELECT r.date, c.code, c.name AS client, r.type, r.severity, r.reported, r.report_channel, r.report_at, r.status
       FROM risk_events r JOIN clients c ON c.id = r.client_id
       WHERE r.date BETWEEN ? AND ? ORDER BY r.date`,
     range: true
@@ -811,7 +837,8 @@ router.get('/exports/:kind', requireStaff('reports'), (req, res) => {
   const from = req.query.from || today().slice(0, 8) + '01';
   const to = req.query.to || today();
   const format = ['csv', 'xls', 'pdf'].includes(req.query.format) ? req.query.format : 'csv';
-  const rows = def.range ? db.prepare(def.sql).all(from, to) : db.prepare(def.sql).all();
+  const rows = def.rows ? def.rows(from, to)
+    : def.range ? db.prepare(def.sql).all(from, to) : db.prepare(def.sql).all();
   const subtitle = def.range ? `期間：${from} ～ ${to}` : `製表日：${today()}`;
   audit('staff', req.user.id, req.user.name, '匯出報表', `${def.name}（${format.toUpperCase()}）`,
     { from, to, count: rows.length, format });

@@ -433,3 +433,160 @@ App.page('income', {
     });
   }
 });
+
+// ---- 自費結算 ----
+// 自費的錢是心理師當場收走的，這頁只回答一件事：這個月他手上有多少、其中該繳回所方多少。
+// 現金與轉帳分開列，月底點鈔與看銀行帳才對得起來。
+App.page('self-pay', {
+  title: '自費結算',
+  sub: '各心理師自費收款（現金／轉帳分列）與月底應繳回所方的抽成',
+  help: [
+    '自費款由心理師當場收走，這頁算出月底各人該繳回所方多少：應繳回＝實收 − 心理師報酬。',
+    '現金與轉帳分開列，點鈔與對銀行帳可以分頭核對；退費已從實收扣除。',
+    '按「明細／列印」可印出逐筆清單（含個案姓名）給心理師核對簽收。',
+    '未收款的自費另列一欄，錢還沒進到任何人手上，不列入繳回計算。',
+  ],
+  module: 'reports',
+  async render(el) {
+    const month = (location.hash.split('/')[1]) || UI.thisMonth();
+    const d = await GET(`/plan-income/self-pay?month=${month}`);
+    const t = d.total;
+    // 同一位心理師的自費收款依方案分組，看得出錢是從哪個方案來的
+    const byPlan = r => {
+      const out = [];
+      for (const x of r.details) {
+        if (x.status === 'unpaid') continue;
+        const name = x.plan_name || '未指定方案';
+        let row = out.find(o => o.name === name);
+        if (!row) { row = { name, n: 0, net: 0, share: 0, due_back: 0 }; out.push(row); }
+        row.n++; row.net += x.net; row.share += x.share; row.due_back += x.due_back;
+      }
+      return out.sort((a, b) => b.net - a.net);
+    };
+    const mcol = (byMethod, m) => {
+      const v = byMethod[m];
+      return `<td style="text-align:right">${v ? UI.fmtMoney(v.amt) + `<span style="font-size:12px;color:var(--muted)">（${v.n}）</span>` : '—'}</td>`;
+    };
+    el.innerHTML = `<div class="toolbar">
+        <input type="month" id="m" value="${month}">
+        <div class="spacer"></div>
+        <button class="btn secondary small" onclick="window.print()">列印</button></div>
+      <div class="stat-grid">
+        ${d.methods.map(m => `<div class="stat"><div class="num">${UI.fmtMoney((t.by_method[m] || {}).amt || 0)}</div>
+          <div class="label">${UI.esc(m)}收款（${(t.by_method[m] || {}).n || 0} 筆）</div></div>`).join('')}
+        <div class="stat"><div class="num">${UI.fmtMoney(t.collected)}</div><div class="label">自費實收合計</div></div>
+        <div class="stat"><div class="num">${UI.fmtMoney(t.share)}</div><div class="label">心理師報酬</div></div>
+        <div class="stat"><div class="num warn">${UI.fmtMoney(t.due_back)}</div><div class="label">應繳回所方</div></div>
+        ${t.unpaid ? `<div class="stat"><div class="num" style="color:var(--danger)">${UI.fmtMoney(t.unpaid)}</div>
+          <div class="label">自費未收（${t.unpaid_count} 筆）</div></div>` : ''}
+      </div>
+      <div class="card"><h3>${month} 各心理師自費收款</h3>
+        ${UI.table(['心理師'].concat(d.methods).concat(['實收合計', '心理師報酬', '應繳回所方', '未收']),
+    d.rows.map(r => `<tr>
+          <td>${UI.esc(r.counselor_name)}<span style="font-size:12px;color:var(--muted)">　${r.count} 筆</span></td>
+          ${d.methods.map(m => mcol(r.by_method, m)).join('')}
+          <td style="text-align:right"><strong>${UI.fmtMoney(r.collected)}</strong></td>
+          <td style="text-align:right">${UI.fmtMoney(r.share)}</td>
+          <td style="text-align:right"><strong style="color:var(--warn)">${UI.fmtMoney(r.due_back)}</strong></td>
+          <td style="text-align:right">${r.unpaid ? `<span style="color:var(--danger)">${UI.fmtMoney(r.unpaid)}</span>` : '—'}</td>
+        </tr>`).concat(d.rows.length > 1 ? [`<tr style="background:var(--primary-light);font-weight:700">
+          <td>合計</td>${d.methods.map(m => mcol(t.by_method, m)).join('')}
+          <td style="text-align:right">${UI.fmtMoney(t.collected)}</td>
+          <td style="text-align:right">${UI.fmtMoney(t.share)}</td>
+          <td style="text-align:right">${UI.fmtMoney(t.due_back)}</td>
+          <td style="text-align:right">${UI.fmtMoney(t.unpaid)}</td></tr>`] : []),
+    '本月尚無自費收款')}
+        <div style="font-size:12.5px;color:var(--muted);margin-top:8px">
+          應繳回所方＝自費實收 − 心理師報酬；退費已從實收扣除。
+          報酬金額於晤談按下「完成」時鎖定，事後改方案設定不會回頭變動此表。
+          ${d.rows.some(r => (r.details || []).some(x => x.no_appointment))
+    ? '標示「無對應晤談」者（如預付方案整筆收款）沒有可鎖定的報酬，報酬以 0 計，請自行核對。' : ''}</div></div>
+      ${d.rows.filter(r => r.count).map(r => `<div class="card"><h3>${UI.esc(r.counselor_name)}
+          <span style="font-size:13px;font-weight:400;color:var(--muted)">
+            實收 ${UI.fmtMoney(r.collected)}｜報酬 ${UI.fmtMoney(r.share)}｜應繳回 ${UI.fmtMoney(r.due_back)}</span></h3>
+        ${UI.table(['方案', '筆數', '實收', '心理師報酬', '應繳回所方'], byPlan(r).map(p => `<tr>
+          <td>${UI.esc(p.name)}</td><td>${p.n}</td>
+          <td style="text-align:right">${UI.fmtMoney(p.net)}</td>
+          <td style="text-align:right">${UI.fmtMoney(p.share)}</td>
+          <td style="text-align:right">${UI.fmtMoney(p.due_back)}</td></tr>`))}
+        <div class="toolbar" style="margin-top:8px"><div class="spacer"></div>
+          <button class="btn tiny secondary" data-detail="${r.counselor_id}">明細／列印</button></div></div>`).join('')}`;
+
+    el.querySelector('#m').onchange = e => { location.hash = `self-pay/${e.target.value}`; };
+    el.querySelectorAll('[data-detail]').forEach(b => {
+      b.onclick = () => {
+        const r = d.rows.find(x => String(x.counselor_id) === b.dataset.detail);
+        UI.modal({
+          title: `${r.counselor_name}　${month} 自費明細`, wide: true, hideFooter: true,
+          body: `<div id="printable">
+            <div style="text-align:center;font-size:17px;font-weight:700;margin-bottom:8px">
+              ${UI.esc(d.center_name || '')}　自費收款結算表</div>
+            <div style="font-size:14px;margin-bottom:8px">
+              心理師：${UI.esc(r.counselor_name)}　結算月份：${month}</div>
+            ${UI.table(['日期', '個案', '方案', '收款方式', '收款', '退費', '實收', '報酬', '應繳回'],
+    r.details.map(x => `<tr>
+              <td>${x.date}</td>
+              <td>${UI.esc(x.client_name || '')}</td>
+              <td>${UI.esc(x.plan_name || x.item || '')}${x.topic_name ? `<span style="color:var(--muted)">／${UI.esc(x.topic_name)}</span>` : ''}</td>
+              <td>${x.status === 'unpaid' ? '<span style="color:var(--danger)">未收款</span>' : UI.esc(x.method || '未填')}</td>
+              <td style="text-align:right">${UI.fmtMoney(x.amount)}</td>
+              <td style="text-align:right">${x.refunded ? '-' + UI.fmtMoney(x.refunded) : '—'}</td>
+              <td style="text-align:right">${x.status === 'unpaid' ? '—' : UI.fmtMoney(x.net)}</td>
+              <td style="text-align:right">${x.status === 'unpaid' ? '—' : UI.fmtMoney(x.share)}${x.no_appointment ? '<span style="font-size:12px;color:var(--muted)">　無對應晤談</span>' : ''}</td>
+              <td style="text-align:right">${x.status === 'unpaid' ? '—' : UI.fmtMoney(x.due_back)}</td></tr>`), '本月無自費收費單')}
+            <div style="margin-top:10px;font-size:15px;text-align:right">
+              實收合計 ${UI.fmtMoney(r.collected)}　報酬合計 ${UI.fmtMoney(r.share)}　
+              應繳回所方 <strong>${UI.fmtMoney(r.due_back)}</strong></div>
+            <div style="margin-top:22px;font-size:14px">
+              繳回金額：＿＿＿＿＿＿＿　繳回日期：＿＿＿＿＿＿＿　心理師簽章：＿＿＿＿＿＿＿　會計簽收：＿＿＿＿＿＿＿</div>
+          </div>
+          <button class="btn small secondary" style="margin-top:14px" onclick="window.print()">列印</button>`
+        });
+      };
+    });
+  }
+});
+
+// ---- 方案服務量 ----
+// 同一份資料換方向看：一個方案底下各心理師各做了幾次、多少錢。
+App.page('plan-income', {
+  title: '方案服務量',
+  sub: '依方案別列出各心理師的服務次數與金額',
+  help: [
+    '以方案為主軸，看每個方案底下各心理師各做了幾次、收了多少、報酬多少、所方淨收多少。',
+    '公部門方案的結案報表、自費方案的帶案量比較都從這裡看。',
+    '只計已完成與未到的晤談；未到依所內規則按比例計費。',
+  ],
+  module: 'reports',
+  async render(el) {
+    const month = (location.hash.split('/')[1]) || UI.thisMonth();
+    const d = await GET(`/plan-income/by-plan?month=${month}`);
+    const kind = { self: '自費', subsidy: '補助方案', partner: '合作單位' };
+    el.innerHTML = `<div class="toolbar">
+        <input type="month" id="m" value="${month}">
+        <div class="spacer"></div>
+        <button class="btn secondary small" onclick="window.print()">列印</button></div>
+      ${d.rows.map(p => `<div class="card"><h3>${UI.esc(p.plan_name)}
+          ${p.plan_kind ? UI.tag(kind[p.plan_kind] || p.plan_kind, p.plan_kind === 'self' ? 'ok' : '') : ''}
+          <span style="font-size:13px;font-weight:400;color:var(--muted)">
+            ${p.sessions} 場｜${p.clients} 人｜服務總額 ${UI.fmtMoney(p.gross)}</span></h3>
+        ${UI.table(['心理師', '完成場次', '未到', '服務人數', '服務總額', '個案自付', '方案給付', '心理師報酬', '所方淨收'],
+    p.counselors.map(c => `<tr>
+          <td>${UI.esc(c.counselor_name)}</td>
+          <td><strong>${c.sessions}</strong></td><td>${c.no_shows || '—'}</td><td>${c.clients}</td>
+          <td style="text-align:right">${UI.fmtMoney(c.gross)}</td>
+          <td style="text-align:right">${UI.fmtMoney(c.self_pay)}</td>
+          <td style="text-align:right">${UI.fmtMoney(c.subsidy)}</td>
+          <td style="text-align:right">${UI.fmtMoney(c.share)}</td>
+          <td style="text-align:right">${UI.fmtMoney(c.center)}</td></tr>`).concat(
+      p.counselors.length > 1 ? [`<tr style="font-weight:700"><td>方案合計</td>
+          <td>${p.sessions}</td><td>${p.no_shows || '—'}</td><td>${p.clients}</td>
+          <td style="text-align:right">${UI.fmtMoney(p.gross)}</td>
+          <td style="text-align:right">${UI.fmtMoney(p.self_pay)}</td>
+          <td style="text-align:right">${UI.fmtMoney(p.subsidy)}</td>
+          <td style="text-align:right">${UI.fmtMoney(p.share)}</td>
+          <td style="text-align:right">${UI.fmtMoney(p.center)}</td></tr>`] : []))}
+      </div>`).join('') || '<div class="empty">本月尚無已完成的晤談</div>'}`;
+    el.querySelector('#m').onchange = e => { location.hash = `plan-income/${e.target.value}`; };
+  }
+});

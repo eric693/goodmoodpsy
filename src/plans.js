@@ -6,7 +6,7 @@
 //   2. 心理師人次上限：某方案每位心理師一週／一月可排幾人次（如一週 6 人次）
 // 兩種上限都可在方案設定調整，也可針對個別心理師另訂（plan_counselors.week_limit）。
 
-const { db, getSetting, ageYears } = require('./db');
+const { db, getSetting, listSetting, ageYears } = require('./db');
 
 // 佔用額度的預約狀態：已預約、已報到、已完成都算數；
 // 取消不算，未到是否算由所方決定（預設算，因為補助方案的名額實際已被占用）。
@@ -331,9 +331,166 @@ function pickRoom({ date, start_time, end_time, exclude_appointment_id }) {
   return free ? free.id : null;
 }
 
+// ---- 自費收款結算 ----
+// 自費的錢是心理師當場收走的，月底再把所方抽成繳回來，因此這份彙總要回答兩件事：
+//   1. 這段期間他手上收了多少（現金多少、轉帳多少，點鈔與對銀行帳才分得開）
+//   2. 其中有多少該繳回所方（＝實收 − 他的報酬）
+// 只認自費：掛了方案的依方案別判斷，沒掛方案的收費單則看付款人別。
+// 退費直接從實收扣掉——錢已經退出去了，就不該再算他要繳回。
+function isSelfPayInvoice(r) {
+  if (r.plan_kind) return r.plan_kind === 'self';
+  return r.payer === '自費' || r.payer === '';
+}
+
+function selfPaySettlement(from, to) {
+  const all = db.prepare(`SELECT i.id, i.date, i.item, i.amount, i.status, i.method, i.payer, i.receipt_no,
+      c.name AS client_name, c.code AS client_code,
+      a.id AS appointment_id, a.status AS appt_status, a.fee AS appt_fee, a.counselor_share,
+      COALESCE(i.plan_id, a.plan_id) AS plan_id, p.name AS plan_name, p.kind AS plan_kind,
+      COALESCE(i.topic_id, a.topic_id) AS topic_id, t.name AS topic_name,
+      COALESCE(a.counselor_id, c.counselor_id) AS counselor_id,
+      COALESCE(uc.name, ucc.name, '未指定心理師') AS counselor_name,
+      (SELECT COALESCE(SUM(rf.amount),0) FROM refunds rf WHERE rf.invoice_id = i.id) AS refunded
+    FROM invoices i
+    JOIN clients c ON c.id = i.client_id
+    LEFT JOIN appointments a ON a.id = i.appointment_id
+    LEFT JOIN service_plans p ON p.id = COALESCE(i.plan_id, a.plan_id)
+    LEFT JOIN plan_topics t ON t.id = COALESCE(i.topic_id, a.topic_id)
+    LEFT JOIN users uc ON uc.id = a.counselor_id
+    LEFT JOIN users ucc ON ucc.id = c.counselor_id
+    WHERE i.date BETWEEN ? AND ? AND i.status != 'void'
+    ORDER BY i.date, i.id`).all(from, to);
+
+  const methods = [];
+  const byCounselor = new Map();
+  // 同一次晤談若不慎開了兩張收費單，錢要照算，但報酬只認一次——
+  // 否則報酬被灌大，該繳回所方的金額就少了。
+  const sharedAppts = new Set();
+  const ensure = r => {
+    const id = r.counselor_id || 0;
+    if (!byCounselor.has(id)) {
+      byCounselor.set(id, {
+        counselor_id: id, counselor_name: r.counselor_name, count: 0,
+        by_method: {}, collected: 0, refunded: 0, share: 0, due_back: 0,
+        unpaid_count: 0, unpaid: 0, details: []
+      });
+    }
+    return byCounselor.get(id);
+  };
+
+  for (const r of all.filter(isSelfPayInvoice)) {
+    const row = ensure(r);
+    const base = {
+      date: r.date, client_name: r.client_name, client_code: r.client_code,
+      counselor_name: r.counselor_name, item: r.item,
+      plan_name: r.plan_name || '', topic_name: r.topic_name || '', receipt_no: r.receipt_no
+    };
+    // 未收款的另外列：錢還沒進到任何人手上，不列入繳回計算
+    if (r.status === 'unpaid') {
+      row.unpaid_count++;
+      row.unpaid += r.amount;
+      row.details.push({ ...base, method: '', status: 'unpaid',
+        amount: r.amount, refunded: 0, net: 0, share: 0, due_back: 0 });
+      continue;
+    }
+    const net = r.amount - (r.refunded || 0);
+    // 報酬以晤談當下鎖定的金額為準；舊資料沒鎖到就回頭用方案設定推算。
+    // 未到只收部分費用時，報酬按同一比例縮，與心理師收支表一致。
+    const locked = r.counselor_share
+      || (r.appointment_id ? resolveFee({ plan_id: r.plan_id, topic_id: r.topic_id, counselor_id: r.counselor_id, fee_override: r.appt_fee }).counselor_share : 0);
+    let share = Math.round(locked * (r.appt_status === 'no_show' ? noShowCharge(r.appt_fee).rate : 1));
+    if (r.appointment_id) {
+      if (sharedAppts.has(r.appointment_id)) share = 0;
+      else sharedAppts.add(r.appointment_id);
+    }
+    const method = r.method || '未填';
+    if (!methods.includes(method)) methods.push(method);
+    if (!row.by_method[method]) row.by_method[method] = { n: 0, amt: 0 };
+    row.by_method[method].n++;
+    row.by_method[method].amt += net;
+    row.count++;
+    row.collected += net;
+    row.refunded += r.refunded || 0;
+    row.share += share;
+    row.due_back += net - share;
+    row.details.push({ ...base, method, status: r.status,
+      amount: r.amount, refunded: r.refunded || 0, net, share, due_back: net - share,
+      no_appointment: !r.appointment_id });
+  }
+
+  // 現金、轉帳固定排前面，其餘依所內設定的順序，「未填」殿後
+  const order = ['現金', '轉帳'].concat(listSetting('pay_methods', '現金,轉帳,信用卡,行動支付,其他'));
+  methods.sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, 'zh-Hant');
+  });
+
+  const rows = [...byCounselor.values()].sort((a, b) => b.collected - a.collected);
+  const total = { count: 0, collected: 0, refunded: 0, share: 0, due_back: 0,
+    unpaid_count: 0, unpaid: 0, by_method: {} };
+  for (const r of rows) {
+    for (const k of ['count', 'collected', 'refunded', 'share', 'due_back', 'unpaid_count', 'unpaid']) total[k] += r[k];
+    for (const [m, v] of Object.entries(r.by_method)) {
+      if (!total.by_method[m]) total.by_method[m] = { n: 0, amt: 0 };
+      total.by_method[m].n += v.n;
+      total.by_method[m].amt += v.amt;
+    }
+  }
+  return { methods, rows, total };
+}
+
+// ---- 方案 × 心理師：服務次數與金額 ----
+// 與「心理師收支」同一份資料，只是換一個方向看：一個方案底下各心理師各做了幾次、多少錢。
+// 公部門方案要結案報表、自費方案要比帶案量，都是從方案這頭問起。
+function planCounselorSummary(from, to) {
+  const appts = db.prepare(`SELECT a.*, u.name AS counselor_name,
+      p.name AS plan_name, p.kind AS plan_kind, p.sort AS plan_sort
+    FROM appointments a
+    JOIN users u ON u.id = a.counselor_id
+    LEFT JOIN service_plans p ON p.id = a.plan_id
+    WHERE a.date BETWEEN ? AND ? AND a.status IN ('done','no_show')`).all(from, to);
+
+  const blank = () => ({ sessions: 0, no_shows: 0, clients: new Set(),
+    gross: 0, self_pay: 0, subsidy: 0, venue: 0, share: 0, center: 0 });
+  const byPlan = new Map();
+  for (const a of appts) {
+    const key = a.plan_id || 0;
+    if (!byPlan.has(key)) {
+      byPlan.set(key, { plan_id: a.plan_id || 0, plan_name: a.plan_name || '未指定方案',
+        plan_kind: a.plan_kind || '', plan_sort: a.plan_sort || 0, counselors: new Map(), ...blank() });
+    }
+    const plan = byPlan.get(key);
+    if (!plan.counselors.has(a.counselor_id)) {
+      plan.counselors.set(a.counselor_id,
+        { counselor_id: a.counselor_id, counselor_name: a.counselor_name, ...blank() });
+    }
+    const q = resolveFee({ plan_id: a.plan_id, topic_id: a.topic_id, counselor_id: a.counselor_id, fee_override: a.fee });
+    // 未到只收部分費用：個案自付、方案給付與報酬都按同一比例縮
+    const rate = a.status === 'no_show' ? noShowCharge(a.fee).rate : 1;
+    const clientPay = Math.round((a.fee || 0) * rate);
+    const subsidy = Math.round((a.subsidy_amount || 0) * rate);
+    const gross = clientPay + subsidy;
+    const venue = Math.round((q.venue_fee || 0) * rate);
+    const share = Math.round((a.counselor_share || q.counselor_share) * rate);
+    for (const bucket of [plan, plan.counselors.get(a.counselor_id)]) {
+      if (a.status === 'no_show') bucket.no_shows++; else bucket.sessions++;
+      bucket.clients.add(a.client_id);
+      bucket.gross += gross; bucket.self_pay += clientPay; bucket.subsidy += subsidy;
+      bucket.venue += venue; bucket.share += share; bucket.center += gross - share;
+    }
+  }
+  return [...byPlan.values()].map(p => ({
+    ...p, clients: p.clients.size,
+    counselors: [...p.counselors.values()]
+      .map(c => ({ ...c, clients: c.clients.size }))
+      .sort((a, b) => b.sessions - a.sessions || b.gross - a.gross)
+  })).sort((a, b) => a.plan_sort - b.plan_sort || b.gross - a.gross);
+}
+
 module.exports = {
   defaultSessionMinutes, sessionMinutes, endTime,
   COUNTED_STATUSES, getPlan, getTopic, getRate, parseOptions, resolveFee,
   clientUsage, clientUsageAll, counselorLoad, nextWeekHint, weekRange, checkBooking, pickRoom, noShowCharge,
-  earliestBookableDate, bookingCutoffReason
+  earliestBookableDate, bookingCutoffReason,
+  selfPaySettlement, planCounselorSummary
 };

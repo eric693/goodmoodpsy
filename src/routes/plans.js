@@ -4,7 +4,8 @@ const express = require('express');
 const { db, audit, today, getSetting, nowStamp } = require('../db');
 const { requireStaff } = require('../auth');
 const {
-  resolveFee, clientUsage, clientUsageAll, counselorLoad, nextWeekHint, checkBooking, parseOptions, noShowCharge
+  resolveFee, clientUsage, clientUsageAll, counselorLoad, nextWeekHint, checkBooking, parseOptions, noShowCharge,
+  selfPaySettlement, planCounselorSummary
 } = require('../plans');
 
 const router = express.Router();
@@ -463,6 +464,20 @@ router.get('/plan-income/:counselorId/detail', requireStaff('reports'), (req, re
     total_share: detail.reduce((a, b) => a + (b.counselor_share || 0), 0),
     center_name: getSetting('center_name')
   });
+});
+
+// ---- 自費收款結算（現金／轉帳分列）----
+// 自費款由心理師當場收走，月底繳回所方抽成；彙總邏輯在 src/plans.js，
+// 與報表匯出共用同一套算法，畫面與 Excel 不會對不起來。
+router.get('/plan-income/self-pay', requireStaff('reports'), (req, res) => {
+  const month = String(req.query.month || today().slice(0, 7));
+  res.json({ month, ...selfPaySettlement(month + '-01', month + '-31'), center_name: getSetting('center_name') });
+});
+
+// ---- 方案 × 心理師：服務次數與金額 ----
+router.get('/plan-income/by-plan', requireStaff('reports'), (req, res) => {
+  const month = String(req.query.month || today().slice(0, 7));
+  res.json({ month, rows: planCounselorSummary(month + '-01', month + '-31') });
 });
 
 module.exports = router;
